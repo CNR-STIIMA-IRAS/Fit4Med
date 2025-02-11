@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://wiki.ros.org/xacro" name = "tecnobody" >
+
+  <!-- args -->
+  <xacro:arg name="name" default="robotiq_ft_sensor"/>
+  <xacro:arg name="use_fake_mode" default="false"/>
+  <xacro:arg name="max_retries" default="100"/>
+  <xacro:arg name="read_rate" default="10"/>
+  <xacro:arg name="ftdi_id" default=""/>
+  <xacro:arg name="tf_prefix" default=""/>
+  <xacro:arg name="control_configuration" default=""/>
+  <xacro:arg name="simulated" default="true"/>
+  <xacro:property name="robot_description_mode" value="$(arg control_configuration)"/>
+
+  <!-- import main macro $(find tecnobody_workbench) -->
+  <xacro:include filename="$(find tecnobody_workbench)/urdf/platform_complete_gazebo_robotiq.urdf.xacro" />
+  <xacro:include filename="$(find tecnobody_workbench)/urdf/ros2_control/platform_complete_gazebo_robotiq.ros2_control.urdf.xacro" />
+
+  <xacro:include filename="$(find robotiq_ft_sensor_description)/urdf/robotiq_ft300.urdf.xacro" />
+  <xacro:include filename="$(find tecnobody_workbench)/urdf/ros2_control/ft_sensor_robotiq.ros2_control.urdf.xacro" />
+
+  <link name="world" />
+
+  <!-- force sensor -->
+  <xacro:robot_tecnobody parent="world" tf_prefix="$(arg tf_prefix)">
+    <origin xyz="0 0 0" rpy="3.14 0 0"/> 
+  </xacro:robot_tecnobody>
+
+  <!-- force sensor -->
+  <xacro:robotiq_ft300 parent="ee_link" tf_prefix="$(arg tf_prefix)">
+    <origin xyz="0 0 0" rpy="0 0 0"/> 
+  </xacro:robotiq_ft300>
+
+  <xacro:if value="${robot_description_mode == 'ft_controller' }">
+    <xacro:robotiq_fts_ros2_control
+        name="$(arg name)"
+        use_fake_mode="$(arg use_fake_mode)"
+        max_retries="$(arg max_retries)"
+        read_rate="$(arg read_rate)"
+        ftdi_id="$(arg ftdi_id)"
+        tf_prefix="$(arg tf_prefix)" 
+    />
+  </xacro:if>
+
+  <xacro:if value="${robot_description_mode == 'robot_controller' }">
+      <xacro:tecnobody_ros2_control use_gazebo="$(arg simulated)"/>
+  </xacro:if>
+
+
+</robot>

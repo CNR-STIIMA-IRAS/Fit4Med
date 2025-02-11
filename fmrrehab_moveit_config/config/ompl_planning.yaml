@@ -1,0 +1,19 @@
+planner_configs:
+  RRTConnectkConfigDefault:
+    type: ompl_interface/OMPLPlanner
+    range: 0.0
+    goal_bias: 0.05
+    max_solution_time: 1.0
+    simplify_solutions: true
+    # Add other planner-specific parameters here
+
+move_group:
+  planning_pipeline: ompl
+  request_adapters: >-
+    default_planner_request_adapters/AddTimeParameterization
+    default_planner_request_adapters/FixWorkspaceBounds
+    default_planner_request_adapters/FixStartStateBounds
+    default_planner_request_adapters/FixStartStateCollision
+    default_planner_request_adapters/FixStartStatePathConstraints
+  start_state_max_bounds_error: 0.1
+  default_planner_config: RRTConnectkConfigDefault

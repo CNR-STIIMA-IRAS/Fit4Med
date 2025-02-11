@@ -1,0 +1,51 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+    <xacro:macro name="tecnobody_ros2_control">
+
+        <ros2_control name="${name}" type="system">
+        
+            <hardware>
+                <plugin>ethercat_driver/EthercatDriver</plugin>
+                <param name="master_id">0</param>
+                <param name="control_frequency">1000</param>
+            </hardware>
+
+            <joint name="joint_1">
+                <command_interface name="position"/>
+                <state_interface name="position"/>
+                <state_interface name="velocity"/>
+                <ec_module name="delta1">
+                <plugin>ethercat_generic_plugins/EcCiA402Drive</plugin>
+                    <param name="alias">0</param>
+                    <param name="position">0</param>
+                    <param name="mode_of_operation">8</param>
+                    <param name="slave_config">$(find tecnobody_workbench)/config/delta400.yaml</param>
+                </ec_module>
+            </joint>
+            <joint name="joint_2">
+                <command_interface name="position"/>
+                <state_interface name="position"/>
+                <state_interface name="velocity"/>
+                <ec_module name="delta2">
+                    <plugin>ethercat_generic_plugins/EcCiA402Drive</plugin>
+                    <param name="alias">0</param>
+                    <param name="position">1</param>
+                    <param name="mode_of_operation">8</param>
+                    <param name="slave_config">$(find tecnobody_workbench)/config/delta400.yaml</param>
+                </ec_module>
+            </joint>
+            <joint name="joint_3">
+                <command_interface name="position"/>
+                <state_interface name="position"/>
+                <state_interface name="velocity"/>
+                <ec_module name="delta3">
+                    <plugin>ethercat_generic_plugins/EcCiA402Drive</plugin>
+                    <param name="alias">0</param>
+                    <param name="position">2</param>
+                    <param name="mode_of_operation">8</param>
+                    <param name="slave_config">$(find tecnobody_workbench)/config/delta750.yaml</param>
+                </ec_module>
+            </joint>
+        </ros2_control>
+    </xacro:macro>
+</robot>

@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="tecnobody">
+
+    <!-- Import tecnobody urdf file -->
+    <xacro:include filename="$(find tecnobody_workbench)/urdf/platform_single_actuated.urdf" />
+
+    <!-- Import control_xacro -->
+    <xacro:include filename="$(find tecnobody_workbench)/urdf/ros2_control/single_force_safemod.ros2_control.urdf" />
+
+</robot>

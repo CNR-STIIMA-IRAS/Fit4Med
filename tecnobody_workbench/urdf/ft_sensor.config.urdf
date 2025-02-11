@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<!-- Scara manipulator -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="tecnobody">
+
+    <!-- Import scara urdf file -->
+    <xacro:include filename="$(find tecnobody_workbench)/urdf/sensor_only.urdf" />
+
+    <!-- Import scara ros2_control description -->
+    <xacro:include filename="$(find tecnobody_workbench)/urdf/ros2_control/ati_axia.ros2_control.urdf" />
+
+</robot>

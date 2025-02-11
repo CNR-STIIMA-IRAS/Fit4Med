@@ -1,0 +1,72 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 1000  # Hz
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    joint_trajectory_controller:
+      type: "joint_trajectory_controller/JointTrajectoryController"
+
+    state_controller:
+      type: ethercat_controllers/CiA402Controller
+
+    ft_sensor_command_broadcaster:
+      type: force_torque_sensor_broadcaster/ForceTorqueSensorBroadcaster
+
+    gpio_command_controller:
+      type: "gpio_controllers/GpioCommandController"
+
+
+ft_sensor_command_broadcaster:
+  ros__parameters:
+    frame_id: "fts_sensor_frames"
+    interface_names:
+      force:
+        x: "ft_sensor/force.x"
+        y: "ft_sensor/force.y"
+        z: "ft_sensor/force.z"
+      torque:
+        x: "ft_sensor/torque.x"
+        y: "ft_sensor/torque.y"
+        z: "ft_sensor/torque.z"
+    offset:
+      force:
+        x: 249.12
+        y: -15.15
+        z: 18.6
+      torque:
+        x: 0.12
+        y: -0.7
+        z: 2.12  
+
+joint_trajectory_controller:
+  ros__parameters:
+    joints:
+      - joint_1
+
+    command_interfaces:
+      - position
+
+    state_interfaces:
+      - position
+      - velocity
+
+state_controller:
+  ros__parameters:
+    dofs:
+      - joint_1
+
+gpio_command_controller:
+  ros__parameters:
+    gpios:
+      - safe_output
+      - safe_input
+    command_interfaces:
+      safe_output:
+        - interfaces:
+          - d_output.1
+    state_interfaces:
+      safe_input:
+        - interfaces:
+          - d_input.1

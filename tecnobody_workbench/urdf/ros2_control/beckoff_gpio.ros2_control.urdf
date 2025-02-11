@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<robot name = "workbench" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <ros2_control name="tecnobody" type="system">
+        <hardware>
+            <plugin>ethercat_driver/EthercatDriver</plugin>
+            <param name="master_id">0</param>
+            <param name="control_frequency">500</param>
+        </hardware>
+
+        <gpio name="safe_output">
+            <command_interface name="d_output.1"/>
+            <command_interface name="d_output.2"/>
+            <command_interface name="d_output.3"/>
+            <command_interface name="d_output.4"/>
+            <command_interface name="d_output.5"/>
+            <command_interface name="d_output.6"/>
+            <command_interface name="d_output.7"/>
+            <command_interface name="d_output.8"/>
+            <ec_module name="beckoff_el2008">
+                <plugin>ethercat_generic_plugins/GenericEcSlave</plugin>
+                <param name="alias">0</param>
+                <param name="position">1</param>
+                <param name="slave_config">$(find tecnobody_workbench)/config/el2008.yaml</param>
+            </ec_module>
+        </gpio>
+
+        <gpio name="safe_input">
+            <state_interface name="d_input.1"/>
+            <state_interface name="d_input.2"/>
+            <ec_module name="beckoff_el1002">
+                <plugin>ethercat_generic_plugins/GenericEcSlave</plugin>
+                <param name="alias">0</param>
+                <param name="position">2</param>
+                <param name="slave_config">$(find tecnobody_workbench)/config/el1002.yaml</param>
+            </ec_module>
+        </gpio>
+    </ros2_control>
+</robot>

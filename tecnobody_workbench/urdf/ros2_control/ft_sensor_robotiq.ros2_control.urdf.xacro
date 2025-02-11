@@ -1,0 +1,70 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <xacro:macro name="robotiq_fts_ros2_control"
+    params="
+    name
+    use_fake_mode:=false
+    max_retries:=1
+    read_rate:=10
+    ftdi_id:=''
+    tf_prefix
+  ">
+    <ros2_control name="${name}_robotiq_ft_sensor" type="sensor">
+      <hardware>
+        <plugin>robotiq_ft_sensor_hardware/RobotiqFTSensorHardware</plugin>
+        <group>Group1</group>
+        <param name="use_fake_mode">${use_fake_mode}</param>
+        <param name="max_retries">${max_retries}</param>
+        <param name="read_rate">${read_rate}</param>
+        <param name="ftdi_id">${ftdi_id}</param>
+      </hardware>
+      <sensor name="${tf_prefix}robotiq_ft_sensor">
+        <state_interface name="force.x" />
+        <state_interface name="force.y" />
+        <state_interface name="force.z" />
+        <state_interface name="torque.x" />
+        <state_interface name="torque.y" />
+        <state_interface name="torque.z" />
+      </sensor>
+    </ros2_control>
+    <ros2_control name="${name}_ft_sensor_cmd_interfaces" type="system">
+      <hardware>
+        <plugin>mock_components/GenericSystem</plugin>
+        <group>Group1</group>
+      </hardware>
+      <joint name="joint_1">
+        <command_interface name="position" />
+        <command_interface name="velocity" />
+        <command_interface name="effort" />
+        <state_interface name="position">
+          <param name="initial_value">2.0</param>
+        </state_interface>
+        <state_interface name="velocity" />
+        <state_interface name="effort" />
+      </joint>
+      <joint name="joint_2">
+        <command_interface name="position" />
+        <command_interface name="velocity" />
+        <command_interface name="effort" />
+        <state_interface name="position">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="velocity" />
+        <state_interface name="effort" />
+      </joint>
+      <joint name="joint_3">
+        <command_interface name="position" />
+        <command_interface name="velocity" />
+        <command_interface name="effort" />
+        <state_interface name="position">
+          <param name="initial_value">0.0</param>
+        </state_interface>
+        <state_interface name="velocity" />
+        <state_interface name="effort" />
+      </joint>
+    </ros2_control>
+
+  </xacro:macro>
+
+</robot>

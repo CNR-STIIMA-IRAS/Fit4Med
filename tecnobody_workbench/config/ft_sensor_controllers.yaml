@@ -1,0 +1,143 @@
+ft_sensor:
+  controller_manager:
+    ros__parameters:
+      update_rate: 1000 # Hz
+
+      joint_state_broadcaster:
+        type: joint_state_broadcaster/JointStateBroadcaster
+
+      robotiq_force_torque_sensor_broadcaster:
+        type: force_torque_sensor_broadcaster/ForceTorqueSensorBroadcaster
+
+      joint_trajectory_controller:
+        type: "joint_trajectory_controller/JointTrajectoryController"
+
+      admittance_controller:
+        type: "admittance_controller/AdmittanceController"
+
+  robotiq_force_torque_sensor_broadcaster:
+    ros__parameters:
+      sensor_name: robotiq_ft_sensor
+      state_interface_names:
+      - force.x
+      - force.y
+      - force.z
+      - torque.x
+      - torque.y
+      - torque.z
+      frame_id: robotiq_ft_frame_id
+      offset:
+        force:
+          x: -1.3
+          y: 38.17
+          z: -32.12
+        torque:
+          x: 0.45
+          y: 0.3
+          z: -0.3
+
+  joint_trajectory_controller:
+    ros__parameters:
+      joints:
+      - joint_1
+      - joint_2
+      - joint_3
+
+      command_interfaces:
+      - position
+
+      state_interfaces:
+      - position
+      - velocity
+
+  admittance_controller:
+    ros__parameters:
+      joints:
+      - joint_1
+      - joint_2
+      - joint_3
+
+      command_interfaces:
+      - position
+
+      state_interfaces:
+      - position
+      - velocity
+
+      chainable_command_interfaces:
+      - position
+      - velocity
+
+      kinematics:
+        plugin_name: kinematics_interface_kdl/KinematicsInterfaceKDL
+        plugin_package: kinematics_interface # Just install this package (if not working with debian add it to your workspace)
+        base: base_link # Assumed to be stationary
+        tip: robotiq_ft_frame_id
+        group_name: manipulator
+        alpha: 0.0005
+
+      ft_sensor:
+        name: robotiq_ft_sensor # Sensor name
+        frame:
+          id: robotiq_ft_frame_id # Wrench measurements are in this frame
+          external: false # force torque frame exists within URDF kinematic chain
+        filter_coefficient: 0.005
+
+      control:
+        frame:
+          id: base_link # Admittance calcs (displacement etc) are done in this frame. Usually the tool or end-effector
+          external: false # control frame exists within URDF kinematic chain
+
+      fixed_world_frame:
+        # Gravity points down (neg. Z) in this frame (Usually: world or base_link)
+        frame:
+          id: base_link # Admittance calcs (displacement etc) are done in this frame. Usually the tool or end-effector
+          external: false # control frame exists within URDF kinematic chain
+
+      gravity_compensation:
+        frame:
+          id: robotiq_ft_frame_id
+          external: false
+
+        CoG:
+          # specifies the center of gravity of the end effector
+          pos:
+          - 0.001 # x
+          - 0.007 # y
+          - 0.142 # z
+          force: 22.563 #9.81 # mass * 9.81
+
+      admittance:
+        selected_axes:
+        - true # x
+        - true # y
+        - true # z
+        - false # rx
+        - false # ry
+        - false # rz
+        # Having ".0" at the end is MUST, otherwise there is a loading error
+        # F = M*a + D*v + S*(x - x_d)
+        mass:
+        - 5.5
+        - 6.6
+        - 7.7
+        - 8.8
+        - 9.9
+        - 10.10
+
+        damping_ratio:
+        # damping can be used instead: zeta = D / (2 * sqrt( M * S ))
+        - 2.828427 # x
+        - 2.828427 # y
+        - 2.828427 # z
+        - 2.828427 # rx
+        - 2.828427 # ry
+        - 2.828427 # rz
+
+        stiffness:
+        - 214.1
+        - 214.2
+        - 214.3
+        - 214.4
+        - 214.5
+        - 214.6

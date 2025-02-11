@@ -1,0 +1,16 @@
+Phases: # 
+  PhaseIsEnabled:
+  - [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+  
+  Percentage: # percentage of Vmax
+  - [100,80,60,50,30,50,60,80,100,100,100,80,80,80,50,50,50,100,100,100]
+  
+  Modalities: # type of control (1= velocity, 2 = force, 3 = EMG, 4 = Mixed_Force, 4 = Mixed_EMG)
+  - [1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5]
+
+V_max: 
+  - [50] # cm/s
+#  - [0.0, -1.5708, 0.0, 0.0, 0.0, 0.0]
+PhaseDuration:  #single phase duration
+  - [10] #  seconds
+#  - [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]

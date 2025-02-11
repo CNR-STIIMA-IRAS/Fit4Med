@@ -1,0 +1,207 @@
+<?xacro version = "1.0"?>
+<robot name = "tecnobody" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Define materials -->
+  <material name="white">
+    <color rgba="1 1 1 1"/>
+  </material>
+
+  <material name="grey_transparent">
+    <color rgba="0.5 0.5 0.5 0.4"/>
+  </material>
+
+  <!--Define parameters-->
+  <xacro:property name="radius" value="0.05"/>
+  <xacro:property name="col_height" value="2.5"/>
+  <xacro:property name="z_height" value="2"/>
+  <xacro:property name="beam_lenght" value="4"/>
+
+  <!-- Define world and ee_link -->
+  <link name="world"/>
+  <link name="ee_link"/>
+
+  <!--Define fixed structure links-->
+  <link name="col1">
+    <visual>
+      <geometry>
+        <cylinder length="${col_height}" radius="${radius}"/>
+      </geometry>
+      <material name="grey_transparent"/>
+    </visual>
+  </link>
+
+  <link name="col2">
+    <visual>
+      <geometry>
+        <cylinder length="${col_height}" radius="${radius}"/>
+      </geometry>
+      <material name="grey_transparent"/>
+    </visual>
+  </link>
+
+  <link name="col3">
+    <visual>
+      <geometry>
+        <cylinder length="${col_height}" radius="${radius}"/>
+      </geometry>
+      <material name="grey_transparent"/>
+    </visual>
+  </link>
+
+  <link name="beam0">
+    <visual>
+      <geometry>
+        <cylinder length="${beam_lenght}" radius="${radius}"/>
+      </geometry>
+      <material name="grey_transparent"/>
+    </visual>
+  </link>
+
+  <link name="beam1">
+    <visual>
+      <geometry>
+        <cylinder length="${beam_lenght}" radius="${radius}"/>
+      </geometry>
+      <material name="grey_transparent"/>
+    </visual>
+  </link>
+
+  <link name="beam2">
+    <visual>
+      <geometry>
+        <cylinder length="${beam_lenght}" radius="${radius}"/>
+      </geometry>
+      <material name="grey_transparent"/>
+    </visual>
+  </link>
+
+  <link name="beam3">
+    <visual>
+      <geometry>
+        <cylinder length="${beam_lenght}" radius="${radius}"/>
+      </geometry>
+      <material name="grey_transparent"/>
+    </visual>
+  </link>
+
+  <!-- Define base_link -->
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <cylinder length="${col_height}" radius="${radius}"/>
+      </geometry>
+      <material name="white"/>
+    </visual>
+  </link>
+
+  <!-- Define link1 -->
+  <link name="link1">
+    <visual>
+      <geometry>
+        <cylinder length="${beam_lenght}" radius="${radius}"/>
+      </geometry>
+      <material name="white"/>
+    </visual>
+  </link>
+
+  <!-- Define link2 -->
+  <link name="link2">
+    <visual>
+      <geometry>
+        <box size="0.1 0.1 0.1"/>
+      </geometry>
+      <material name="white"/>
+    </visual>
+  </link>
+
+  <!-- Define link3 -->
+  <link name="link3">
+    <visual>
+      <geometry>
+        <cylinder length="${z_height}" radius="${radius}"/>
+      </geometry>
+      <material name="white"/>
+    </visual>
+  </link>
+
+  <!--Define fixed structure joints-->
+  <joint name="col1_joint" type="fixed">
+    <parent link="world"/>
+    <child link="col1"/>
+    <origin xyz="${-beam_lenght} 0 0" rpy="0 0 1.57"/>
+  </joint>
+
+  <joint name="col2_joint" type="fixed">
+    <parent link="world"/>
+    <child link="col2"/>
+    <origin xyz="${-beam_lenght} ${-beam_lenght} 0" rpy="0 0 1.57"/>
+  </joint>
+
+  <joint name="col3_joint" type="fixed">
+    <parent link="world"/>
+    <child link="col3"/>
+    <origin xyz="0 ${-beam_lenght} 0" rpy="0 0 1.57"/>
+  </joint>
+
+  <joint name="beam0_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="beam0"/>
+    <origin xyz="0 ${-beam_lenght/2} ${col_height/2}" rpy="1.57 0 0"/>
+  </joint>
+
+  <joint name="beam1_joint" type="fixed">
+    <parent link="col1"/>
+    <child link="beam1"/>
+    <origin xyz="${-beam_lenght/2} 0 ${col_height/2}" rpy="0 1.57 0"/>
+  </joint>
+
+  <joint name="beam2_joint" type="fixed">
+    <parent link="col2"/>
+    <child link="beam2"/>
+    <origin xyz="0 ${-beam_lenght/2} ${col_height/2}" rpy="1.57 0 0"/>
+  </joint>
+
+  <joint name="beam3_joint" type="fixed">
+    <parent link="col3"/>
+    <child link="beam3"/>
+    <origin xyz="${beam_lenght/2} 0 ${col_height/2}" rpy="0 1.57 0"/>
+  </joint>
+
+  <!-- Define active joints -->
+  <joint name="base2world" type="fixed">
+    <parent link="world"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 0" rpy="0 0 -1.57"/>
+  </joint>
+
+  <joint name="joint_1" type="prismatic">
+    <parent link="base_link"/>
+    <child link="link1"/>
+    <origin xyz="0.1 ${-beam_lenght/2} ${col_height/2}" rpy="1.57 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="0" upper="${beam_lenght -4*radius}" effort="1000" velocity="2"/>
+  </joint>
+
+  <joint name="joint_2" type="prismatic">
+    <parent link="link1"/>
+    <child link="link2"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="${-beam_lenght/2+2*radius}" upper="${beam_lenght/2-2*radius}" effort="1000" velocity="2"/>
+  </joint>
+
+  <joint name="joint_3" type="prismatic">
+    <parent link="link2"/>
+    <child link="link3"/>
+    <origin xyz="0 0 0" rpy="-1.57 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="${-z_height/2}" upper="${z_height/2}" effort="1000" velocity="2"/>
+  </joint>
+
+  <joint name="ee_joint" type="fixed">
+    <parent link="link3"/>
+    <child link="ee_link"/>
+    <origin xyz="0 0 ${-z_height/2}" rpy="0 3.14 0"/>
+  </joint>
+
+</robot>

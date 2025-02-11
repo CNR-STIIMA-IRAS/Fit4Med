@@ -1,0 +1,5 @@
+planning_pipelines:
+  ompl:
+    planner_plugin: ompl_interface/OMPLPlanner
+  pilz_industrial_motion_planner:
+    planner_plugin: pilz_industrial_motion_planner/CommandPlanner

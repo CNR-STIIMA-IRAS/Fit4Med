@@ -1,0 +1,353 @@
+<?xml version = "1.0"?>
+<robot name = "tecnobody" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Define materials -->
+  <material name="white">
+    <color rgba="1 1 1 1"/>
+  </material>
+
+  <material name="grey_transparent">
+    <color rgba="0.5 0.5 0.5 0.4"/>
+  </material>
+
+  <!-- Define world and ee_link -->
+  <link name="world"/>
+  <link name="ee_link"/>
+
+  <!--Define fixed structure links-->
+  <link name="col1">
+    <visual>
+      <geometry>
+        <cylinder length="2.5" radius="0.05"/>
+      </geometry>
+      <material name="grey_transparent"/>
+    </visual>
+    <inertial>
+      <mass value="50"/>
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
+  </link>
+
+  <link name="col2">
+    <visual>
+      <geometry>
+        <cylinder length="2.5" radius="0.05"/>
+      </geometry>
+      <material name="grey_transparent"/>
+    </visual>
+    <inertial>
+      <mass value="50"/>
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
+  </link>
+
+  <link name="col3">
+    <visual>
+      <geometry>
+        <cylinder length="2.5" radius="0.05"/>
+      </geometry>
+      <material name="grey_transparent"/>
+    </visual>
+    <inertial>
+      <mass value="50"/>
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
+  </link>
+
+  <link name="beam0">
+    <visual>
+      <geometry>
+        <cylinder length="4" radius="0.05"/>
+      </geometry>
+      <material name="grey_transparent"/>
+    </visual>
+    <inertial>
+      <mass value="30"/>
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
+  </link>
+
+  <link name="beam1">
+    <visual>
+      <geometry>
+        <cylinder length="4" radius="0.05"/>
+      </geometry>
+      <material name="grey_transparent"/>
+    </visual>
+    <inertial>
+      <mass value="30"/>
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
+  </link>
+
+  <link name="beam2">
+    <visual>
+      <geometry>
+        <cylinder length="4" radius="0.05"/>
+      </geometry>
+      <material name="grey_transparent"/>
+    </visual>
+    <inertial>
+      <mass value="30"/>
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
+  </link>
+
+  <link name="beam3">
+    <visual>
+      <geometry>
+        <cylinder length="4" radius="0.05"/>
+      </geometry>
+      <material name="grey_transparent"/>
+    </visual>
+    <inertial>
+      <mass value="30"/>
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
+  </link>
+
+  <!-- Define base_link -->
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <cylinder length="2.5" radius="0.05"/>
+      </geometry>
+      <material name="white"/>
+    </visual>
+    <inertial>
+      <mass value="50"/>
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
+  </link>
+
+  <!-- Define link1 -->
+  <link name="link1">
+    <visual>
+      <geometry>
+        <cylinder length="4" radius="0.05"/>
+      </geometry>
+      <material name="white"/>
+    </visual>
+    <inertial>
+      <mass value="30"/>
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
+  </link>
+
+  <!-- Define link2 -->
+  <link name="link2">
+    <visual>
+      <geometry>
+        <box size="0.1 0.1 0.1"/>
+      </geometry>
+      <material name="white"/>
+    </visual>
+    <inertial>
+      <mass value="10"/>
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
+  </link>
+
+  <!-- Define link3 -->
+  <link name="link3">
+    <visual>
+      <geometry>
+        <cylinder length="2" radius="0.05"/>
+      </geometry>
+      <material name="white"/>
+    </visual>
+    <inertial>
+      <mass value="5"/>
+      <inertia ixx="1.0" ixy="0.0" ixz="0.0" iyy="1.0" iyz="0.0" izz="1.0"/>
+    </inertial>
+  </link>
+
+  <!--Define fixed structure joints-->
+  <joint name="col1_joint" type="fixed">
+    <parent link="world"/>
+    <child link="col1"/>
+    <origin xyz="-4 0 0" rpy="0 0 1.57"/>
+  </joint>
+
+  <joint name="col2_joint" type="fixed">
+    <parent link="world"/>
+    <child link="col2"/>
+    <origin xyz="-4 -4 0" rpy="0 0 1.57"/>
+  </joint>
+
+  <joint name="col3_joint" type="fixed">
+    <parent link="world"/>
+    <child link="col3"/>
+    <origin xyz="0 -4 0" rpy="0 0 1.57"/>
+  </joint>
+
+  <joint name="beam0_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="beam0"/>
+    <origin xyz="0 -2 1.25" rpy="1.57 0 0"/>
+  </joint>
+
+  <joint name="beam1_joint" type="fixed">
+    <parent link="col1"/>
+    <child link="beam1"/>
+    <origin xyz="-2 0 1.25" rpy="0 1.57 0"/>
+  </joint>
+
+  <joint name="beam2_joint" type="fixed">
+    <parent link="col2"/>
+    <child link="beam2"/>
+    <origin xyz="0 -2 1.25" rpy="1.57 0 0"/>
+  </joint>
+
+  <joint name="beam3_joint" type="fixed">
+    <parent link="col3"/>
+    <child link="beam3"/>
+    <origin xyz="2 0 1.25" rpy="0 1.57 0"/>
+  </joint>
+
+  <!-- Define active joints -->
+  <joint name="base2world" type="fixed">
+    <parent link="world"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 0" rpy="0 0 -1.57"/>
+  </joint>
+
+  <joint name="joint_1" type="prismatic">
+    <parent link="base_link"/>
+    <child link="link1"/>
+    <origin xyz="0.1 -2 1.25" rpy="1.57 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="0" upper="3.8" effort="100" velocity="1"/>
+  </joint>
+
+  <joint name="joint_2" type="prismatic">
+    <parent link="link1"/>
+    <child link="link2"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.9" upper="1.9" effort="100" velocity="1"/>
+  </joint>
+
+  <joint name="joint_3" type="prismatic">
+    <parent link="link2"/>
+    <child link="link3"/>
+    <origin xyz="0 0 0" rpy="-1.57 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1" upper="1" effort="100" velocity="1"/>
+  </joint>
+
+  <joint name="ee_joint" type="fixed">
+    <parent link="link3"/>
+    <child link="ee_link"/>
+    <origin xyz="0 0 -1" rpy="0 3.14 0"/>
+  </joint>
+
+  <!-- <joint name="ft300_fix" type="fixed"> 
+      <parent link="ee_link"/>
+      <child link="ft300_mounting_plate" />
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <link name="ft300_mounting_plate">
+      <visual>
+          <origin xyz="0 0 0" rpy="0 0 0" />
+          <geometry>
+              <mesh filename="file://$(find robotiq_ft_sensor_description)/meshes/visual/mountings/robotiq_ft300-G-062-COUPLING_G-50-4M6-1D6_20181119.STL"/>
+          </geometry>
+          <material name="Robotiq-Grey">
+              <color rgba="0.4 0.4 0.4 1.0"/>
+          </material>
+      </visual>
+
+      <collision>
+          <origin xyz="0 0 0" rpy="0 0 0" />
+          <geometry>
+              <mesh filename="file://$(find robotiq_ft_sensor_description)/meshes/collision/mountings/robotiq_ft300-G-062-COUPLING_G-50-4M6-1D6_20181119.STL"/>
+          </geometry>
+      </collision>
+  </link>
+
+  <joint name="ft300_mounting_plate_joint" type="fixed">
+      <origin xyz="0 0 0.0415" rpy="0 ${pi} 0"/> 
+      <parent link="ft300_mounting_plate" />
+      <child link="ft300_sensor" />
+  </joint>
+  
+  <link name="ft300_sensor">
+      <inertial>
+          <origin xyz="0 0 ${-17 / 1000}" rpy="0 0 0"/>
+          <mass value="0.300"/>
+          <inertia ixx="${262 / 1000000}" ixy="0" ixz="${1 / 1000000}" iyy="${265 / 1000000}" iyx="0" iyz="${1 / 1000000}" izz="${219 / 1000000}" izx="${-1 / 1000000}" izy="${1 / 1000000}"/>
+      </inertial>
+      <visual>
+          <origin xyz="0 0 0" rpy="0 0 0" />
+          <geometry>
+              <mesh filename="file://$(find robotiq_ft_sensor_description)/meshes/visual/robotiq_ft300.STL"/>
+          </geometry>
+          <material name="Robotiq-Black">
+              <color rgba="0.2 0.2 0.2 1.0"/>
+          </material>
+      </visual>
+      <collision>
+          <origin xyz="0 0 0" rpy="0 0 0" />
+          <geometry>
+              <mesh filename="file://$(find robotiq_ft_sensor_description)/meshes/collision/robotiq_ft300.STL"/>
+          </geometry>
+      </collision>
+  </link>
+
+  <joint name="measurment_joint" type="fixed">
+      <origin xyz="0 0 0" rpy="0 ${pi} ${-pi/2}" />
+      <parent link="ft300_sensor" />
+      <child link="robotiq_ft_frame_id" />
+  </joint>
+
+  <link name="robotiq_ft_frame_id"/> -->
+
+
+  <ros2_control name="GazeboSimSystem" type="system">
+    <hardware>
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+    </hardware>
+    <joint name="joint_1">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <command_interface name="effort">
+        <param name="min">-1000</param>
+        <param name="max">1000</param>
+      </command_interface>
+      <state_interface name="position">
+        <param name="initial_value">2.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint_2">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <command_interface name="effort">
+        <param name="min">-1000</param>
+        <param name="max">1000</param>
+      </command_interface>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+    <joint name="joint_3">
+      <command_interface name="position"/>
+      <command_interface name="velocity"/>
+      <command_interface name="effort">
+        <param name="min">-1000</param>
+        <param name="max">1000</param>
+      </command_interface>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+  </ros2_control>
+
+</robot>

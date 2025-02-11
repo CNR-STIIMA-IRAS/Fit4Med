@@ -1,0 +1,39 @@
+#ifndef REHAB_TRAJECTORY_PLANNER_HPP
+#define REHAB_TRAJECTORY_PLANNER_HPP
+
+#include <rclcpp/rclcpp.hpp>
+#include <geometry_msgs/msg/point.hpp>
+#include <moveit/move_group_interface/move_group_interface.h>
+#include <moveit/robot_trajectory/robot_trajectory.h>
+#include <moveit/trajectory_processing/iterative_time_parameterization.h>
+#include <yaml-cpp/yaml.h>
+#include <vector>
+#include <cmath>
+
+class RehabTrajectoryPlanner : public rclcpp::Node
+{
+public:
+  RehabTrajectoryPlanner();
+
+private:
+  void initializeMoveGroup();
+  void startPointCallback(const geometry_msgs::msg::Point::SharedPtr msg);
+  void endPointCallback(const geometry_msgs::msg::Point::SharedPtr msg);
+  void computeTrajectory();
+  void saveTrajectory(const moveit_msgs::msg::RobotTrajectory &trajectory);
+  std::vector<double> generateGaussianProfile(size_t num_points, double max_velocity, double mean_time, double std_dev);
+  std::vector<double> generateLinearProfile(size_t num_points, double max_velocity);
+
+  rclcpp::Subscription<geometry_msgs::msg::Point>::SharedPtr start_point_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::Point>::SharedPtr end_point_sub_;
+  geometry_msgs::msg::Point start_point_;
+  geometry_msgs::msg::Point end_point_;
+  bool received_start_ = false;
+  bool received_end_ = false;
+  std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_;
+  const bool LINEAR = true; // Flag to toggle between linear and bell-shaped velocity profile
+  rclcpp::TimerBase::SharedPtr timer_;
+};
+
+#endif // REHAB_TRAJECTORY_PLANNER_HPP
+

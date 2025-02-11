@@ -1,0 +1,27 @@
+moveit_setup_assistant_config:
+  urdf:
+    package: tecnobody_workbench
+    relative_path: urdf/platform_complete_moveit.urdf
+  srdf:
+    relative_path: config/tecnobody.srdf
+  package_settings:
+    author_name: adriano
+    author_email: adriano@pauli.com
+    generated_timestamp: 1716391312
+  control_xacro:
+    command:
+      - position
+      - velocity
+    state:
+      - position
+      - velocity
+  modified_urdf:
+    xacros:
+      - control_xacro
+  control_xacro:
+    command:
+      - position
+      - velocity
+    state:
+      - position
+      - velocity

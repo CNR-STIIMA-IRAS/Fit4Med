@@ -1,0 +1,100 @@
+<?xml version="1.0"?>
+<robot name = "workbench" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <ros2_control name="tecnobody" type="system">
+        <hardware>
+            <plugin>ethercat_driver/EthercatDriver</plugin>
+            <param name="master_id">0</param>
+            <param name="control_frequency">1000</param>
+        </hardware>
+
+        <joint name="joint_1">
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+            <state_interface name="effort"/>
+            <command_interface name="velocity"/>
+            <command_interface name="reset_fault"/>
+            <command_interface name="position"/>
+            <ec_module name="delta1">
+                <plugin>ethercat_generic_plugins/EcCiA402Drive</plugin>
+                <param name="alias">0</param>
+                <param name="position">0</param>
+                <param name="mode_of_operation">8</param>
+                <param name="slave_config">$(find tecnobody_workbench)/config/delta400.yaml</param>
+            </ec_module>
+        </joint>
+
+        <joint name="joint_2">
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+            <state_interface name="effort"/>
+            <command_interface name="velocity"/>
+            <command_interface name="reset_fault"/>
+            <command_interface name="position"/>
+            <ec_module name="delta2">
+                <plugin>ethercat_generic_plugins/EcCiA402Drive</plugin>
+                <param name="alias">0</param>
+                <param name="position">1</param>
+                <param name="mode_of_operation">8</param>
+                <param name="slave_config">$(find tecnobody_workbench)/config/delta400.yaml</param>
+            </ec_module>
+        </joint>
+
+        <joint name="joint_3">
+            <state_interface name="position"/>
+            <state_interface name="velocity"/>
+            <state_interface name="effort"/>
+            <command_interface name="velocity"/>
+            <command_interface name="reset_fault"/>
+            <command_interface name="position"/>
+            <ec_module name="delta3">
+                <plugin>ethercat_generic_plugins/EcCiA402Drive</plugin>
+                <param name="alias">0</param>
+                <param name="position">2</param>
+                <param name="mode_of_operation">8</param>
+                <param name="slave_config">$(find tecnobody_workbench)/config/delta750.yaml</param>
+            </ec_module>
+        </joint>
+        
+    </ros2_control>
+</robot>
+
+<!--
+        <hardware>
+            <plugin>mock_components/GenericSystem</plugin>
+        </hardware>
+
+        <joint name="joint1">
+            <command_interface name="position" />
+            <state_interface name="position">
+                <param name="initial_value">0.0</param>
+                <param name="min">-1.57</param>
+                <param name="max">1.57</param>
+            </state_interface>
+            <state_interface name="velocity"> 
+                <param name="initial_value">0.0</param> 
+            </state_interface>
+        </joint>
+        <joint name="joint2">
+            <command_interface name="position"/>
+            <state_interface name="position">
+                <param name="initial_value">0.5.</param>
+                <param name="min">-1.57</param>
+                <param name="max">1.57</param>
+            </state_interface>
+            <state_interface name="velocity"> 
+                <param name="initial_value">0.0</param> 
+            </state_interface>
+        </joint>
+        <joint name="joint3">
+            <command_interface name="position"/>
+            <state_interface name="position">
+                <param name="initial_value">0.0</param>
+                <param name="min">0</param>
+                <param name="max">0.3</param>
+            </state_interface>
+            <state_interface name="velocity"> 
+                <param name="initial_value">0.0</param> 
+            </state_interface>
+        </joint>
+    </ros2_control>-->

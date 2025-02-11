@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+<!-- Scara manipulator -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="tecnobody">
+
+    <!-- Import scara urdf file -->
+    <xacro:include filename="$(find tecnobody_workbench)/urdf/single.urdf" />
+
+    <!-- Import scara materials file -->
+    <xacro:include filename="$(find tecnobody_workbench)/config/materials.urdf" />
+
+    <!-- Import scara ros2_control description -->
+    <xacro:include filename="$(find tecnobody_workbench)/urdf/ros2_control/single.ros2_control.urdf" />
+
+</robot>

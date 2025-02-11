@@ -1,0 +1,31 @@
+# Configuration file for Maxon EPOS3 drive
+vendor_id: 0x00000732
+product_id: 0x26483053
+auto_fault_reset: false  # true = automatic fault reset, false = fault reset on rising edge command interface "reset_fault"
+
+# sdo:  # sdo data to be transferred at drive startup
+#   - {index: 0x2020, sub_index: 1, type: string, value: 2}  # Dx
+#   - {index: 0x2020, sub_index: 2, type: string, value: 3}  # Dy
+#   - {index: 0x2020, sub_index: 3, type: string, value: 4}  # Dz
+#   - {index: 0x2020, sub_index: 4, type: string, value: 0}  # Rx
+#   - {index: 0x2020, sub_index: 5, type: string, value: 0}  # Ry
+#   - {index: 0x2020, sub_index: 6, type: string, value: 0}  # Rz
+#   - {index: 0x2020, sub_index: 7, type: uint8, value: 3} # Set Dxyz units (2-mm, 3-cm, 4-m)
+#   - {index: 0x2020, sub_index: 8, type: uint8, value: 0} # Set Rxyz units (0-deg, 1-rad)
+#   - {index: 0x2020, sub_index: 9, type: uint8, value: 123}   # Commit the changes
+tpdo:  # TxPDO = transmit PDO Mapping
+  - index: 0x1a00
+    channels:
+      - {index: 0x6000, sub_index: 1, type: int32, state_interface: force.x , factor: 0.000003333} # 0.0000016000025600
+      - {index: 0x6000, sub_index: 2, type: int32, state_interface: force.y , factor: 0.000003333} # 0.0000016000025600
+      - {index: 0x6000, sub_index: 3, type: int32, state_interface: force.z , factor: 0.000003333} # 0.0000016000025600
+      - {index: 0x6000, sub_index: 4, type: int32, state_interface: torque.x, factor: 0.000001}   
+      - {index: 0x6000, sub_index: 5, type: int32, state_interface: torque.y, factor: 0.000001}   
+      - {index: 0x6000, sub_index: 6, type: int32, state_interface: torque.z, factor: 0.000001}  
+      - {index: 0x6010, sub_index: 0, type: uint32, state_interface: Status_Code}  
+      - {index: 0x6020, sub_index: 0, type: uint32, state_interface: Sample_Counter}   
+rpdo:  # RxPDO = receive PDO Mapping
+  - index: 0x1601
+    channels:
+      - {index: 0x7010, sub_index: 1, type: uint32, command_interface: Control_1, default: 0} 
+      - {index: 0x7010, sub_index: 2, type: uint32, command_interface: Control_2, default: 0} 

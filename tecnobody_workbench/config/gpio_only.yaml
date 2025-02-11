@@ -1,0 +1,23 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 500  # Hz
+    
+    hardware_components_initial_state:
+      safe_output: 'active'
+
+    gpio_command_controller:
+      type: "gpio_controllers/GpioCommandController"
+
+gpio_command_controller:
+  ros__parameters:
+    gpios:
+      - safe_output
+      - safe_input
+    command_interfaces:
+      safe_output:
+        - interfaces:
+          - d_output.1
+    state_interfaces:
+      safe_input:
+        - interfaces:
+          - d_input.1

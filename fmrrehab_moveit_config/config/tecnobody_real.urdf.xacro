@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="tecnobody">
+
+    <!-- Import tecnobody urdf file -->
+    <xacro:include filename="$(find tecnobody_workbench)/urdf/platform_complete_moveit.urdf" />
+
+    <!-- Import control_xacro -->
+    <xacro:include filename="tecnobody_real.ros2_control.xacro" />
+
+</robot>
