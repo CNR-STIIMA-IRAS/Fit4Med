@@ -1,5 +1,14 @@
+# planning_pipelines:
+#   ompl:
+#     planner_plugin: ompl_interface/OMPLPlanner
+
 planning_pipelines:
-  ompl:
-    planner_plugin: ompl_interface/OMPLPlanner
-  pilz_industrial_motion_planner:
-    planner_plugin: pilz_industrial_motion_planner/CommandPlanner
+  pipeline_names: [ "ompl", "pilz_industrial_motion_planner", "chomp", "stomp" ]
+  planning_plugin_name: ompl_interface/OMPLPlanner
+
+move_group:
+  planning_pipeline: ompl
+  request_adapters: >-
+    default_planner_request_adapters/AddTimeParameterization default_planner_request_adapters/FixWorkspaceBounds default_planner_request_adapters/FixStartStateBounds default_planner_request_adapters/FixStartStateCollision default_planner_request_adapters/FixStartStatePathConstraints
+  start_state_max_bounds_error: 0.1
+  default_planner_config: RRTConnectkConfigDefault

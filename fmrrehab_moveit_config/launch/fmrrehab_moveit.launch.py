@@ -1,14 +1,20 @@
 import os
 
+from debian import c
+
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
-from ur_moveit_config.launch_common import load_yaml
-
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
+import yaml
 
+def load_yaml(package_name, file_path, context):
+    package_share = FindPackageShare(package=package_name).find(package_name)
+    file_path = PathJoinSubstitution([package_share, file_path]).perform(context)
+    with open(file_path, 'r') as file:
+        return yaml.safe_load(file)
 
 def launch_setup(context, *args, **kwargs):
     # Initialize Arguments
@@ -61,12 +67,15 @@ def launch_setup(context, *args, **kwargs):
         [FindPackageShare(moveit_config_package), "config", "kinematics.yaml"]
     )
 
-    moveit_joint_limits_file([FindPackageShare(moveit_config_package), "config", 'joint_limits.yaml'])
+    moveit_joint_limits_file =  PathJoinSubstitution(
+        [FindPackageShare(moveit_config_package), "config", 'joint_limits.yaml']
+    )
 
     robot_description_planning = {
         "robot_description_planning": load_yaml(
             str(moveit_config_package.perform(context)),
             os.path.join("config", str(moveit_joint_limits_file.perform(context))),
+            context
         )
     }
 
@@ -87,11 +96,11 @@ def launch_setup(context, *args, **kwargs):
             ],
         }
     }
-    ompl_planning_yaml = load_yaml(moveit_config_package, "config/ompl_planning.yaml")
+    ompl_planning_yaml = load_yaml(moveit_config_package, "config/ompl_planning.yaml", context)
     ompl_planning_pipeline_config["move_group"].update(ompl_planning_yaml)
 
     # Trajectory Execution Configuration
-    controllers_yaml = load_yaml(moveit_config_package, "config/moveit_controllers.yaml")
+    controllers_yaml = load_yaml(moveit_config_package, "config/moveit_controllers.yaml", context)
 
     moveit_controllers = {
         "moveit_simple_controller_manager": controllers_yaml,

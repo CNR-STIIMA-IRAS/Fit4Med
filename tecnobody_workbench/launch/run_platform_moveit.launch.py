@@ -7,15 +7,17 @@ from launch_ros.parameter_descriptions import ParameterValue
 from launch.event_handlers import OnProcessExit
 from launch.actions import RegisterEventHandler
 from moveit_configs_utils import MoveItConfigsBuilder
+from launch import LaunchContext
 import yaml
 
-def load_yaml(package_name, file_path):
+def load_yaml(package_name, file_path, context):
     package_share = FindPackageShare(package=package_name).find(package_name)
-    file_path = PathJoinSubstitution([package_share, file_path]).perform(None)
+    file_path = PathJoinSubstitution([package_share, file_path]).perform(context)
     with open(file_path, 'r') as file:
         return yaml.safe_load(file)
 
 def generate_launch_description():
+    context = LaunchContext()
     moveit_config_package = "fmrrehab_moveit_config"
     srdf_file = "tecnobody.srdf"
     ros2_controllers = 'ros2_controllers.yaml'
@@ -120,7 +122,7 @@ def generate_launch_description():
         [FindPackageShare(moveit_config_package), "config", "kinematics_real.yaml"]
     )
 
-    robot_description_planning = load_yaml(moveit_config_package, "config/joint_limits.yaml")
+    robot_description_planning = load_yaml(moveit_config_package, "config/joint_limits.yaml", context)
 
     moveit_config = (
         MoveItConfigsBuilder("fmrrehab")
