@@ -4,9 +4,50 @@ from launch.substitutions import Command, FindExecutable, PathJoinSubstitution, 
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch_ros.parameter_descriptions import ParameterValue
-from launch.event_handlers import OnProcessExit
-from launch.actions import RegisterEventHandler
+from launch.event_handlers import OnProcessExit, OnShutdown
+from launch.actions import RegisterEventHandler, LogInfo
 from moveit_configs_utils import MoveItConfigsBuilder
+
+
+def clean_shutdown():
+    joint_state_broadcaster_unspawner = Node(
+        package='controller_manager',
+        executable='unspawner',
+        arguments=['joint_state_broadcaster'],
+    )
+    state_controller_unspawner = Node(
+        package='controller_manager',
+        executable='unspawner',
+        arguments=['state_controller'],
+    )
+    force_torque_sensor_broadcaster_unspawner = Node(
+        package='controller_manager',
+        executable='unspawner',
+        arguments=[
+            "ft_sensor_command_broadcaster",
+        ],
+    )
+    joint_trajectory_controller_unspawner = Node(
+        package='controller_manager',
+        executable='unspawner',
+        arguments=[
+            "joint_trajectory_controller",
+        ],
+    )
+    gpio_controller_unspawner = Node(
+        package='controller_manager',
+        executable='unspawner',
+        arguments=[
+            "gpio_command_controller",
+        ],
+    )
+    return LaunchDescription([
+        joint_state_broadcaster_unspawner,
+        state_controller_unspawner,
+        force_torque_sensor_broadcaster_unspawner,
+        joint_trajectory_controller_unspawner,
+        gpio_controller_unspawner
+    ])
 
 
 def generate_launch_description():
@@ -101,6 +142,13 @@ def generate_launch_description():
         )
     )
 
+    controller_unspawner = RegisterEventHandler(
+            event_handler=OnShutdown(
+                on_shutdown=[LogInfo(msg=['Launch was asked to shutdown. Unspawning controllers...']),
+                    clean_shutdown()]
+            )
+        ),
+
     ld = LaunchDescription()
     ld.add_action(ros2_control_node)
     ld.add_action(jsb)
@@ -110,5 +158,6 @@ def generate_launch_description():
     ld.add_action(fsb)
     ld.add_action(homing)
     ld.add_action(controller_launcher)
+    ld.add_action(controller_unspawner)
 
     return ld

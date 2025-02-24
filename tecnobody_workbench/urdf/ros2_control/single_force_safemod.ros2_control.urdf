@@ -18,15 +18,22 @@
             </ec_module>
         </gpio>
             
-        <gpio name="safe_input">
-                <state_interface name="d_input.1"/>
-                <ec_module name="beckoff_el1002">
-                    <plugin>ethercat_generic_plugins/GenericEcSlave</plugin>
-                    <param name="alias">0</param>
-                    <param name="position">2</param>
-                    <param name="slave_config">$(find tecnobody_workbench)/config/el1002.yaml</param>
-                </ec_module>
-        </gpio> 
+         <gpio name="safe_input">
+            <state_interface name="d_input.1"/>
+            <state_interface name="d_input.2"/>
+            <state_interface name="d_input.3"/>
+            <state_interface name="d_input.4"/>
+            <state_interface name="d_input.5"/>
+            <state_interface name="d_input.6"/>
+            <state_interface name="d_input.7"/>
+            <state_interface name="d_input.8"/>
+            <ec_module name="beckoff_el1002">
+                <plugin>ethercat_generic_plugins/GenericEcSlave</plugin>
+                <param name="alias">0</param>
+                <param name="position">2</param>
+                <param name="slave_config">$(find tecnobody_workbench)/config/el1002.yaml</param>
+            </ec_module>
+        </gpio>
        
         <joint name="joint_1">
             <state_interface name="position"/>
@@ -44,7 +51,7 @@
                 <param name="alias">0</param>
                 <param name="position">3</param>
                 <param name="mode_of_operation">8</param>
-                <param name="slave_config">$(find tecnobody_workbench)/config/delta400.yaml</param>
+                <param name="slave_config">$(find tecnobody_workbench)/config/delta750.yaml</param>
             </ec_module>
         </joint>
 
@@ -66,5 +73,6 @@
                 <param name="slave_config">$(find tecnobody_workbench)/config/axia90.yaml</param>
             </ec_module>
         </sensor>
+
     </ros2_control>
 </robot>
