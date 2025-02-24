@@ -579,7 +579,7 @@ void RehabTrajectoryPlanner::logTrajectory(const moveit_msgs::msg::RobotTrajecto
     out << YAML::EndMap; // End trajectory map
     out << YAML::EndMap; // End root map
 
-    std::string folder = "/home/adriano/projects/ros2_ws/src/rehab_trajectory_planner/config/";
+    std::string folder = "/home/adriano/projects/ros2_ws/src/Fit4Med/rehab_trajectory_planner/config/";
     std::string filename = folder + "tlog_" + trajectory_id + "_" + getCurrentDateTime() + ".yaml";
     std::ofstream file(filename);
     RCLCPP_INFO(this->get_logger(), "Trajectory (%s) saved in yaml file!", filename.c_str());

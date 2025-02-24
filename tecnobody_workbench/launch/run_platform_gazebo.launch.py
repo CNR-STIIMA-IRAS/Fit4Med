@@ -12,35 +12,93 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from fcntl import F_GET_SEALS
+import controller_manager
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, IncludeLaunchDescription, LogInfo
 from launch.actions import RegisterEventHandler
-from launch.event_handlers import OnProcessExit
+from launch.event_handlers import OnProcessExit, OnShutdown
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command, FindExecutable, LaunchConfiguration, PathJoinSubstitution
 
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
+def kill_nodes():
+    return ExecuteProcess(
+        cmd=['killall', '-9', 'ros2'],
+        shell=True,
+        output='screen'
+    )
+
+def clean_shutdown(robot_controllers):
+    joint_state_broadcaster_unspawner = Node(
+        package='controller_manager',
+        executable='unspawner',
+        arguments=['joint_state_broadcaster'],
+    )
+    joint_controller_unspawner = Node(
+        package='controller_manager',
+        executable='unspawner',
+        arguments=['forward_command_controller'],
+    )
+    return LaunchDescription([
+        joint_state_broadcaster_unspawner,
+        joint_controller_unspawner
+    ])
 
 def generate_launch_description():
     # Launch Arguments
     use_sim_time = LaunchConfiguration('use_sim_time', default=True)
     gz_args = LaunchConfiguration('gz_args', default='')
+    description_package = LaunchConfiguration("description_package", default="tecnobody_workbench")
+    description_file = LaunchConfiguration("description_file", default="urdf/tecnobody_gazebo.config.urdf.xacro")
+    tf_prefix = LaunchConfiguration("tf_prefix", default='""')
+    max_retries = LaunchConfiguration("max_retries", default="100")
+    read_rate = LaunchConfiguration("read_rate", default="10")
+    ftdi_id = LaunchConfiguration("ftdi_id", default="_")
+    use_fake_mode = LaunchConfiguration("use_fake_mode", default="false")
 
-    # Get URDF via xacro
+    # ROBOT DESCRIPTIONS
     robot_description_content = Command(
         [
             PathJoinSubstitution([FindExecutable(name="xacro")]),
             " ",
             PathJoinSubstitution(
                 [FindPackageShare("tecnobody_workbench"),
-                 "urdf", "tecnobody_gazebo.urdf.xacro"]
+                 "urdf", "tecnobody_gazebo.config.urdf.xacro"]
             ),
+            " ",
+            "name:=",
+            "tecnobody_gazebo",
+            " ",
+            "tf_prefix:=",
+            tf_prefix,
+            " ",
+            "use_fake_mode:=",
+            use_fake_mode,
+            " ",
+            "max_retries:=",
+            max_retries,
+            " ",
+            "read_rate:=",
+            read_rate,
+            " ",
+            "ftdi_id:=",
+            ftdi_id,
+            " ",
+            "control_configuration:=",
+            "robot_controller",
+            " ",
+            "simulated:=",
+            "true",
+            " ",
         ]
     )
 
     robot_description = {"robot_description": robot_description_content}
+
+    # CONTROLLER CONFIGURATIONS
     robot_controllers = PathJoinSubstitution(
         [
             FindPackageShare('tecnobody_workbench'),
@@ -49,11 +107,20 @@ def generate_launch_description():
         ]
     )
 
-    node_robot_state_publisher = Node(
+    ft_controllers = PathJoinSubstitution(
+        [
+            FindPackageShare('tecnobody_workbench'),
+            'config',
+            'ft_sensor_controllers.yaml',
+        ]
+    )
+
+    # GAZEBO CONTROLLERS    
+    robot_state_publisher_node = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
         output='screen',
-        parameters=[robot_description]
+        parameters=[robot_description],
     )
 
     gz_spawn_entity = Node(
@@ -70,7 +137,7 @@ def generate_launch_description():
         arguments=['joint_state_broadcaster'],
     )
 
-    joint_trajectory_controller_spawner = Node(
+    joint_controller_spawner = Node(
         package='controller_manager',
         executable='spawner',
         arguments=[
@@ -88,7 +155,14 @@ def generate_launch_description():
         output='screen'
     )
 
+    # Declare Launch Arguments
+    declared_arguments = []
+    declared_arguments.append(DeclareLaunchArgument("max_retries", default_value="100"))
+    declared_arguments.append(DeclareLaunchArgument("read_rate", default_value="10"))
+    declared_arguments.append(DeclareLaunchArgument("ftdi_id", default_value=""))
+
     return LaunchDescription([
+
         # Launch gazebo environment
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
@@ -96,24 +170,40 @@ def generate_launch_description():
                                        'launch',
                                        'gz_sim.launch.py'])]),
             launch_arguments=[('gz_args', [gz_args, ' -r -v 1 empty.sdf'])]),
+        
+        # Event Handlers
         RegisterEventHandler(
             event_handler=OnProcessExit(
                 target_action=gz_spawn_entity,
-                on_exit=[joint_state_broadcaster_spawner],
+                on_exit=[joint_state_broadcaster_spawner, joint_controller_spawner],
             )
         ),
         RegisterEventHandler(
-            event_handler=OnProcessExit(
-                target_action=joint_state_broadcaster_spawner,
-                on_exit=[joint_trajectory_controller_spawner],
+            event_handler=OnShutdown(
+                on_shutdown=[LogInfo(msg=['Launch was asked to shutdown. Unspawning controllers...']),
+                    clean_shutdown(robot_controllers),
+                    LogInfo(msg=['Killing remaining nodes']),
+                    kill_nodes()]
             )
         ),
+
+        # Nodes
         bridge,
-        node_robot_state_publisher,
+        robot_state_publisher_node,
         gz_spawn_entity,
-        # Launch Arguments
+        
+        # Gazebo Launch Arguments
         DeclareLaunchArgument(
             'use_sim_time',
             default_value=use_sim_time,
             description='If true, use simulated clock'),
+        
+        # FT Sensor Launch Arguments
+        DeclareLaunchArgument("description_package", default_value=description_package),
+        DeclareLaunchArgument("description_file", default_value=description_file),
+        DeclareLaunchArgument("tf_prefix", default_value=tf_prefix),
+        DeclareLaunchArgument("max_retries", default_value=max_retries),
+        DeclareLaunchArgument("read_rate", default_value=read_rate),
+        DeclareLaunchArgument("ftdi_id", default_value=ftdi_id),
+        DeclareLaunchArgument("use_fake_mode", default_value=use_fake_mode)
     ])

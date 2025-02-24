@@ -19,7 +19,7 @@ class TrajectoryActionClient(Node):
 
     def __init__(self):
         super().__init__('tecnobody_workbench_utils') # type: ignore
-        self._action_client = ActionClient(self, FollowJointTrajectory, '/ft_sensor/joint_trajectory_controller/follow_joint_trajectory')
+        self._action_client = ActionClient(self, FollowJointTrajectory, '/scaled_trajectory_controller/follow_joint_trajectory')
         # self._publisher = self.create_publisher(Int16, '/speed_ovr', 10)
         self.get_logger().info("Trajectory client node started.")
 

@@ -80,7 +80,7 @@ def generate_launch_description():
     gz_args = LaunchConfiguration('gz_args', default='')
     namespace = LaunchConfiguration("namespace", default="ft_sensor")
     description_package = LaunchConfiguration("description_package", default="tecnobody_workbench")
-    description_file = LaunchConfiguration("description_file", default="urdf/robotiq_ft300.urdf.xacro")
+    description_file = LaunchConfiguration("description_file", default="urdf/tecnobody_gazebo.config.urdf.xacro")
     tf_prefix = LaunchConfiguration("tf_prefix", default='""')
     max_retries = LaunchConfiguration("max_retries", default="100")
     read_rate = LaunchConfiguration("read_rate", default="10")
@@ -94,7 +94,7 @@ def generate_launch_description():
             " ",
             PathJoinSubstitution(
                 [FindPackageShare("tecnobody_workbench"),
-                 "urdf", "robotiq_ft300.urdf.xacro"]
+                 "urdf", "tecnobody_gazebo.config.urdf.xacro"]
             ),
             " ",
             "name:=",
@@ -130,7 +130,7 @@ def generate_launch_description():
             " ",
             PathJoinSubstitution(
                 [FindPackageShare("tecnobody_workbench"),
-                 "urdf", "robotiq_ft300.urdf.xacro"]
+                 "urdf", "tecnobody_gazebo.config.urdf.xacro"]
             ),
             " ",
             "name:=",

@@ -46,6 +46,14 @@
           <state_interface name="velocity" />
           <state_interface name="effort" />
         </joint>
+        <transmission name="transmission3">
+          <plugin>transmission_interface/SimpleTransmission</plugin>
+          <actuator name="actuator3" role="actuator3" />
+          <joint name="joint_3" role="joint1">
+            <mechanical_reduction>20.0</mechanical_reduction>
+            <offset>0.0</offset>
+          </joint>
+        </transmission>
       </ros2_control>
 
       <gazebo>
