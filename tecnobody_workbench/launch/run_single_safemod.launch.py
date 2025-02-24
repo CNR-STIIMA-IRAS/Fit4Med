@@ -80,7 +80,8 @@ def generate_launch_description():
         arguments=['joint_state_broadcaster'],
         output='screen',
     )
-
+    
+    #PROVA
     rsp = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
