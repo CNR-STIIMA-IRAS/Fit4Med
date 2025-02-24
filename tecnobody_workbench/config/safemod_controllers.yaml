@@ -17,6 +17,9 @@ controller_manager:
     gpio_command_controller:
       type: "gpio_controllers/GpioCommandController"
 
+    admittance_controller:
+        type: "admittance_controller/AdmittanceController"
+
 
 ft_sensor_command_broadcaster:
   ros__parameters:
@@ -30,15 +33,15 @@ ft_sensor_command_broadcaster:
         x: "ft_sensor/torque.x"
         y: "ft_sensor/torque.y"
         z: "ft_sensor/torque.z"
-    offset:
-      force:
-        x: 249.12
-        y: -15.15
-        z: 18.6
-      torque:
-        x: 0.12
-        y: -0.7
-        z: 2.12  
+    # offset:
+    #   force:
+    #     x: 249.12
+    #     y: -15.15
+    #     z: 18.6
+    #   torque:
+    #     x: 0.12
+    #     y: -0.7
+    #     z: 2.12  
 
 joint_trajectory_controller:
   ros__parameters:
@@ -70,3 +73,93 @@ gpio_command_controller:
       safe_input:
         - interfaces:
           - d_input.1
+
+admittance_controller:
+  ros__parameters:
+    joints:
+    - joint_1
+
+    command_interfaces:
+    - position
+
+    state_interfaces:
+    - position
+    - velocity
+
+    chainable_command_interfaces:
+    - position
+    - velocity
+
+    kinematics:
+      plugin_name: kinematics_interface_kdl/KinematicsInterfaceKDL
+      plugin_package: kinematics_interface # Just install this package (if not working with debian add it to your workspace)
+      base: base_link # Assumed to be stationary
+      tip: ee_link
+      group_name: manipulator
+      alpha: 0.0005
+
+    ft_sensor:
+      name: ft_sensor # Sensor name
+      frame:
+        id: ee_link # Wrench measurements are in this frame
+        external: false # force torque frame exists within URDF kinematic chain
+      filter_coefficient: 0.005
+
+    control:
+      frame:
+        id: base_link # Admittance calcs (displacement etc) are done in this frame. Usually the tool or end-effector
+        external: false # control frame exists within URDF kinematic chain
+
+    fixed_world_frame:
+      # Gravity points down (neg. Z) in this frame (Usually: world or base_link)
+      frame:
+        id: base_link # Admittance calcs (displacement etc) are done in this frame. Usually the tool or end-effector
+        external: false # control frame exists within URDF kinematic chain
+
+    gravity_compensation:
+      frame:
+        id: ee_link
+        external: false
+
+      CoG:
+        # specifies the center of gravity of the end effector
+        pos:
+        - 0.001 # x
+        - 0.007 # y
+        - 0.142 # z
+        force: 22.563 #9.81 # mass * 9.81
+
+    admittance:
+      selected_axes:
+      - false # x
+      - false # y
+      - true # z
+      - false # rx
+      - false # ry
+      - false # rz
+      # Having ".0" at the end is MUST, otherwise there is a loading error
+      # F = M*a + D*v + S*(x - x_d)
+      mass:
+      - 5.5
+      - 6.6
+      - 7.7
+      - 8.8
+      - 9.9
+      - 10.10
+
+      damping_ratio:
+      # damping can be used instead: zeta = D / (2 * sqrt( M * S ))
+      - 2.828427 # x
+      - 2.828427 # y
+      - 2.828427 # z
+      - 2.828427 # rx
+      - 2.828427 # ry
+      - 2.828427 # rz
+
+      stiffness:
+      - 214.1
+      - 214.2
+      - 214.3
+      - 214.4
+      - 214.5
+      - 214.6

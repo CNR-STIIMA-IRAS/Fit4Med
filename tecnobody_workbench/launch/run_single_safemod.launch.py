@@ -41,13 +41,13 @@ def clean_shutdown():
             "gpio_command_controller",
         ],
     )
-    return LaunchDescription([
+    return [
         joint_state_broadcaster_unspawner,
         state_controller_unspawner,
         force_torque_sensor_broadcaster_unspawner,
         joint_trajectory_controller_unspawner,
         gpio_controller_unspawner
-    ])
+    ]
 
 
 def generate_launch_description():
@@ -121,10 +121,16 @@ def generate_launch_description():
         output='screen',
     )
 
-    trajectory_controller_node = Node(
+    ft_offset_updater = Node(
+        package='tecnobody_workbench_utils',
+        executable='ft_offset_updater',
+        output='screen',
+    )
+
+    joint_controller_node = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['joint_trajectory_controller'],
+        arguments=['admittance_controller'],
         output='screen',
     )
 
@@ -135,10 +141,17 @@ def generate_launch_description():
         output='screen',
     )
 
-    controller_launcher = RegisterEventHandler(
+    error_handling = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=homing,
-            on_exit=[trajectory_controller_node, homing_done_publisher, eth_checker],
+            on_exit=[homing_done_publisher, eth_checker, ft_offset_updater],
+        )
+    )
+
+    controller_launcher = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=ft_offset_updater,
+            on_exit=[joint_controller_node],
         )
     )
 
@@ -147,7 +160,7 @@ def generate_launch_description():
                 on_shutdown=[LogInfo(msg=['Launch was asked to shutdown. Unspawning controllers...']),
                     clean_shutdown()]
             )
-        ),
+    )
 
     ld = LaunchDescription()
     ld.add_action(ros2_control_node)
@@ -158,6 +171,7 @@ def generate_launch_description():
     ld.add_action(fsb)
     ld.add_action(homing)
     ld.add_action(controller_launcher)
+    ld.add_action(error_handling)
     ld.add_action(controller_unspawner)
 
     return ld
