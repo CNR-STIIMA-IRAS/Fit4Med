@@ -24,19 +24,18 @@ class HomingNode(Node):
         
         # Subscription to drive status updates
         self.subscription = self.create_subscription(Cia402DriveStates, '/state_controller/drive_states', self.handle_drive_status, qos_profile=10, callback_group=topic_group)
-        self.dof_names = ['joint_1'] #, 'joint_2', 'joint_3']
+        self.dof_names = ['joint_3']
         self.state = {dof: 'STATE_UNDEFINED' for dof in self.dof_names}
         self.mode = {dof: 'MODE_NO_MODE' for dof in self.dof_names}
-        # self.mode_target = 8  # MODE_CYCLIC_SYNC_POSITION
         self.shutdown_initiated = False  # To track if shutdown is already requested
-        # self.ft_publisher = self.create_publisher(UInt32, '/ft_sensor_command_broadcaster/ft_commands', 10)
+        self.slave_indices = [3]  # Positions of the drives in the slaves list, check in ros2_control file
 
         # Flag to set true when homing process has completed
         self.homing_finished = False
 
     def check_ethercat_slaves(self):
         eth_states = self.get_ethercat_slaves_status()
-        if all(state == 'OP' for state in eth_states):
+        if eth_states and all(info['state'] == 'OP' for info in eth_states.values()):
             self.get_logger().info('All EtherCAT slaves are in OP state.')
             self.ethercat_ready = True
             self.ethercat_timer.cancel()  # Stop the timer
@@ -50,11 +49,25 @@ class HomingNode(Node):
                                     stderr=subprocess.PIPE,
                                     text=True,
                                     check=True)
-            lines = result.stdout.splitlines()
-            eth_states = [line.split()[2] for line in lines if len(line.split()) > 2]
+            lines = result.stdout.strip().splitlines()
+
+            eth_states = {}
+            for idx in self.slave_indices:
+                if idx < len(lines):
+                    parts = lines[idx].split()
+                    if len(parts) > 2:
+                        slave_name, state = parts[1], parts[2]
+                        eth_states[idx] = {'name': slave_name, 'state': state}
+                    else:
+                        self.get_logger().warn(f"Formato non valido per la linea dello slave {idx}: {lines[idx]}")
+                else:
+                    self.get_logger().warn(f"Nessuno slave trovato all'indice {idx}.")
+
             return eth_states
+
         except FileNotFoundError:
-            self.get_logger().error("The 'ethercat' command was not found. Make sure EtherCAT master is configured.")
+            self.get_logger().error("Il comando 'ethercat' non è stato trovato. Verifica la configurazione dell'EtherCAT master.")
+            return {}
 
     def handle_drive_status(self, msg):
         if self.ethercat_ready:
@@ -87,7 +100,6 @@ class HomingNode(Node):
                 self.get_logger().info('All drives are in MODE_CYCLIC_SYNC_POSITION. Shutting down...')
                 if not self.shutdown_initiated:
                     self.shutdown_initiated = True
-                    # self.publish_ft_commands()
                     self.shutdown_node()
             else:
                 self.get_logger().error('Mode/State combination not managed!')
@@ -168,8 +180,6 @@ class HomingNode(Node):
             request.mode_of_operation = target_mode
             self.get_logger().info(f'Sending switch request for {dof_name}...')
             future = client.call_async(request)
-            # Add the joint to pending after calling switch mode
-            # self.pending_switch.add(dof_name)
             future.add_done_callback(lambda f: self.switch_mode_callback(f, dof_name))
         else:
             self.get_logger().error(f'Service /state_controller/switch_mode_of_operation not available for {dof_name}')
@@ -216,30 +226,6 @@ class HomingNode(Node):
                         self.get_logger().info(f'{dof} is in MODE_CYCLIC_SYNC_POSITION but has unexpected state: {state}')
         else:
             return False
-        
-    # def publish_ft_commands(self):
-    #     try:
-    #         msg_on = UInt32()
-    #         msg_on.data = 1
-    #         start_time = time.time()
-    #         self.get_logger().info("Setting FT sensor bias mode")
-    #         while time.time() - start_time < 1:
-    #             self.ft_publisher.publish(msg_on)
-    #             time.sleep(0.1)  
-
-    #         msg_off = UInt32()
-    #         msg_off.data = 0
-    #         start_time = time.time()
-    #         self.get_logger().info("Setting FT sensor reading mode")
-    #         while time.time() - start_time < 1:  
-    #             self.ft_publisher.publish(msg_off)
-    #             time.sleep(0.1)
-
-    #     except Exception as e:
-    #         self.get_logger().error(f"Error during ft sensor bias: {e}")
-    #     else:
-    #         self.get_logger().info("FT sensor successfully biased.")
-    #         self.shutdown_node()
 
     def log_mode_state(self):
         for dof in self.dof_names:

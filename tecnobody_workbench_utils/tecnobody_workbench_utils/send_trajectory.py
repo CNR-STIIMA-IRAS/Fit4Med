@@ -10,8 +10,6 @@ from builtin_interfaces.msg import Duration
 from std_msgs.msg import Int16
 
 JOINTS = [
-    'joint_1',
-    'joint_2',
     'joint_3'
 ]
 
@@ -19,8 +17,8 @@ class TrajectoryActionClient(Node):
 
     def __init__(self):
         super().__init__('tecnobody_workbench_utils') # type: ignore
-        self._action_client = ActionClient(self, FollowJointTrajectory, '/scaled_trajectory_controller/follow_joint_trajectory')
-        # self._publisher = self.create_publisher(Int16, '/speed_ovr', 10)
+        self._action_client = ActionClient(self, FollowJointTrajectory, '/joint_trajectory_controller/follow_joint_trajectory')
+        self._publisher = self.create_publisher(Int16, '/speed_ovr', 10)
         self.get_logger().info("Trajectory client node started.")
 
     def load_parameters(self):
@@ -53,11 +51,11 @@ class TrajectoryActionClient(Node):
             for p in range(0, len(self._cart_coordinates)):
                 point = JointTrajectoryPoint()
                 point.positions = self._cart_coordinates[p]
-                point.velocities = [] # self._velocities[p]
+                point.velocities = self._velocities[p]
                 point.accelerations = []
                 point.effort = []
                 point.time_from_start = Duration(sec=int(self._duration_list[p]), nanosec=int((self._duration_list[p] - int(self._duration_list[p])) * 1e9))
-                self.get_logger().info(f"Goal Message: {goal_msg}")
+                # self.get_logger().info(f"Goal Message: {goal_msg}")
                 goal_msg.trajectory.points.append(point)
         else:
            self.get_logger().error("Action server not available!!")

@@ -8,6 +8,9 @@ controller_manager:
     joint_trajectory_controller:
       type: "joint_trajectory_controller/JointTrajectoryController"
 
+    scaled_trajectory_controller:
+      type: "scaled_fjt_controller/ScaledFjtController"
+
     state_controller:
       type: ethercat_controllers/CiA402Controller
 
@@ -46,7 +49,7 @@ ft_sensor_command_broadcaster:
 joint_trajectory_controller:
   ros__parameters:
     joints:
-      - joint_1
+      - joint_3
 
     command_interfaces:
       - position
@@ -55,10 +58,23 @@ joint_trajectory_controller:
       - position
       - velocity
 
+scaled_trajectory_controller:
+  ros__parameters:
+    joints:
+    - joint_3
+    command_interfaces:
+    - position
+    state_interfaces:
+    - position
+    - velocity
+    open_loop_control: true
+    constraints:
+      goal_time: 0.0
+
 state_controller:
   ros__parameters:
     dofs:
-      - joint_1
+      - joint_3
 
 gpio_command_controller:
   ros__parameters:
@@ -77,7 +93,7 @@ gpio_command_controller:
 admittance_controller:
   ros__parameters:
     joints:
-    - joint_1
+    - joint_3
 
     command_interfaces:
     - position

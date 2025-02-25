@@ -130,7 +130,7 @@ def generate_launch_description():
     joint_controller_node = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['admittance_controller'],
+        arguments=['joint_trajectory_controller'],
         output='screen',
     )
 

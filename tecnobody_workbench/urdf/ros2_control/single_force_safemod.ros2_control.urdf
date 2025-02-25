@@ -35,7 +35,7 @@
             </ec_module>
         </gpio>
        
-        <joint name="joint_1">
+        <joint name="joint_3">
             <state_interface name="position"/>
             <state_interface name="velocity"/>
             <state_interface name="effort"/>
