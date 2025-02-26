@@ -18,7 +18,7 @@ class TrajectoryActionClient(Node):
     def __init__(self):
         super().__init__('tecnobody_workbench_utils') # type: ignore
         self._action_client = ActionClient(self, FollowJointTrajectory, '/joint_trajectory_controller/follow_joint_trajectory')
-        self._publisher = self.create_publisher(Int16, '/speed_ovr', 10)
+        # self._publisher = self.create_publisher(Int16, '/speed_ovr', 10)
         self.get_logger().info("Trajectory client node started.")
 
     def load_parameters(self):
@@ -51,7 +51,7 @@ class TrajectoryActionClient(Node):
             for p in range(0, len(self._cart_coordinates)):
                 point = JointTrajectoryPoint()
                 point.positions = self._cart_coordinates[p]
-                point.velocities = self._velocities[p]
+                point.velocities = [] # self._velocities[p]
                 point.accelerations = []
                 point.effort = []
                 point.time_from_start = Duration(sec=int(self._duration_list[p]), nanosec=int((self._duration_list[p] - int(self._duration_list[p])) * 1e9))

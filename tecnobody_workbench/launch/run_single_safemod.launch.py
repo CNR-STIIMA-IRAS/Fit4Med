@@ -134,6 +134,19 @@ def generate_launch_description():
         output='screen',
     )
 
+    admittance_controller_node = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['admittance_controller'],
+        output='screen',
+    )
+
+    gpio_command_publisher = Node(
+        package='tecnobody_workbench_utils',
+        executable='gpio_command_publisher',
+        output='screen',
+    )
+
     gpio_controller_node = Node(
         package='controller_manager',
         executable='spawner',
@@ -144,16 +157,23 @@ def generate_launch_description():
     error_handling = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=homing,
-            on_exit=[homing_done_publisher, eth_checker, ft_offset_updater],
+            on_exit=[joint_controller_node, homing_done_publisher, eth_checker, ft_offset_updater],
         )
     )
 
-    controller_launcher = RegisterEventHandler(
+    gpio_publisher_launcher = RegisterEventHandler(
         event_handler=OnProcessExit(
-            target_action=ft_offset_updater,
-            on_exit=[joint_controller_node],
+            target_action=gpio_controller_node,
+            on_exit=[gpio_command_publisher, homing, jsb, fsb],
         )
     )
+
+    # admittance_controller_launcher = RegisterEventHandler(
+    #     event_handler=OnProcessExit(
+    #         target_action=ft_offset_updater,
+    #         on_exit=[joint_controller_node],
+    #     )
+    # )
 
     controller_unspawner = RegisterEventHandler(
             event_handler=OnShutdown(
@@ -164,13 +184,11 @@ def generate_launch_description():
 
     ld = LaunchDescription()
     ld.add_action(ros2_control_node)
-    ld.add_action(jsb)
     ld.add_action(ssb)
-    ld.add_action(gpio_controller_node)
     ld.add_action(rsp)
-    ld.add_action(fsb)
-    ld.add_action(homing)
-    ld.add_action(controller_launcher)
+    ld.add_action(gpio_controller_node)
+    ld.add_action(gpio_publisher_launcher)
+    # ld.add_action(admittance_controller_launcher)
     ld.add_action(error_handling)
     ld.add_action(controller_unspawner)
 

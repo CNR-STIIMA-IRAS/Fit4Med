@@ -1,7 +1,7 @@
 from launch import LaunchDescription, substitutions
-from launch.actions import IncludeLaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument , RegisterEventHandler
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, Command, FindExecutable
+from launch.event_handlers import OnProcessExit
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from ament_index_python.packages import get_package_share_directory
@@ -60,11 +60,24 @@ def generate_launch_description():
         parameters=[robot_description]
     )
 
-    gpio = Node(
+    gpio_spawner = Node(
         package='controller_manager',
         executable='spawner',
         arguments=['gpio_command_controller'], # '--param-file', controllers_file],
         output='screen',
+    )
+
+    gpio_command_publisher = Node(
+        package='tecnobody_workbench_utils',
+        executable='gpio_command_publisher',
+        output='screen',
+    )
+
+    gpio_publisher_launcher = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=gpio_spawner,
+            on_exit=[gpio_command_publisher],
+        )
     )
 
     # Create the launch description and populate
@@ -74,9 +87,9 @@ def generate_launch_description():
 
     # nodes_to_start
     ld.add_action(ros2_control_node)
-    #ld.add_action(jsb)
     ld.add_action(rsp)
-    ld.add_action(gpio)
+    ld.add_action(gpio_spawner)
+    ld.add_action(gpio_publisher_launcher)
 
     return ld
 

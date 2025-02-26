@@ -29,6 +29,7 @@ setup(
             'trajectory_action_client = tecnobody_workbench_utils.send_trajectory:main',
             'ft_forwarder = tecnobody_workbench_utils.ft_forwarder:main',
             'ft_offset_updater = tecnobody_workbench_utils.ft_offset_updater:main',
+            'gpio_command_publisher = tecnobody_workbench_utils.gpio_command:main',
         ],
     },
 )
