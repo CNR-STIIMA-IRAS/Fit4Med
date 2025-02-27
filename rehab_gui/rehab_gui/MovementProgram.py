@@ -6,11 +6,13 @@
 #
 # WARNING! All changes made in this file will be lost!
 
+from json import load
 import os
 import sys
 from PyQt5 import QtWidgets, QtCore
 from .MovementWindow import Ui_MovementWindow
 import yaml
+from yaml.loader import SafeLoader
 import numpy as np
 from scipy import interpolate
 from copy import deepcopy
@@ -187,7 +189,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             if bool(filename[0]):
                 print('This is the filename of the loaded movement:')
                 print(filename)
-                _TrjYamlData = yaml.load(open(filename [0]))
+                _TrjYamlData = yaml.load(open(filename [0]), Loader=SafeLoader)
                 MovementData = _TrjYamlData.get("cart_trj1").get("cart_positions")
                 _originalNumPoints = len(MovementData)
                 x1_LF = MovementData[0][0]; x2_LF = MovementData[-1][0]      #_LF = Loaded File   
@@ -454,8 +456,8 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         if bool(filename[0]):
             print('This is the filename of the loaded movement:')
             print(filename)
-            self.TrjYamlData = yaml.load(open(filename [0]))
-            self.CartesianMovementData = yaml.load(open(filename [0]))
+            self.TrjYamlData = yaml.load(open(filename [0]), Loader=SafeLoader)
+            self.CartesianMovementData = yaml.load(open(filename [0]), Loader=SafeLoader)
             _translate = QtCore.QCoreApplication.translate
             MovementName = filename [0][ len(FMRR_RootPath+MovementsPath)+2:-5 ] # +2 for the / symbols
             self.lineEdit.setText(_translate("MovementWindow", MovementName))
@@ -561,7 +563,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         filename = QtWidgets.QFileDialog.getOpenFileName(None, "Load Joint Conf", JoinDataPath, "*.yaml")
      
         if bool(filename[0]):
-            JointTargetPosition = yaml.load(open(filename [0]))
+            JointTargetPosition = yaml.load(open(filename [0]), Loader=SafeLoader)
             JointData = JointTargetPosition.get("a_movement_definition").get("begin_joint_config") [0]
             self.JointTargetPosition = JointData
 #       Put doublespin values in list to allow for iteration 

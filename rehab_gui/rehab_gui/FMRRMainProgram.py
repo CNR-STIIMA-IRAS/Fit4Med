@@ -18,6 +18,7 @@ from .MovementProgram import FMRR_Ui_MovementWindow
 from .FMRRMainWindow import Ui_FMRRMainWindow # import from file FMRRMainWindow the class Ui_FMRRMainWindow  
 from . import MC_Tools
 import yaml
+from yaml.loader import SafeLoader
 
 #ROS
 import rclpy
@@ -104,8 +105,8 @@ class MainProgram(Node, Ui_FMRRMainWindow):
     def definePaths(self):
         self.FMRR_Paths = dict() 
         self.FMRR_Paths['Root'] = os.getcwd()
-        self.FMRR_Paths['Protocols'] = '/home/adriano/projects/ros2_ws/src/rehab_gui/config'
-        self.FMRR_Paths['Movements'] = '/home/adriano/projects/ros2_ws/src/rehab_gui/config'  
+        self.FMRR_Paths['Protocols'] = '/home/adriano/projects/ros2_ws/src/Fit4Med/rehab_gui/config'
+        self.FMRR_Paths['Movements'] = '/home/adriano/projects/ros2_ws/src/Fit4Med/rehab_gui/config'  
         self.FMRR_Paths['Joint_Configuration'] = 'config'
 
         
@@ -127,7 +128,7 @@ class MainProgram(Node, Ui_FMRRMainWindow):
         filename = QtWidgets.QFileDialog.getOpenFileName(None, "Load Protocol", self.FMRR_Paths['Protocols'] , "*.yaml")
         if bool(filename[0]):
            # load data  
-            self.ProtocolData = yaml.load(open(filename [0])) # type: ignore
+            self.ProtocolData = yaml.load(open(filename [0]), Loader=SafeLoader) # type: ignore
     #      # get values       
             self.PhaseDuration = self.ProtocolData["PhaseDuration"] [0] [0]
             self.Vmax = self.ProtocolData["V_max"] [0] [0]
@@ -339,7 +340,7 @@ class MainProgram(Node, Ui_FMRRMainWindow):
         self.pub_end_point = self.create_publisher(Point, '/end_point', 10)
 
     #   action client
-        self._clientFollowCartTraj = ActionClient(self, FollowJointTrajectory, '/joint_trajectory_controller/follow_joint_trajectory')
+        self._clientFollowCartTraj = ActionClient(self, FollowJointTrajectory, '/scaled_trajectory_controller/follow_joint_trajectory')
      
 
     def startPauseService(self):
