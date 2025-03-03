@@ -18,7 +18,6 @@ def load_yaml(package_name, file_path, context):
 def generate_launch_description():
     context = LaunchContext()
     moveit_config_package = "fmrrehab_moveit_config"
-    description_package = "tecnobody.urdf.xacro"
     launch_rviz = LaunchConfiguration("launch_rviz", default="true")
     
     # Robot description and semantic params
@@ -26,7 +25,7 @@ def generate_launch_description():
         [
             PathJoinSubstitution([FindExecutable(name='xacro')]),
             ' ',
-            PathJoinSubstitution([FindPackageShare(moveit_config_package), "config", 'tecnobody.urdf.xacro']),
+            PathJoinSubstitution([FindPackageShare(moveit_config_package), "urdf", 'tecnobody.urdf.xacro']),
             
         ]
     )

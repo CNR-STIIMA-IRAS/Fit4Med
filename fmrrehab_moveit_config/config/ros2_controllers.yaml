@@ -1,7 +1,7 @@
 # This config file is used by ros2_control
 controller_manager:
   ros__parameters:
-    update_rate: 1000  # Hz
+    update_rate: 1000 # Hz
 
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
@@ -9,51 +9,38 @@ controller_manager:
     state_controller:
       type: ethercat_controllers/CiA402Controller
 
-    # velocity_controller:
-    #   type: velocity_controllers/JointGroupVelocityController
-
     fmrrehab_controller:
       # type: velocity_controllers/JointGroupVelocityController
-      type: "joint_trajectory_controller/JointTrajectoryController"
-      # type: "scaled_fjt_controller/ScaledFjtController"
+      # type: "joint_trajectory_controller/JointTrajectoryController"
+      type: "scaled_fjt_controller/ScaledFjtController"
 
-    ft_sensor_command_broadcaster:
-      type: ft_sensor_command_controller/FtSensorCommandController
+    ft_sensor_broadcaster:
+      type: force_torque_sensor_broadcaster/ForceTorqueSensorBroadcaster
 
     fmrrehab_admittance_controller:
       type: "admittance_controller/AdmittanceController"
 
-
 state_controller:
   ros__parameters:
     dofs:
-      - joint_1
-      - joint_2
-      - joint_3
-
-# fmrrehab_controller:
-#   ros__parameters:
-#     joints:
-#       - joint_1
-#       - joint_2
-#       - joint_3
-#     command_interface:
-#       - velocity
+    - joint_1
+    - joint_2
+    - joint_3
 
 fmrrehab_controller:
   ros__parameters:
     joints:
-      - joint_1
-      - joint_2
-      - joint_3
+    - joint_1
+    - joint_2
+    - joint_3
     command_interfaces:
-      - position
+    - position
     state_interfaces:
-      - position
-      - velocity
-    # open_loop_control: false  # Set to true for scaled fjt (and comment the pid params)
-    # constraints:
-    #   goal_time: 0.0
+    - position
+    - velocity
+    open_loop_control: true # Set to true for scaled fjt (and comment the pid params)
+    constraints:
+      goal_time: 0.0
     # gains:  # PID gains
     #   joint_1:
     #     p: 50.0
@@ -74,9 +61,9 @@ fmrrehab_controller:
     #     i_clamp_max: 1.0
     #     i_clamp_min: -1.0
 
-ft_sensor_command_broadcaster:
+ft_sensor_broadcaster:
   ros__parameters:
-    frame_id: "fts_sensor_frame"
+    frame_id: "fts_sensor_frames"
     interface_names:
       force:
         x: "ft_sensor/force.x"
@@ -86,23 +73,21 @@ ft_sensor_command_broadcaster:
         x: "ft_sensor/torque.x"
         y: "ft_sensor/torque.y"
         z: "ft_sensor/torque.z"
-      command:
-        Command_1: "ft_sensor/Control_1"
 
 fmrrehab_admittance_controller:
   ros__parameters:
     joints:
-      - joint_1
-      - joint_2
-      - joint_3
+    - joint_1
+    - joint_2
+    - joint_3
     command_interfaces:
-      - position
+    - position
     state_interfaces:
-      - position
-      - velocity
+    - position
+    - velocity
     chainable_command_interfaces:
-      - position
-      - velocity
+    - position
+    - velocity
     kinematics:
       plugin_name: kinematics_interface_kdl/KinematicsInterfaceKDL
       plugin_package: kinematics_interface
@@ -111,10 +96,10 @@ fmrrehab_admittance_controller:
       group_name: fmrrehab
       alpha: 0.0005
     admittance:
-      mass: [1.0, 1.0, 1.0, 0.1, 0.1, 0.1]
-      stiffness: [100.0, 100.0, 100.0, 10.0, 10.0, 10.0]
-      damping_ratio: [1.0, 1.0, 1.0, 0.01, 0.01, 0.01]
-      selected_axes: [true, true, true, false, false, false]
+      mass: [ 1.0, 1.0, 1.0, 0.1, 0.1, 0.1 ]
+      stiffness: [ 100.0, 100.0, 100.0, 10.0, 10.0, 10.0 ]
+      damping_ratio: [ 1.0, 1.0, 1.0, 0.01, 0.01, 0.01 ]
+      selected_axes: [ true, true, true, false, false, false ]
     ft_sensor:
       name: "ft_sensor"
       frame:
@@ -133,5 +118,5 @@ fmrrehab_admittance_controller:
         id: "link1"
         external: false
       CoG:
-        pos: [0.0, -0.3, 0.2]
+        pos: [ 0.0, -0.3, 0.2 ]
         force: 40
