@@ -108,9 +108,9 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
            self.pushButton_Approach_Joint1.enablePushButton(0)
            self.pushButton_Approach_Joint2.enablePushButton(0)
            self.pushButton_Approach_Joint3.enablePushButton(0)
-           self.pushButton_Approach_Joint4.enablePushButton(0)
-           self.pushButton_Approach_Joint5.enablePushButton(0)
-           self.pushButton_Approach_Joint6.enablePushButton(0)
+        #    self.pushButton_Approach_Joint4.enablePushButton(0)
+        #    self.pushButton_Approach_Joint5.enablePushButton(0)
+        #    self.pushButton_Approach_Joint6.enablePushButton(0)
            self.pushButton_ApproachAllJoint.enablePushButton(0)
            
     def clbk_JointApproach(self, JointNr):
@@ -542,7 +542,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             JointData = self.TrjYamlData.get("a_movement_definition").get("begin_joint_config") [0]
             self.JointTargetPosition = JointData
 #       Put doublespin values in list to allow for iteration 
-            JointTargetPositions = (self.doubleSpin_Joint1_Value, self.doubleSpin_Joint2_Value, self.doubleSpin_Joint3_Value, self.doubleSpin_Joint4_Value, self.doubleSpin_Joint5_Value, self.doubleSpin_Joint6_Value)
+            JointTargetPositions = (self.doubleSpin_Joint1_Value, self.doubleSpin_Joint2_Value, self.doubleSpin_Joint3_Value) #, self.doubleSpin_Joint4_Value, self.doubleSpin_Joint5_Value, self.doubleSpin_Joint6_Value)
 
             for iJoint in range(0,3):
                 JointTargetPositions[iJoint].setValue(JointData[iJoint]*180/np.pi)
@@ -567,7 +567,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             JointData = JointTargetPosition.get("a_movement_definition").get("begin_joint_config") [0]
             self.JointTargetPosition = JointData
 #       Put doublespin values in list to allow for iteration 
-            JointTargetPositions = (self.doubleSpin_Joint1_Value, self.doubleSpin_Joint2_Value, self.doubleSpin_Joint3_Value, self.doubleSpin_Joint4_Value, self.doubleSpin_Joint5_Value, self.doubleSpin_Joint6_Value)
+            JointTargetPositions = (self.doubleSpin_Joint1_Value, self.doubleSpin_Joint2_Value, self.doubleSpin_Joint3_Value) #, self.doubleSpin_Joint4_Value, self.doubleSpin_Joint5_Value, self.doubleSpin_Joint6_Value)
 
             for iJoint in range(0,3):
                 JointTargetPositions[iJoint].setValue(JointData[iJoint])
@@ -603,7 +603,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             self.ui_FMRRMainWindow.pub_start_point.publish(start_msg)
             
             self.pushButton_SetCurrentPos_2.enablePushButton(1)
-            JointTargetPositions = (self.doubleSpin_Joint1_Value, self.doubleSpin_Joint2_Value, self.doubleSpin_Joint3_Value, self.doubleSpin_Joint4_Value, self.doubleSpin_Joint5_Value, self.doubleSpin_Joint6_Value)
+            JointTargetPositions = (self.doubleSpin_Joint1_Value, self.doubleSpin_Joint2_Value, self.doubleSpin_Joint3_Value) #, self.doubleSpin_Joint4_Value, self.doubleSpin_Joint5_Value, self.doubleSpin_Joint6_Value)
             for iJoint in range(0,3):
                 JointTargetPositions[iJoint].setValue(RobotJointPosition[iJoint])
 
@@ -684,7 +684,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
 #        print(RobotJointPosition)
         RobotJointPosition = [Ji_position * _jointPosConvFact for Ji_position in RobotJointPosition]
         
-        CurrentDisplayedJointPos = [self.lcdNumber_J1, self.lcdNumber_J2, self.lcdNumber_J3, self.lcdNumber_J4, self.lcdNumber_J5, self.lcdNumber_J6]
+        CurrentDisplayedJointPos = [self.lcdNumber_J1, self.lcdNumber_J2, self.lcdNumber_J3] #, self.lcdNumber_J4, self.lcdNumber_J5, self.lcdNumber_J6]
         for iJoint in range(0,3):
             CurrentDisplayedJointPos[iJoint].display( int(RobotJointPosition[iJoint]) ) # 
 
@@ -716,9 +716,8 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
 ######
       
         LcdWidgets  = [ self.lcdNumber_X, self.lcdNumber_Y, self.lcdNumber_Z, self.lcdNumber_J1,
-        self.lcdNumber_J2, self.lcdNumber_J3, self.lcdNumber_J4, self.lcdNumber_J5, self.lcdNumber_J6,
-        self.lcdNumber_StartPos_X, self.lcdNumber_StartPos_Y, self.lcdNumber_StartPos_Z, self.lcdNumber_EndPos_X,
-        self.lcdNumber_EndPos_Y, self.lcdNumber_EndPos_Z ]
+        self.lcdNumber_J2, self.lcdNumber_J3, self.lcdNumber_StartPos_X, self.lcdNumber_StartPos_Y, self.lcdNumber_StartPos_Z, self.lcdNumber_EndPos_X,
+        self.lcdNumber_EndPos_Y, self.lcdNumber_EndPos_Z ]  #, self.lcdNumber_J4, self.lcdNumber_J5, self.lcdNumber_J6,
 
         for iWidget in LcdWidgets:
             iWidget.setSegmentStyle(QtWidgets.QLCDNumber.Flat)

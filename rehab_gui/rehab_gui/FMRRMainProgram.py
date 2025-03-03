@@ -340,7 +340,7 @@ class MainProgram(Node, Ui_FMRRMainWindow):
         self.pub_end_point = self.create_publisher(Point, '/end_point', 10)
 
     #   action client
-        self._clientFollowCartTraj = ActionClient(self, FollowJointTrajectory, '/scaled_trajectory_controller/follow_joint_trajectory')
+        self._clientFollowCartTraj = ActionClient(self, FollowJointTrajectory, '/fmrrehab_controller/follow_joint_trajectory')
      
 
     def startPauseService(self):
