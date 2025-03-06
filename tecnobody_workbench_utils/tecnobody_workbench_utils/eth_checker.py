@@ -73,8 +73,6 @@ class EthercatCheckerNode(Node):
         except Exception as e:
             self.get_logger().error(f"Error sending SIGINT: {e}")
 
-
-
     def handle_drive_status(self, msg):
         if not self.shutdown_initiated:
             for dof in self.dof_names:

@@ -130,7 +130,7 @@ def generate_launch_description():
     joint_controller_node = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['joint_trajectory_controller'],
+        arguments=['scaled_trajectory_controller'],
         output='screen',
     )
 
@@ -140,10 +140,16 @@ def generate_launch_description():
         arguments=['admittance_controller'],
         output='screen',
     )
-
+    
     gpio_command_publisher = Node(
         package='tecnobody_workbench_utils',
         executable='gpio_command_publisher',
+        output='screen',
+    )
+
+    ros_contollers_checker = Node(
+        package='tecnobody_workbench_utils',
+        executable='ros_controllers_checker',
         output='screen',
     )
 
@@ -154,17 +160,24 @@ def generate_launch_description():
         output='screen',
     )
 
-    error_handling = RegisterEventHandler(
+    homing_launcher = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=gpio_controller_node,
+            on_exit=[gpio_command_publisher, homing, jsb, fsb],
+        )
+    )
+    
+    error_handlers_launcher = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=homing,
             on_exit=[joint_controller_node, homing_done_publisher, eth_checker, ft_offset_updater],
         )
     )
-
-    gpio_publisher_launcher = RegisterEventHandler(
+    
+    ros2_controllers_checker_launcher = RegisterEventHandler(
         event_handler=OnProcessExit(
-            target_action=gpio_controller_node,
-            on_exit=[gpio_command_publisher, homing, jsb, fsb],
+            target_action=joint_controller_node,
+            on_exit=[ros_contollers_checker],
         )
     )
 
@@ -187,9 +200,10 @@ def generate_launch_description():
     ld.add_action(ssb)
     ld.add_action(rsp)
     ld.add_action(gpio_controller_node)
-    ld.add_action(gpio_publisher_launcher)
+    ld.add_action(homing_launcher)
+    ld.add_action(error_handlers_launcher)
+    ld.add_action(ros2_controllers_checker_launcher)
     # ld.add_action(admittance_controller_launcher)
-    ld.add_action(error_handling)
     ld.add_action(controller_unspawner)
 
     return ld
