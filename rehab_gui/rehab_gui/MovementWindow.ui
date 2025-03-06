@@ -1,0 +1,1126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MovementWindow</class>
+ <widget class="QDialog" name="MovementWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1615</width>
+    <height>933</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Dialog</string>
+  </property>
+  <widget class="QPushButton" name="pushButton_SaveStartPosition">
+   <property name="geometry">
+    <rect>
+     <x>240</x>
+     <y>440</y>
+     <width>81</width>
+     <height>40</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>SAVE START 
+  position</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_LoadJointPosition">
+   <property name="geometry">
+    <rect>
+     <x>264</x>
+     <y>230</y>
+     <width>120</width>
+     <height>40</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>LOAD  Position</string>
+   </property>
+  </widget>
+  <widget class="Line" name="line_6">
+   <property name="geometry">
+    <rect>
+     <x>210</x>
+     <y>110</y>
+     <width>20</width>
+     <height>361</height>
+    </rect>
+   </property>
+   <property name="orientation">
+    <enum>Qt::Vertical</enum>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_Xminus">
+   <property name="geometry">
+    <rect>
+     <x>40</x>
+     <y>150</y>
+     <width>30</width>
+     <height>30</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>X-</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_Xplus">
+   <property name="geometry">
+    <rect>
+     <x>80</x>
+     <y>150</y>
+     <width>30</width>
+     <height>30</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>X+</string>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_MoveRobot">
+   <property name="geometry">
+    <rect>
+     <x>30</x>
+     <y>60</y>
+     <width>391</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>MOVE THE ROBOT TO DEFINED POSITION</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignCenter</set>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_Yminus">
+   <property name="geometry">
+    <rect>
+     <x>40</x>
+     <y>190</y>
+     <width>30</width>
+     <height>30</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Y-</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_Yplus">
+   <property name="geometry">
+    <rect>
+     <x>80</x>
+     <y>190</y>
+     <width>30</width>
+     <height>30</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Y+</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_Zminus">
+   <property name="geometry">
+    <rect>
+     <x>40</x>
+     <y>230</y>
+     <width>30</width>
+     <height>30</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Z-</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_Zplus">
+   <property name="geometry">
+    <rect>
+     <x>80</x>
+     <y>230</y>
+     <width>30</width>
+     <height>30</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Z+</string>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBox_MoveRobotTranslationalVelocity">
+   <property name="geometry">
+    <rect>
+     <x>150</x>
+     <y>110</y>
+     <width>42</width>
+     <height>22</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_MoveRobotTranslationVelocity">
+   <property name="geometry">
+    <rect>
+     <x>40</x>
+     <y>110</y>
+     <width>91</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Position (cm)</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+   </property>
+  </widget>
+  <widget class="Line" name="line_8">
+   <property name="geometry">
+    <rect>
+     <x>40</x>
+     <y>270</y>
+     <width>130</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="orientation">
+    <enum>Qt::Horizontal</enum>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_J2minus">
+   <property name="geometry">
+    <rect>
+     <x>40</x>
+     <y>390</y>
+     <width>30</width>
+     <height>30</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Y-</string>
+   </property>
+  </widget>
+  <widget class="Line" name="line_9">
+   <property name="geometry">
+    <rect>
+     <x>40</x>
+     <y>490</y>
+     <width>130</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="orientation">
+    <enum>Qt::Horizontal</enum>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_J3minus">
+   <property name="geometry">
+    <rect>
+     <x>40</x>
+     <y>430</y>
+     <width>30</width>
+     <height>30</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Z-</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_J1minus">
+   <property name="geometry">
+    <rect>
+     <x>40</x>
+     <y>350</y>
+     <width>30</width>
+     <height>30</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>X-</string>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_lineEdit_MoveRobotRotationalVelocity">
+   <property name="geometry">
+    <rect>
+     <x>40</x>
+     <y>310</y>
+     <width>91</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Velocity (cm/s)</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBox_MoveRobotRotationalVelocity">
+   <property name="geometry">
+    <rect>
+     <x>150</x>
+     <y>310</y>
+     <width>42</width>
+     <height>22</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_J2plus">
+   <property name="geometry">
+    <rect>
+     <x>80</x>
+     <y>390</y>
+     <width>30</width>
+     <height>30</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Y+</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_J3plus">
+   <property name="geometry">
+    <rect>
+     <x>80</x>
+     <y>430</y>
+     <width>30</width>
+     <height>30</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Z+</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_J1plus">
+   <property name="geometry">
+    <rect>
+     <x>80</x>
+     <y>350</y>
+     <width>30</width>
+     <height>30</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>X+</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_StartMoveRobotManually">
+   <property name="geometry">
+    <rect>
+     <x>260</x>
+     <y>142</y>
+     <width>61</width>
+     <height>41</height>
+    </rect>
+   </property>
+   <property name="font">
+    <font>
+     <family>abeatbyKai</family>
+    </font>
+   </property>
+   <property name="text">
+    <string>START </string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_StopMoveRobotManually">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="geometry">
+    <rect>
+     <x>330</x>
+     <y>142</y>
+     <width>61</width>
+     <height>41</height>
+    </rect>
+   </property>
+   <property name="font">
+    <font>
+     <family>abeatbyKai</family>
+    </font>
+   </property>
+   <property name="text">
+    <string>STOP</string>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_MoveRobotManually">
+   <property name="geometry">
+    <rect>
+     <x>280</x>
+     <y>112</y>
+     <width>91</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>MOVE MANUALLY</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignCenter</set>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumber_X">
+   <property name="geometry">
+    <rect>
+     <x>150</x>
+     <y>150</y>
+     <width>42</width>
+     <height>30</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumber_Y">
+   <property name="geometry">
+    <rect>
+     <x>150</x>
+     <y>190</y>
+     <width>42</width>
+     <height>30</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumber_Z">
+   <property name="geometry">
+    <rect>
+     <x>150</x>
+     <y>230</y>
+     <width>42</width>
+     <height>30</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumber_J1">
+   <property name="geometry">
+    <rect>
+     <x>150</x>
+     <y>350</y>
+     <width>42</width>
+     <height>30</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumber_J2">
+   <property name="geometry">
+    <rect>
+     <x>150</x>
+     <y>390</y>
+     <width>42</width>
+     <height>30</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumber_J3">
+   <property name="geometry">
+    <rect>
+     <x>150</x>
+     <y>430</y>
+     <width>42</width>
+     <height>30</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QDoubleSpinBox" name="doubleSpin_Joint3_Value">
+   <property name="geometry">
+    <rect>
+     <x>351</x>
+     <y>400</y>
+     <width>61</width>
+     <height>30</height>
+    </rect>
+   </property>
+   <property name="decimals">
+    <number>3</number>
+   </property>
+   <property name="minimum">
+    <double>-999.000000000000000</double>
+   </property>
+   <property name="maximum">
+    <double>1000.000000000000000</double>
+   </property>
+   <property name="singleStep">
+    <double>0.001000000000000</double>
+   </property>
+  </widget>
+  <widget class="QDoubleSpinBox" name="doubleSpin_Joint2_Value">
+   <property name="geometry">
+    <rect>
+     <x>351</x>
+     <y>369</y>
+     <width>61</width>
+     <height>30</height>
+    </rect>
+   </property>
+   <property name="decimals">
+    <number>3</number>
+   </property>
+   <property name="minimum">
+    <double>-999.000000000000000</double>
+   </property>
+   <property name="maximum">
+    <double>1000.000000000000000</double>
+   </property>
+   <property name="singleStep">
+    <double>0.001000000000000</double>
+   </property>
+  </widget>
+  <widget class="QDoubleSpinBox" name="doubleSpin_Joint1_Value">
+   <property name="geometry">
+    <rect>
+     <x>351</x>
+     <y>338</y>
+     <width>61</width>
+     <height>30</height>
+    </rect>
+   </property>
+   <property name="decimals">
+    <number>3</number>
+   </property>
+   <property name="minimum">
+    <double>-999.000000000000000</double>
+   </property>
+   <property name="maximum">
+    <double>1000.000000000000000</double>
+   </property>
+   <property name="singleStep">
+    <double>0.001000000000000</double>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_Approach_Joint1">
+   <property name="geometry">
+    <rect>
+     <x>290</x>
+     <y>337</y>
+     <width>61</width>
+     <height>32</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>X</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_Approach_Joint2">
+   <property name="geometry">
+    <rect>
+     <x>290</x>
+     <y>368</y>
+     <width>61</width>
+     <height>32</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Y</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_Approach_Joint3">
+   <property name="geometry">
+    <rect>
+     <x>290</x>
+     <y>399</y>
+     <width>61</width>
+     <height>32</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Z</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_ApproachAllJoint">
+   <property name="geometry">
+    <rect>
+     <x>240</x>
+     <y>337</y>
+     <width>41</width>
+     <height>91</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Move
+All</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_EnableApproach">
+   <property name="geometry">
+    <rect>
+     <x>240</x>
+     <y>290</y>
+     <width>171</width>
+     <height>40</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Enable approach</string>
+   </property>
+  </widget>
+  <widget class="Line" name="line_10">
+   <property name="geometry">
+    <rect>
+     <x>260</x>
+     <y>190</y>
+     <width>130</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="orientation">
+    <enum>Qt::Horizontal</enum>
+   </property>
+  </widget>
+  <widget class="Line" name="line_11">
+   <property name="geometry">
+    <rect>
+     <x>260</x>
+     <y>490</y>
+     <width>130</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="orientation">
+    <enum>Qt::Horizontal</enum>
+   </property>
+  </widget>
+  <widget class="Line" name="line_7">
+   <property name="geometry">
+    <rect>
+     <x>425</x>
+     <y>109</y>
+     <width>20</width>
+     <height>361</height>
+    </rect>
+   </property>
+   <property name="orientation">
+    <enum>Qt::Vertical</enum>
+   </property>
+  </widget>
+  <widget class="Line" name="line_12">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>100</y>
+     <width>20</width>
+     <height>371</height>
+    </rect>
+   </property>
+   <property name="orientation">
+    <enum>Qt::Vertical</enum>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_MaxVel">
+   <property name="geometry">
+    <rect>
+     <x>462</x>
+     <y>295</y>
+     <width>81</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Vmax (cm/s)</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBox_MaxVel">
+   <property name="geometry">
+    <rect>
+     <x>462</x>
+     <y>322</y>
+     <width>42</width>
+     <height>22</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_SaveEndPosition">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="geometry">
+    <rect>
+     <x>330</x>
+     <y>440</y>
+     <width>81</width>
+     <height>40</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>SAVE END 
+  position</string>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_TypeOfExercise">
+   <property name="geometry">
+    <rect>
+     <x>460</x>
+     <y>112</y>
+     <width>91</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Type of exercise</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+   </property>
+  </widget>
+  <widget class="QRadioButton" name="radioButton_TypeOfExercise_Reaching">
+   <property name="geometry">
+    <rect>
+     <x>464</x>
+     <y>142</y>
+     <width>82</width>
+     <height>17</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Reaching</string>
+   </property>
+   <property name="checked">
+    <bool>false</bool>
+   </property>
+   <attribute name="buttonGroup">
+    <string notr="true">buttonGroup</string>
+   </attribute>
+  </widget>
+  <widget class="QRadioButton" name="radioButton_TypeOfExercise_HandtoMouth">
+   <property name="geometry">
+    <rect>
+     <x>464</x>
+     <y>162</y>
+     <width>91</width>
+     <height>17</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Hand to mouth</string>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+   <attribute name="buttonGroup">
+    <string notr="true">buttonGroup</string>
+   </attribute>
+  </widget>
+  <widget class="QRadioButton" name="radioButton_VelocityProfileBellshaped">
+   <property name="geometry">
+    <rect>
+     <x>674</x>
+     <y>162</y>
+     <width>91</width>
+     <height>17</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Bell shaped</string>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+   <attribute name="buttonGroup">
+    <string notr="true">buttonGroup_2</string>
+   </attribute>
+  </widget>
+  <widget class="QRadioButton" name="radioButton_VelocityProfileConstant">
+   <property name="geometry">
+    <rect>
+     <x>674</x>
+     <y>142</y>
+     <width>82</width>
+     <height>17</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Constant</string>
+   </property>
+   <property name="checked">
+    <bool>false</bool>
+   </property>
+   <attribute name="buttonGroup">
+    <string notr="true">buttonGroup_2</string>
+   </attribute>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_TypeOfExercise_2">
+   <property name="geometry">
+    <rect>
+     <x>670</x>
+     <y>112</y>
+     <width>91</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Velocity profile</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_MoveRobot_2">
+   <property name="geometry">
+    <rect>
+     <x>530</x>
+     <y>60</y>
+     <width>171</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>MOVEMENT PARAMETERS</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignCenter</set>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_SAVEMovement">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="geometry">
+    <rect>
+     <x>460</x>
+     <y>360</y>
+     <width>81</width>
+     <height>40</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>SAVE AS
+  movement</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_LOADMovement">
+   <property name="geometry">
+    <rect>
+     <x>650</x>
+     <y>300</y>
+     <width>81</width>
+     <height>40</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>LOAD 
+  movement</string>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit">
+   <property name="geometry">
+    <rect>
+     <x>550</x>
+     <y>380</y>
+     <width>211</width>
+     <height>20</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string/>
+   </property>
+  </widget>
+  <widget class="QLabel" name="labelFileName_14">
+   <property name="geometry">
+    <rect>
+     <x>550</x>
+     <y>360</y>
+     <width>131</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <property name="autoFillBackground">
+    <bool>false</bool>
+   </property>
+   <property name="styleSheet">
+    <string notr="true">background-color: rgb(255, 255, 255);</string>
+   </property>
+   <property name="frameShape">
+    <enum>QFrame::Box</enum>
+   </property>
+   <property name="text">
+    <string>Movement  NAME</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_GOtoTraining">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="geometry">
+    <rect>
+     <x>560</x>
+     <y>440</y>
+     <width>81</width>
+     <height>40</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Go to 
+ TRAINING</string>
+   </property>
+  </widget>
+  <widget class="Line" name="line_13">
+   <property name="geometry">
+    <rect>
+     <x>760</x>
+     <y>110</y>
+     <width>20</width>
+     <height>361</height>
+    </rect>
+   </property>
+   <property name="orientation">
+    <enum>Qt::Vertical</enum>
+   </property>
+  </widget>
+  <widget class="Line" name="line_14">
+   <property name="geometry">
+    <rect>
+     <x>510</x>
+     <y>490</y>
+     <width>181</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="orientation">
+    <enum>Qt::Horizontal</enum>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_lineEdit_MoveRobotRotationalVelocity_2">
+   <property name="geometry">
+    <rect>
+     <x>462</x>
+     <y>192</y>
+     <width>91</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>START Position</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_lineEdit_MoveRobotRotationalVelocity_3">
+   <property name="geometry">
+    <rect>
+     <x>462</x>
+     <y>242</y>
+     <width>91</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>END Position</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumber_StartPos_X">
+   <property name="geometry">
+    <rect>
+     <x>462</x>
+     <y>214</y>
+     <width>42</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>4</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumber_StartPos_Y">
+   <property name="geometry">
+    <rect>
+     <x>506</x>
+     <y>214</y>
+     <width>42</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>4</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumber_StartPos_Z">
+   <property name="geometry">
+    <rect>
+     <x>550</x>
+     <y>214</y>
+     <width>42</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>4</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumber_EndPos_Z">
+   <property name="geometry">
+    <rect>
+     <x>550</x>
+     <y>264</y>
+     <width>42</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>4</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumber_EndPos_X">
+   <property name="geometry">
+    <rect>
+     <x>462</x>
+     <y>264</y>
+     <width>42</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>4</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumber_EndPos_Y">
+   <property name="geometry">
+    <rect>
+     <x>506</x>
+     <y>264</y>
+     <width>42</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>4</number>
+   </property>
+  </widget>
+  <widget class="QRadioButton" name="radioButton_SideRight">
+   <property name="geometry">
+    <rect>
+     <x>572</x>
+     <y>162</y>
+     <width>91</width>
+     <height>17</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Right</string>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_Side">
+   <property name="geometry">
+    <rect>
+     <x>568</x>
+     <y>112</y>
+     <width>91</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Side</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+   </property>
+  </widget>
+  <widget class="QRadioButton" name="radioButton_SideLeft">
+   <property name="geometry">
+    <rect>
+     <x>572</x>
+     <y>142</y>
+     <width>82</width>
+     <height>17</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Left</string>
+   </property>
+   <property name="checked">
+    <bool>false</bool>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_SetCurrentPos_1">
+   <property name="geometry">
+    <rect>
+     <x>603</x>
+     <y>209</y>
+     <width>75</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Set current
+ Position</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_SetCurrentPos_2">
+   <property name="geometry">
+    <rect>
+     <x>603</x>
+     <y>259</y>
+     <width>75</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Set current
+ Position</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_CREATEMovement">
+   <property name="geometry">
+    <rect>
+     <x>560</x>
+     <y>300</y>
+     <width>81</width>
+     <height>40</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>CREATE 
+  movement</string>
+   </property>
+  </widget>
+ </widget>
+ <tabstops>
+  <tabstop>lineEdit_MoveRobot</tabstop>
+  <tabstop>lineEdit_MoveRobotTranslationVelocity</tabstop>
+  <tabstop>spinBox_MoveRobotTranslationalVelocity</tabstop>
+  <tabstop>pushButton_Xminus</tabstop>
+  <tabstop>pushButton_Xplus</tabstop>
+  <tabstop>pushButton_Yminus</tabstop>
+  <tabstop>pushButton_Yplus</tabstop>
+  <tabstop>pushButton_Zminus</tabstop>
+  <tabstop>pushButton_Zplus</tabstop>
+  <tabstop>lineEdit_lineEdit_MoveRobotRotationalVelocity</tabstop>
+  <tabstop>spinBox_MoveRobotRotationalVelocity</tabstop>
+  <tabstop>pushButton_J1minus</tabstop>
+  <tabstop>pushButton_J1plus</tabstop>
+  <tabstop>pushButton_J2minus</tabstop>
+  <tabstop>pushButton_J2plus</tabstop>
+  <tabstop>pushButton_J3minus</tabstop>
+  <tabstop>pushButton_J3plus</tabstop>
+  <tabstop>lineEdit_MoveRobotManually</tabstop>
+  <tabstop>pushButton_StartMoveRobotManually</tabstop>
+  <tabstop>pushButton_StopMoveRobotManually</tabstop>
+  <tabstop>pushButton_LoadJointPosition</tabstop>
+  <tabstop>pushButton_EnableApproach</tabstop>
+  <tabstop>pushButton_ApproachAllJoint</tabstop>
+  <tabstop>pushButton_Approach_Joint1</tabstop>
+  <tabstop>doubleSpin_Joint1_Value</tabstop>
+  <tabstop>pushButton_Approach_Joint2</tabstop>
+  <tabstop>doubleSpin_Joint2_Value</tabstop>
+  <tabstop>pushButton_Approach_Joint3</tabstop>
+  <tabstop>doubleSpin_Joint3_Value</tabstop>
+  <tabstop>pushButton_SaveStartPosition</tabstop>
+  <tabstop>pushButton_SaveEndPosition</tabstop>
+  <tabstop>lineEdit_MaxVel</tabstop>
+  <tabstop>spinBox_MaxVel</tabstop>
+  <tabstop>lineEdit_TypeOfExercise</tabstop>
+  <tabstop>radioButton_TypeOfExercise_Reaching</tabstop>
+  <tabstop>radioButton_TypeOfExercise_HandtoMouth</tabstop>
+ </tabstops>
+ <resources/>
+ <connections/>
+ <buttongroups>
+  <buttongroup name="buttonGroup_2"/>
+  <buttongroup name="buttonGroup"/>
+ </buttongroups>
+</ui>

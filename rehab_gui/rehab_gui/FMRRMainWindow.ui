@@ -1,0 +1,1591 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>FMRRMainWindow</class>
+ <widget class="QDialog" name="FMRRMainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1469</width>
+    <height>933</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Dialog</string>
+  </property>
+  <widget class="QSpinBox" name="spinBoxPercPhase02">
+   <property name="geometry">
+    <rect>
+     <x>195</x>
+     <y>230</y>
+     <width>55</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="maximum">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBoxPercPhase10">
+   <property name="geometry">
+    <rect>
+     <x>195</x>
+     <y>470</y>
+     <width>55</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="maximum">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QProgressBar" name="progressBarPhase04">
+   <property name="geometry">
+    <rect>
+     <x>73</x>
+     <y>290</y>
+     <width>118</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="value">
+    <number>24</number>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBoxPercPhase05">
+   <property name="geometry">
+    <rect>
+     <x>195</x>
+     <y>320</y>
+     <width>55</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="maximum">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QProgressBar" name="progressBarPhase05">
+   <property name="geometry">
+    <rect>
+     <x>73</x>
+     <y>320</y>
+     <width>118</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="value">
+    <number>24</number>
+   </property>
+  </widget>
+  <widget class="QProgressBar" name="progressBarPhase13">
+   <property name="geometry">
+    <rect>
+     <x>385</x>
+     <y>260</y>
+     <width>118</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="value">
+    <number>24</number>
+   </property>
+  </widget>
+  <widget class="QProgressBar" name="progressBarPhase11">
+   <property name="geometry">
+    <rect>
+     <x>385</x>
+     <y>200</y>
+     <width>118</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="value">
+    <number>24</number>
+   </property>
+  </widget>
+  <widget class="QProgressBar" name="progressBarPhase15">
+   <property name="geometry">
+    <rect>
+     <x>385</x>
+     <y>320</y>
+     <width>118</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="value">
+    <number>24</number>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBoxPercPhase07">
+   <property name="geometry">
+    <rect>
+     <x>195</x>
+     <y>380</y>
+     <width>55</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="maximum">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QProgressBar" name="progressBarPhase02">
+   <property name="geometry">
+    <rect>
+     <x>73</x>
+     <y>230</y>
+     <width>118</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="value">
+    <number>24</number>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBoxPercPhase08">
+   <property name="geometry">
+    <rect>
+     <x>195</x>
+     <y>410</y>
+     <width>55</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="maximum">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QProgressBar" name="progressBarPhase20">
+   <property name="geometry">
+    <rect>
+     <x>385</x>
+     <y>470</y>
+     <width>118</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="value">
+    <number>24</number>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBoxPercPhase15">
+   <property name="geometry">
+    <rect>
+     <x>515</x>
+     <y>320</y>
+     <width>55</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="maximum">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QProgressBar" name="progressBarPhase19">
+   <property name="geometry">
+    <rect>
+     <x>385</x>
+     <y>440</y>
+     <width>118</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="value">
+    <number>24</number>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBoxPercPhase09">
+   <property name="geometry">
+    <rect>
+     <x>195</x>
+     <y>440</y>
+     <width>55</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="maximum">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QProgressBar" name="progressBarPhase08">
+   <property name="geometry">
+    <rect>
+     <x>73</x>
+     <y>410</y>
+     <width>118</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="value">
+    <number>24</number>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBoxPercPhase04">
+   <property name="geometry">
+    <rect>
+     <x>195</x>
+     <y>290</y>
+     <width>55</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="maximum">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QProgressBar" name="progressBarPhase16">
+   <property name="geometry">
+    <rect>
+     <x>385</x>
+     <y>350</y>
+     <width>118</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="value">
+    <number>24</number>
+   </property>
+  </widget>
+  <widget class="QProgressBar" name="progressBarPhase01">
+   <property name="geometry">
+    <rect>
+     <x>73</x>
+     <y>200</y>
+     <width>118</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="value">
+    <number>24</number>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBoxPercPhase11">
+   <property name="geometry">
+    <rect>
+     <x>515</x>
+     <y>200</y>
+     <width>55</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="maximum">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QProgressBar" name="progressBarPhase17">
+   <property name="geometry">
+    <rect>
+     <x>385</x>
+     <y>380</y>
+     <width>118</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="value">
+    <number>24</number>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBoxPercPhase03">
+   <property name="geometry">
+    <rect>
+     <x>195</x>
+     <y>260</y>
+     <width>55</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="maximum">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QProgressBar" name="progressBarPhase12">
+   <property name="geometry">
+    <rect>
+     <x>385</x>
+     <y>230</y>
+     <width>118</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="value">
+    <number>24</number>
+   </property>
+  </widget>
+  <widget class="QProgressBar" name="progressBarPhase06">
+   <property name="geometry">
+    <rect>
+     <x>73</x>
+     <y>350</y>
+     <width>118</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="value">
+    <number>24</number>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBoxPercPhase01">
+   <property name="geometry">
+    <rect>
+     <x>195</x>
+     <y>200</y>
+     <width>55</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="maximum">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBoxPercPhase06">
+   <property name="geometry">
+    <rect>
+     <x>195</x>
+     <y>350</y>
+     <width>55</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="maximum">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBoxPercPhase13">
+   <property name="geometry">
+    <rect>
+     <x>515</x>
+     <y>260</y>
+     <width>55</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="maximum">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBoxPercPhase16">
+   <property name="geometry">
+    <rect>
+     <x>515</x>
+     <y>350</y>
+     <width>55</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="maximum">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QProgressBar" name="progressBarPhase03">
+   <property name="geometry">
+    <rect>
+     <x>73</x>
+     <y>260</y>
+     <width>118</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="value">
+    <number>24</number>
+   </property>
+  </widget>
+  <widget class="QProgressBar" name="progressBarPhase14">
+   <property name="geometry">
+    <rect>
+     <x>385</x>
+     <y>290</y>
+     <width>118</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="value">
+    <number>24</number>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBoxPercPhase12">
+   <property name="geometry">
+    <rect>
+     <x>515</x>
+     <y>230</y>
+     <width>55</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="maximum">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBoxPercPhase14">
+   <property name="geometry">
+    <rect>
+     <x>515</x>
+     <y>290</y>
+     <width>55</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="maximum">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QProgressBar" name="progressBarPhase07">
+   <property name="geometry">
+    <rect>
+     <x>73</x>
+     <y>380</y>
+     <width>118</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="value">
+    <number>24</number>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBoxPercPhase19">
+   <property name="geometry">
+    <rect>
+     <x>515</x>
+     <y>440</y>
+     <width>55</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="maximum">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QProgressBar" name="progressBarPhase10">
+   <property name="geometry">
+    <rect>
+     <x>73</x>
+     <y>470</y>
+     <width>118</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="value">
+    <number>24</number>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBoxPercPhase17">
+   <property name="geometry">
+    <rect>
+     <x>515</x>
+     <y>380</y>
+     <width>55</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="maximum">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBoxPercPhase18">
+   <property name="geometry">
+    <rect>
+     <x>515</x>
+     <y>410</y>
+     <width>55</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="maximum">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QProgressBar" name="progressBarPhase18">
+   <property name="geometry">
+    <rect>
+     <x>385</x>
+     <y>410</y>
+     <width>118</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="value">
+    <number>24</number>
+   </property>
+  </widget>
+  <widget class="QProgressBar" name="progressBarPhase09">
+   <property name="geometry">
+    <rect>
+     <x>73</x>
+     <y>440</y>
+     <width>118</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="value">
+    <number>24</number>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBoxPercPhase20">
+   <property name="geometry">
+    <rect>
+     <x>515</x>
+     <y>470</y>
+     <width>55</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="maximum">
+    <number>100</number>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_RehabilitationProtocol">
+   <property name="geometry">
+    <rect>
+     <x>65</x>
+     <y>140</y>
+     <width>621</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>NAME of  PROTOCOL</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignCenter</set>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_MaxVel">
+   <property name="geometry">
+    <rect>
+     <x>76</x>
+     <y>520</y>
+     <width>81</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Vmax (cm/s)</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBox_MaxVel">
+   <property name="geometry">
+    <rect>
+     <x>76</x>
+     <y>545</y>
+     <width>42</width>
+     <height>22</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="Line" name="line_13">
+   <property name="geometry">
+    <rect>
+     <x>90</x>
+     <y>620</y>
+     <width>591</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="orientation">
+    <enum>Qt::Horizontal</enum>
+   </property>
+  </widget>
+  <widget class="QTextBrowser" name="textBrowser_SinglePhaseDuration">
+   <property name="geometry">
+    <rect>
+     <x>198</x>
+     <y>520</y>
+     <width>151</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <property name="html">
+    <string>&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;
+&lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;style type=&quot;text/css&quot;&gt;
+p, li { white-space: pre-wrap; }
+&lt;/style&gt;&lt;/head&gt;&lt;body style=&quot; font-family:'Ubuntu'; font-size:11pt; font-weight:400; font-style:normal;&quot;&gt;
+&lt;p align=&quot;center&quot; style=&quot; margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;&quot;&gt;&lt;span style=&quot; font-family:'MS Shell Dlg 2'; font-size:8pt;&quot;&gt;SINGLE PHASE duration (min)&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+   </property>
+  </widget>
+  <widget class="QSpinBox" name="spinBox_SinglePhaseDuration">
+   <property name="geometry">
+    <rect>
+     <x>196</x>
+     <y>545</y>
+     <width>42</width>
+     <height>22</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumberExerciseTotalTime">
+   <property name="geometry">
+    <rect>
+     <x>641</x>
+     <y>543</y>
+     <width>42</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>2</number>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_ExerciseTotalTime">
+   <property name="geometry">
+    <rect>
+     <x>561</x>
+     <y>521</y>
+     <width>121</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>EXERCISE total time</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignCenter</set>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumberMaxVelPhase01">
+   <property name="geometry">
+    <rect>
+     <x>255</x>
+     <y>199</y>
+     <width>31</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>3</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumberMaxVelPhase02">
+   <property name="geometry">
+    <rect>
+     <x>255</x>
+     <y>228</y>
+     <width>31</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>3</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumberMaxVelPhase03">
+   <property name="geometry">
+    <rect>
+     <x>255</x>
+     <y>260</y>
+     <width>31</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>3</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumberMaxVelPhase04">
+   <property name="geometry">
+    <rect>
+     <x>255</x>
+     <y>290</y>
+     <width>31</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>3</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumberMaxVelPhase05">
+   <property name="geometry">
+    <rect>
+     <x>255</x>
+     <y>320</y>
+     <width>31</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>3</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumberMaxVelPhase06">
+   <property name="geometry">
+    <rect>
+     <x>255</x>
+     <y>350</y>
+     <width>31</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>3</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumberMaxVelPhase07">
+   <property name="geometry">
+    <rect>
+     <x>255</x>
+     <y>380</y>
+     <width>31</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>3</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumberMaxVelPhase08">
+   <property name="geometry">
+    <rect>
+     <x>255</x>
+     <y>410</y>
+     <width>31</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>3</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumberMaxVelPhase09">
+   <property name="geometry">
+    <rect>
+     <x>255</x>
+     <y>440</y>
+     <width>31</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>3</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumberMaxVelPhase10">
+   <property name="geometry">
+    <rect>
+     <x>255</x>
+     <y>470</y>
+     <width>31</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>3</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumberMaxVelPhase11">
+   <property name="geometry">
+    <rect>
+     <x>575</x>
+     <y>199</y>
+     <width>31</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>3</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumberMaxVelPhase12">
+   <property name="geometry">
+    <rect>
+     <x>575</x>
+     <y>229</y>
+     <width>31</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>3</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumberMaxVelPhase13">
+   <property name="geometry">
+    <rect>
+     <x>575</x>
+     <y>260</y>
+     <width>31</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>3</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumberMaxVelPhase14">
+   <property name="geometry">
+    <rect>
+     <x>575</x>
+     <y>290</y>
+     <width>31</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>3</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumberMaxVelPhase15">
+   <property name="geometry">
+    <rect>
+     <x>575</x>
+     <y>320</y>
+     <width>31</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>3</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumberMaxVelPhase16">
+   <property name="geometry">
+    <rect>
+     <x>575</x>
+     <y>350</y>
+     <width>31</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>3</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumberMaxVelPhase17">
+   <property name="geometry">
+    <rect>
+     <x>575</x>
+     <y>380</y>
+     <width>31</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>3</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumberMaxVelPhase18">
+   <property name="geometry">
+    <rect>
+     <x>575</x>
+     <y>410</y>
+     <width>31</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>3</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumberMaxVelPhase19">
+   <property name="geometry">
+    <rect>
+     <x>575</x>
+     <y>440</y>
+     <width>31</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>3</number>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumberMaxVelPhase20">
+   <property name="geometry">
+    <rect>
+     <x>575</x>
+     <y>470</y>
+     <width>31</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>3</number>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label">
+   <property name="geometry">
+    <rect>
+     <x>195</x>
+     <y>165</y>
+     <width>91</width>
+     <height>41</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Vmax 
+ Perc          cm/s</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignCenter</set>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_2">
+   <property name="geometry">
+    <rect>
+     <x>515</x>
+     <y>166</y>
+     <width>91</width>
+     <height>41</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Vmax 
+ Perc          cm/s</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignCenter</set>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_LoadCreateProtocol">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="geometry">
+    <rect>
+     <x>185</x>
+     <y>648</y>
+     <width>100</width>
+     <height>40</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>LOAD / CREATE 
+ protocol</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_SaveProtocol">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="geometry">
+    <rect>
+     <x>295</x>
+     <y>648</y>
+     <width>100</width>
+     <height>40</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>SAVE 
+ protocol</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_3">
+   <property name="geometry">
+    <rect>
+     <x>295</x>
+     <y>180</y>
+     <width>41</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Mode</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignCenter</set>
+   </property>
+  </widget>
+  <widget class="QComboBox" name="comboBoxModePhase01">
+   <property name="geometry">
+    <rect>
+     <x>295</x>
+     <y>202</y>
+     <width>69</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Velocity</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QComboBox" name="comboBoxModePhase02">
+   <property name="geometry">
+    <rect>
+     <x>295</x>
+     <y>232</y>
+     <width>69</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Velocity</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QComboBox" name="comboBoxModePhase03">
+   <property name="geometry">
+    <rect>
+     <x>295</x>
+     <y>262</y>
+     <width>69</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Velocity</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QComboBox" name="comboBoxModePhase04">
+   <property name="geometry">
+    <rect>
+     <x>295</x>
+     <y>293</y>
+     <width>69</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Velocity</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QComboBox" name="comboBoxModePhase05">
+   <property name="geometry">
+    <rect>
+     <x>295</x>
+     <y>323</y>
+     <width>69</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Velocity</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QComboBox" name="comboBoxModePhase06">
+   <property name="geometry">
+    <rect>
+     <x>295</x>
+     <y>353</y>
+     <width>69</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Velocity</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QComboBox" name="comboBoxModePhase07">
+   <property name="geometry">
+    <rect>
+     <x>295</x>
+     <y>383</y>
+     <width>69</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Velocity</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QComboBox" name="comboBoxModePhase08">
+   <property name="geometry">
+    <rect>
+     <x>295</x>
+     <y>413</y>
+     <width>69</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Velocity</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QComboBox" name="comboBoxModePhase09">
+   <property name="geometry">
+    <rect>
+     <x>295</x>
+     <y>442</y>
+     <width>69</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Velocity</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QComboBox" name="comboBoxModePhase10">
+   <property name="geometry">
+    <rect>
+     <x>295</x>
+     <y>473</y>
+     <width>69</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Velocity</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QComboBox" name="comboBoxModePhase11">
+   <property name="geometry">
+    <rect>
+     <x>615</x>
+     <y>203</y>
+     <width>69</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Velocity</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QComboBox" name="comboBoxModePhase12">
+   <property name="geometry">
+    <rect>
+     <x>615</x>
+     <y>233</y>
+     <width>69</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Velocity</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QComboBox" name="comboBoxModePhase13">
+   <property name="geometry">
+    <rect>
+     <x>615</x>
+     <y>263</y>
+     <width>69</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Velocity</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QComboBox" name="comboBoxModePhase14">
+   <property name="geometry">
+    <rect>
+     <x>615</x>
+     <y>293</y>
+     <width>69</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Velocity</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QComboBox" name="comboBoxModePhase15">
+   <property name="geometry">
+    <rect>
+     <x>615</x>
+     <y>323</y>
+     <width>69</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Velocity</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QComboBox" name="comboBoxModePhase16">
+   <property name="geometry">
+    <rect>
+     <x>615</x>
+     <y>353</y>
+     <width>69</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Velocity</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QComboBox" name="comboBoxModePhase17">
+   <property name="geometry">
+    <rect>
+     <x>615</x>
+     <y>383</y>
+     <width>69</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Velocity</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QComboBox" name="comboBoxModePhase18">
+   <property name="geometry">
+    <rect>
+     <x>615</x>
+     <y>413</y>
+     <width>69</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Velocity</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QComboBox" name="comboBoxModePhase19">
+   <property name="geometry">
+    <rect>
+     <x>615</x>
+     <y>443</y>
+     <width>69</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Velocity</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QComboBox" name="comboBoxModePhase20">
+   <property name="geometry">
+    <rect>
+     <x>615</x>
+     <y>473</y>
+     <width>69</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>Velocity</string>
+    </property>
+   </item>
+  </widget>
+  <widget class="QPushButton" name="pushButton_STARTtrainig">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="geometry">
+    <rect>
+     <x>200</x>
+     <y>580</y>
+     <width>100</width>
+     <height>40</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>START training</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_PAUSEtrainig">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="geometry">
+    <rect>
+     <x>310</x>
+     <y>580</y>
+     <width>100</width>
+     <height>40</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>PAUSE training</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_STOPtrainig">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="geometry">
+    <rect>
+     <x>420</x>
+     <y>580</y>
+     <width>100</width>
+     <height>40</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>STOP training</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_LoadCreateMovement">
+   <property name="geometry">
+    <rect>
+     <x>76</x>
+     <y>648</y>
+     <width>100</width>
+     <height>40</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>LOAD / CREATE 
+ movement</string>
+   </property>
+  </widget>
+  <widget class="QRadioButton" name="radioButton_TypeOfExercise_Reaching">
+   <property name="geometry">
+    <rect>
+     <x>70</x>
+     <y>94</y>
+     <width>82</width>
+     <height>17</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Reaching</string>
+   </property>
+   <property name="checked">
+    <bool>false</bool>
+   </property>
+  </widget>
+  <widget class="Line" name="line_6">
+   <property name="geometry">
+    <rect>
+     <x>700</x>
+     <y>180</y>
+     <width>20</width>
+     <height>441</height>
+    </rect>
+   </property>
+   <property name="orientation">
+    <enum>Qt::Vertical</enum>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_TypeOfExercise">
+   <property name="geometry">
+    <rect>
+     <x>65</x>
+     <y>64</y>
+     <width>91</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Type of exercise</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+   </property>
+  </widget>
+  <widget class="QRadioButton" name="radioButton_TypeOfExercise_HandtoMouth">
+   <property name="geometry">
+    <rect>
+     <x>70</x>
+     <y>114</y>
+     <width>91</width>
+     <height>17</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Hand to mouth</string>
+   </property>
+   <property name="checked">
+    <bool>false</bool>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_MovementName">
+   <property name="geometry">
+    <rect>
+     <x>65</x>
+     <y>40</y>
+     <width>211</width>
+     <height>20</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>NAME of MOVEMENT </string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignCenter</set>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_ExerciseMovementCOUNT">
+   <property name="geometry">
+    <rect>
+     <x>560</x>
+     <y>578</y>
+     <width>121</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Movement COUNT</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignCenter</set>
+   </property>
+  </widget>
+  <widget class="QLCDNumber" name="lcdNumber_MovementCOUNT">
+   <property name="geometry">
+    <rect>
+     <x>640</x>
+     <y>600</y>
+     <width>42</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="digitCount">
+    <number>3</number>
+   </property>
+  </widget>
+  <widget class="QGraphicsView" name="graphicsView">
+   <property name="geometry">
+    <rect>
+     <x>740</x>
+     <y>110</y>
+     <width>691</width>
+     <height>491</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="Line" name="line_14">
+   <property name="geometry">
+    <rect>
+     <x>730</x>
+     <y>620</y>
+     <width>711</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="orientation">
+    <enum>Qt::Horizontal</enum>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_DATAacquisition">
+   <property name="geometry">
+    <rect>
+     <x>760</x>
+     <y>650</y>
+     <width>100</width>
+     <height>40</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>DATA 
+ acquisition</string>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="lineEdit_Side">
+   <property name="geometry">
+    <rect>
+     <x>176</x>
+     <y>64</y>
+     <width>91</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Side</string>
+   </property>
+   <property name="alignment">
+    <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+   </property>
+  </widget>
+  <widget class="QRadioButton" name="radioButton_SideLeft">
+   <property name="geometry">
+    <rect>
+     <x>180</x>
+     <y>94</y>
+     <width>82</width>
+     <height>17</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Left</string>
+   </property>
+   <property name="checked">
+    <bool>false</bool>
+   </property>
+  </widget>
+  <widget class="QRadioButton" name="radioButton_SideRight">
+   <property name="geometry">
+    <rect>
+     <x>180</x>
+     <y>114</y>
+     <width>91</width>
+     <height>17</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>Right</string>
+   </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_CLOSEprogram">
+   <property name="geometry">
+    <rect>
+     <x>610</x>
+     <y>650</y>
+     <width>100</width>
+     <height>40</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>CLOSE 
+ program</string>
+   </property>
+  </widget>
+ </widget>
+ <tabstops>
+  <tabstop>lineEdit_RehabilitationProtocol</tabstop>
+  <tabstop>spinBoxPercPhase01</tabstop>
+  <tabstop>spinBoxPercPhase02</tabstop>
+  <tabstop>spinBoxPercPhase03</tabstop>
+  <tabstop>spinBoxPercPhase04</tabstop>
+  <tabstop>spinBoxPercPhase05</tabstop>
+  <tabstop>spinBoxPercPhase06</tabstop>
+  <tabstop>spinBoxPercPhase07</tabstop>
+  <tabstop>spinBoxPercPhase08</tabstop>
+  <tabstop>spinBoxPercPhase09</tabstop>
+  <tabstop>spinBoxPercPhase10</tabstop>
+  <tabstop>spinBoxPercPhase11</tabstop>
+  <tabstop>spinBoxPercPhase12</tabstop>
+  <tabstop>spinBoxPercPhase13</tabstop>
+  <tabstop>spinBoxPercPhase14</tabstop>
+  <tabstop>spinBoxPercPhase15</tabstop>
+  <tabstop>spinBoxPercPhase16</tabstop>
+  <tabstop>spinBoxPercPhase17</tabstop>
+  <tabstop>spinBoxPercPhase18</tabstop>
+  <tabstop>spinBoxPercPhase19</tabstop>
+  <tabstop>spinBoxPercPhase20</tabstop>
+  <tabstop>lineEdit_MaxVel</tabstop>
+  <tabstop>spinBox_MaxVel</tabstop>
+  <tabstop>textBrowser_SinglePhaseDuration</tabstop>
+  <tabstop>spinBox_SinglePhaseDuration</tabstop>
+  <tabstop>lineEdit_ExerciseTotalTime</tabstop>
+  <tabstop>pushButton_LoadCreateProtocol</tabstop>
+  <tabstop>pushButton_SaveProtocol</tabstop>
+ </tabstops>
+ <resources/>
+ <connections/>
+</ui>

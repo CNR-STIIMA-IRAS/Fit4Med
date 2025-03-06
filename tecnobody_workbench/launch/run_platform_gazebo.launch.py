@@ -141,7 +141,7 @@ def generate_launch_description():
         package='controller_manager',
         executable='spawner',
         arguments=[
-            'scaled_trajectory_controller',
+            'joint_trajectory_controller',
             '--param-file',
             robot_controllers,
             ],
