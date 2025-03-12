@@ -50,7 +50,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         self.ui_FMRRMainWindow.JogOn = True
         
         if CoordinateNr < 3:
-            Increment = self.spinBox_MoveRobotTranslationalVelocity.value()
+            Increment = self.spinBox_MoveRobotPosition.value()
             NewHandlePosition = self.ui_FMRRMainWindow.RobotJointPosition #[0.0, 0.0, 0.0]  # initialization of  position = [x,y,z,q1,q2,q3,q4] coorinates are RELATIVE!!!
             print('The current handle postions are: %s' % NewHandlePosition)
 
@@ -165,12 +165,12 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         x_begin = deepcopy(self.Start_HandlePosition[0]); x_end = deepcopy(self.End_HandlePosition[0])        
         y_begin = deepcopy(self.Start_HandlePosition[1]); y_end = deepcopy(self.End_HandlePosition[1])
         z_begin = deepcopy(self.Start_HandlePosition[2]); z_end = deepcopy(self.End_HandlePosition[2])
-        x12 = x_end-x_begin; y12 = y_end-y_begin; z12 = z_end-z_begin ;
+        x12 = x_end-x_begin; y12 = y_end-y_begin; z12 = z_end-z_begin
         L12 = np.sqrt( x12**2 + y12**2 + z12**2 )
         x1 = 0; y1 = 0; z1 = 0
-        x2 = x12; y2 = y12; z2 = z12;
+        x2 = x12; y2 = y12; z2 = z12
 
-        T = self.doubleSpinBox_MovTime.value() # total movement time in sec 
+        T = self.doubleSpinBox_MoveTime.value() # total movement time in sec 
         _time = np.linspace(0, T, int(T/0.008)+1, endpoint = True) # To satisfy Beschi's condition of having steps = 8ms
         print("_time")
         print(_time[0:4])
@@ -195,7 +195,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
                 x1_LF = MovementData[0][0]; x2_LF = MovementData[-1][0]      #_LF = Loaded File   
                 y1_LF = MovementData[0][1]; y2_LF = MovementData[-1][1]
                 z1_LF = MovementData[0][2]; z2_LF = MovementData[-1][2]                
-                x12_LF = x2_LF-x1_LF; y12_LF = y2_LF-y1_LF; z12_LF = z2_LF-z1_LF ;
+                x12_LF = x2_LF-x1_LF; y12_LF = y2_LF-y1_LF; z12_LF = z2_LF-z1_LF
                 L12_LF = np.sqrt( x12_LF**2 + y12_LF**2 + z12_LF**2 ) # actually the starting point is [0,0,0]
 
                 print('L12_LF:')
@@ -331,11 +331,8 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             sv[1] = v
             
     # Traj1: data of forward movement
-            positions = np.zeros( (7,numSamples), dtype=float, order='C' ) 
-            quaternions = np.zeros( (4,numSamples), dtype=float, order='C' )        
-            quaternions[3] = np.ones( (1,numSamples) )
+            positions = np.zeros( (3,numSamples), dtype=float, order='C' ) 
             positions[0] = x[samples]; positions[1] = y[samples]; positions[2] = z[samples] 
-            positions[3:7] = quaternions
             
     # Traj2: data of backward movement        
             positions2 = np.fliplr(positions)
@@ -368,8 +365,8 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             a_movement_definition['vel_profile'] = [ self.vel_profile ]
             a_movement_definition['total_time'] = [ T ]
             a_movement_definition['begin_joint_config'] = [self.Start_RobotJointPosition ]
-            a_movement_definition['begin_config'] = [ [x_begin, y_begin, z_begin, 0.0, 0.0, 0.0, 1.0] ]
-            a_movement_definition['end_config'] = [ [x_end, y_end, z_end, 0.0, 0.0, 0.0, 1.0] ]
+            a_movement_definition['begin_config'] = [ [x_begin, y_begin, z_begin] ]
+            a_movement_definition['end_config'] = [ [x_end, y_end, z_end] ]
     
             TrjYamlData['a_movement_definition'] = a_movement_definition
     #       
@@ -535,7 +532,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             self.lcdNumber_EndPos_X.display(int( EndPos[0] ))
             self.lcdNumber_EndPos_Y.display(int( EndPos[1] ))    
             self.lcdNumber_EndPos_Z.display(int( EndPos[2] ))
-            self.doubleSpinBox_MovTime.setValue(MovTime)
+            self.doubleSpinBox_MoveTime.setValue(MovTime)
             
 #           Spin values of Joint approachconfiguration are loaded, converted in degrees nbd displayed
 
@@ -600,7 +597,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             start_msg.x = HandlePosition[0]/100.0
             start_msg.y = HandlePosition[1]/100.0
             start_msg.z = HandlePosition[2]/100.0
-            self.ui_FMRRMainWindow.pub_start_point.publish(start_msg)
+            # self.ui_FMRRMainWindow.pub_start_point.publish(start_msg)
             
             self.pushButton_SetCurrentPos_2.enablePushButton(1)
             JointTargetPositions = (self.doubleSpin_Joint1_Value, self.doubleSpin_Joint2_Value, self.doubleSpin_Joint3_Value) #, self.doubleSpin_Joint4_Value, self.doubleSpin_Joint5_Value, self.doubleSpin_Joint6_Value)
@@ -624,7 +621,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             end_msg.x = HandlePosition[0]/100.0
             end_msg.y = HandlePosition[1]/100.0
             end_msg.z = HandlePosition[2]/100.0
-            self.ui_FMRRMainWindow.pub_end_point.publish(end_msg)
+            # self.ui_FMRRMainWindow.pub_end_point.publish(end_msg)
             
 
         

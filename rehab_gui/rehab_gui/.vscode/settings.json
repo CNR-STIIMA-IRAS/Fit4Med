@@ -1,0 +1,22 @@
+{
+    "python.autoComplete.extraPaths": [
+        "/home/adriano/projects/ros2_ws/build/tecnobody_workbench_utils",
+        "/home/adriano/projects/ros2_ws/install/tecnobody_workbench_utils/lib/python3.12/site-packages",
+        "/home/adriano/projects/ros2_ws/install/robotiq_ft_sensor_interfaces/lib/python3.12/site-packages",
+        "/home/adriano/projects/ros2_ws/build/rehab_gui",
+        "/home/adriano/projects/ros2_ws/install/rehab_gui/lib/python3.12/site-packages",
+        "/home/adriano/projects/ros2_ws/build/check_homing_done",
+        "/home/adriano/projects/ros2_ws/install/check_homing_done/lib/python3.12/site-packages",
+        "/opt/ros/jazzy/lib/python3.12/site-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/adriano/projects/ros2_ws/build/tecnobody_workbench_utils",
+        "/home/adriano/projects/ros2_ws/install/tecnobody_workbench_utils/lib/python3.12/site-packages",
+        "/home/adriano/projects/ros2_ws/install/robotiq_ft_sensor_interfaces/lib/python3.12/site-packages",
+        "/home/adriano/projects/ros2_ws/build/rehab_gui",
+        "/home/adriano/projects/ros2_ws/install/rehab_gui/lib/python3.12/site-packages",
+        "/home/adriano/projects/ros2_ws/build/check_homing_done",
+        "/home/adriano/projects/ros2_ws/install/check_homing_done/lib/python3.12/site-packages",
+        "/opt/ros/jazzy/lib/python3.12/site-packages"
+    ]
+}

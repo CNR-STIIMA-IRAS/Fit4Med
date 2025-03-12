@@ -105,9 +105,9 @@ class MainProgram(Node, Ui_FMRRMainWindow):
     def definePaths(self):
         self.FMRR_Paths = dict() 
         self.FMRR_Paths['Root'] = os.getcwd()
-        self.FMRR_Paths['Protocols'] = '/home/adriano/projects/ros2_ws/src/Fit4Med/rehab_gui/config'
-        self.FMRR_Paths['Movements'] = '/home/adriano/projects/ros2_ws/src/Fit4Med/rehab_gui/config'  
-        self.FMRR_Paths['Joint_Configuration'] = 'config'
+        self.FMRR_Paths['Protocols'] = '/home/adriano/projects/ros2_ws/src/Fit4Med/rehab_gui/Protocols'
+        self.FMRR_Paths['Movements'] = '/home/adriano/projects/ros2_ws/src/Fit4Med/rehab_gui/Movements'  
+        self.FMRR_Paths['Joint_Configuration'] = '/home/adriano/projects/ros2_ws/src/Fit4Med/rehab_gui/config'
 
         
     def startMovementWindow(self):
@@ -336,8 +336,8 @@ class MainProgram(Node, Ui_FMRRMainWindow):
 
     #   publishers        
         self.pub_speed_ovr = self.create_publisher(Int16, '/speed_ovr', 10)
-        self.pub_start_point = self.create_publisher(Point, '/start_point', 10)
-        self.pub_end_point = self.create_publisher(Point, '/end_point', 10)
+        # self.pub_start_point = self.create_publisher(Point, '/start_point', 10)
+        # self.pub_end_point = self.create_publisher(Point, '/end_point', 10)
 
     #   action client
         self._clientFollowCartTraj = ActionClient(self, FollowJointTrajectory, '/fmrrehab_controller/follow_joint_trajectory')

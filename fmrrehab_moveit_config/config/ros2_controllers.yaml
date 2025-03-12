@@ -11,8 +11,8 @@ controller_manager:
 
     fmrrehab_controller:
       # type: velocity_controllers/JointGroupVelocityController
-      type: "joint_trajectory_controller/JointTrajectoryController"
-      # type: "scaled_fjt_controller/ScaledFjtController"
+      # type: "joint_trajectory_controller/JointTrajectoryController"
+      type: "scaled_fjt_controller/ScaledFjtController"
 
     ft_sensor_broadcaster:
       type: force_torque_sensor_broadcaster/ForceTorqueSensorBroadcaster
@@ -38,9 +38,9 @@ fmrrehab_controller:
     state_interfaces:
     - position
     - velocity
-    # open_loop_control: true # Set to true for scaled fjt (and comment the pid params)
-    # constraints:
-    #   goal_time: 0.0
+    open_loop_control: true # Set to true for scaled fjt (and comment the pid params)
+    constraints:
+      goal_time: 0.0
     # gains:  # PID gains
     #   joint_1:
     #     p: 50.0

@@ -1,0 +1,28 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/adriano/projects/ros2_ws/install/scaled_follow_joint_trajectory_controller_ros2/include/**",
+        "/home/adriano/projects/ros2_ws/install/robotiq_ft_sensor_hardware/include/**",
+        "/home/adriano/projects/ros2_ws/install/robotiq_ft_sensor_interfaces/include/**",
+        "/home/adriano/projects/ros2_ws/install/rehab_trajectory_planner/include/**",
+        "/opt/ros/jazzy/include/**",
+        "/home/adriano/projects/ros2_ws/src/Fit4Med/rehab_trajectory_planner/include/**",
+        "/home/adriano/projects/ros2_ws/src/Fit4Med/tecnobody_workbench/include/**",
+        "/home/adriano/projects/ros2_ws/src/rq_fts_ros2_driver/robotiq_ft_sensor_hardware/include/**",
+        "/home/adriano/projects/ros2_ws/src/scaled_follow_joint_trajectory_controller_ros2/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}

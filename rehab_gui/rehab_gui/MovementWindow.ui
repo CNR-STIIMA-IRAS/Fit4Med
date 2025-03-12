@@ -10,6 +10,17 @@
     <height>933</height>
    </rect>
   </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
+  </property>
+  <property name="font">
+   <font>
+    <pointsize>10</pointsize>
+   </font>
+  </property>
   <property name="windowTitle">
    <string>Dialog</string>
   </property>
@@ -147,7 +158,7 @@
     <string>Z+</string>
    </property>
   </widget>
-  <widget class="QSpinBox" name="spinBox_MoveRobotTranslationalVelocity">
+  <widget class="QSpinBox" name="spinBox_MoveRobotPosition">
    <property name="geometry">
     <rect>
      <x>150</x>
@@ -157,7 +168,7 @@
     </rect>
    </property>
   </widget>
-  <widget class="QLineEdit" name="lineEdit_MoveRobotTranslationVelocity">
+  <widget class="QLineEdit" name="lineEdit_MoveRobotPosition">
    <property name="geometry">
     <rect>
      <x>40</x>
@@ -165,6 +176,11 @@
      <width>91</width>
      <height>22</height>
     </rect>
+   </property>
+   <property name="font">
+    <font>
+     <pointsize>9</pointsize>
+    </font>
    </property>
    <property name="text">
     <string>Position (cm)</string>
@@ -238,7 +254,7 @@
     <string>X-</string>
    </property>
   </widget>
-  <widget class="QLineEdit" name="lineEdit_lineEdit_MoveRobotRotationalVelocity">
+  <widget class="QLineEdit" name="lineEdit_lineEdit_MoveRobotVelocity">
    <property name="geometry">
     <rect>
      <x>40</x>
@@ -247,6 +263,11 @@
      <height>22</height>
     </rect>
    </property>
+   <property name="font">
+    <font>
+     <pointsize>9</pointsize>
+    </font>
+   </property>
    <property name="text">
     <string>Velocity (cm/s)</string>
    </property>
@@ -254,7 +275,7 @@
     <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
    </property>
   </widget>
-  <widget class="QSpinBox" name="spinBox_MoveRobotRotationalVelocity">
+  <widget class="QSpinBox" name="spinBox_MoveRobotVelocity">
    <property name="geometry">
     <rect>
      <x>150</x>
@@ -315,6 +336,7 @@
    <property name="font">
     <font>
      <family>abeatbyKai</family>
+     <pointsize>10</pointsize>
     </font>
    </property>
    <property name="text">
@@ -336,6 +358,7 @@
    <property name="font">
     <font>
      <family>abeatbyKai</family>
+     <pointsize>10</pointsize>
     </font>
    </property>
    <property name="text">
@@ -351,8 +374,13 @@
      <height>22</height>
     </rect>
    </property>
+   <property name="font">
+    <font>
+     <pointsize>9</pointsize>
+    </font>
+   </property>
    <property name="text">
-    <string>MOVE MANUALLY</string>
+    <string>Manual Guide</string>
    </property>
    <property name="alignment">
     <set>Qt::AlignCenter</set>
@@ -602,7 +630,7 @@ All</string>
     <enum>Qt::Vertical</enum>
    </property>
   </widget>
-  <widget class="QLineEdit" name="lineEdit_MaxVel">
+  <widget class="QLineEdit" name="lineEdit_MovTime">
    <property name="geometry">
     <rect>
      <x>462</x>
@@ -611,19 +639,24 @@ All</string>
      <height>22</height>
     </rect>
    </property>
+   <property name="font">
+    <font>
+     <pointsize>10</pointsize>
+    </font>
+   </property>
    <property name="text">
-    <string>Vmax (cm/s)</string>
+    <string>Midpoint (s)</string>
    </property>
    <property name="alignment">
     <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
    </property>
   </widget>
-  <widget class="QSpinBox" name="spinBox_MaxVel">
+  <widget class="QDoubleSpinBox" name="doubleSpinBox_MoveTime">
    <property name="geometry">
     <rect>
      <x>462</x>
      <y>322</y>
-     <width>42</width>
+     <width>61</width>
      <height>22</height>
     </rect>
    </property>
@@ -650,12 +683,17 @@ All</string>
     <rect>
      <x>460</x>
      <y>112</y>
-     <width>91</width>
+     <width>111</width>
      <height>22</height>
     </rect>
    </property>
+   <property name="font">
+    <font>
+     <pointsize>9</pointsize>
+    </font>
+   </property>
    <property name="text">
-    <string>Type of exercise</string>
+    <string>Type of Exercise</string>
    </property>
    <property name="alignment">
     <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
@@ -669,6 +707,11 @@ All</string>
      <width>82</width>
      <height>17</height>
     </rect>
+   </property>
+   <property name="font">
+    <font>
+     <pointsize>9</pointsize>
+    </font>
    </property>
    <property name="text">
     <string>Reaching</string>
@@ -685,9 +728,14 @@ All</string>
     <rect>
      <x>464</x>
      <y>162</y>
-     <width>91</width>
+     <width>101</width>
      <height>17</height>
     </rect>
+   </property>
+   <property name="font">
+    <font>
+     <pointsize>9</pointsize>
+    </font>
    </property>
    <property name="text">
     <string>Hand to mouth</string>
@@ -708,6 +756,11 @@ All</string>
      <height>17</height>
     </rect>
    </property>
+   <property name="font">
+    <font>
+     <pointsize>9</pointsize>
+    </font>
+   </property>
    <property name="text">
     <string>Bell shaped</string>
    </property>
@@ -726,6 +779,11 @@ All</string>
      <width>82</width>
      <height>17</height>
     </rect>
+   </property>
+   <property name="font">
+    <font>
+     <pointsize>9</pointsize>
+    </font>
    </property>
    <property name="text">
     <string>Constant</string>
@@ -746,8 +804,13 @@ All</string>
      <height>22</height>
     </rect>
    </property>
+   <property name="font">
+    <font>
+     <pointsize>9</pointsize>
+    </font>
+   </property>
    <property name="text">
-    <string>Velocity profile</string>
+    <string>Velocity Profile</string>
    </property>
    <property name="alignment">
     <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
@@ -761,6 +824,17 @@ All</string>
      <width>171</width>
      <height>23</height>
     </rect>
+   </property>
+   <property name="sizePolicy">
+    <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+     <horstretch>0</horstretch>
+     <verstretch>0</verstretch>
+    </sizepolicy>
+   </property>
+   <property name="font">
+    <font>
+     <pointsize>10</pointsize>
+    </font>
    </property>
    <property name="text">
     <string>MOVEMENT PARAMETERS</string>
@@ -781,6 +855,11 @@ All</string>
      <height>40</height>
     </rect>
    </property>
+   <property name="font">
+    <font>
+     <pointsize>10</pointsize>
+    </font>
+   </property>
    <property name="text">
     <string>SAVE AS
   movement</string>
@@ -794,6 +873,11 @@ All</string>
      <width>81</width>
      <height>40</height>
     </rect>
+   </property>
+   <property name="font">
+    <font>
+     <pointsize>10</pointsize>
+    </font>
    </property>
    <property name="text">
     <string>LOAD 
@@ -818,9 +902,14 @@ All</string>
     <rect>
      <x>550</x>
      <y>360</y>
-     <width>131</width>
+     <width>121</width>
      <height>21</height>
     </rect>
+   </property>
+   <property name="font">
+    <font>
+     <pointsize>10</pointsize>
+    </font>
    </property>
    <property name="autoFillBackground">
     <bool>false</bool>
@@ -846,6 +935,11 @@ All</string>
      <width>81</width>
      <height>40</height>
     </rect>
+   </property>
+   <property name="font">
+    <font>
+     <pointsize>10</pointsize>
+    </font>
    </property>
    <property name="text">
     <string>Go to 
@@ -878,14 +972,19 @@ All</string>
     <enum>Qt::Horizontal</enum>
    </property>
   </widget>
-  <widget class="QLineEdit" name="lineEdit_lineEdit_MoveRobotRotationalVelocity_2">
+  <widget class="QLineEdit" name="lineEdit_lineEdit_MoveRobotVelocity_2">
    <property name="geometry">
     <rect>
      <x>462</x>
      <y>192</y>
-     <width>91</width>
+     <width>101</width>
      <height>22</height>
     </rect>
+   </property>
+   <property name="font">
+    <font>
+     <pointsize>10</pointsize>
+    </font>
    </property>
    <property name="text">
     <string>START Position</string>
@@ -894,14 +993,19 @@ All</string>
     <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
    </property>
   </widget>
-  <widget class="QLineEdit" name="lineEdit_lineEdit_MoveRobotRotationalVelocity_3">
+  <widget class="QLineEdit" name="lineEdit_lineEdit_MoveRobotVelocity_3">
    <property name="geometry">
     <rect>
      <x>462</x>
      <y>242</y>
-     <width>91</width>
+     <width>101</width>
      <height>22</height>
     </rect>
+   </property>
+   <property name="font">
+    <font>
+     <pointsize>10</pointsize>
+    </font>
    </property>
    <property name="text">
     <string>END Position</string>
@@ -991,11 +1095,16 @@ All</string>
   <widget class="QRadioButton" name="radioButton_SideRight">
    <property name="geometry">
     <rect>
-     <x>572</x>
+     <x>580</x>
      <y>162</y>
-     <width>91</width>
+     <width>71</width>
      <height>17</height>
     </rect>
+   </property>
+   <property name="font">
+    <font>
+     <pointsize>9</pointsize>
+    </font>
    </property>
    <property name="text">
     <string>Right</string>
@@ -1007,11 +1116,16 @@ All</string>
   <widget class="QLineEdit" name="lineEdit_Side">
    <property name="geometry">
     <rect>
-     <x>568</x>
+     <x>580</x>
      <y>112</y>
-     <width>91</width>
+     <width>81</width>
      <height>22</height>
     </rect>
+   </property>
+   <property name="font">
+    <font>
+     <pointsize>9</pointsize>
+    </font>
    </property>
    <property name="text">
     <string>Side</string>
@@ -1023,11 +1137,16 @@ All</string>
   <widget class="QRadioButton" name="radioButton_SideLeft">
    <property name="geometry">
     <rect>
-     <x>572</x>
+     <x>580</x>
      <y>142</y>
-     <width>82</width>
+     <width>71</width>
      <height>17</height>
     </rect>
+   </property>
+   <property name="font">
+    <font>
+     <pointsize>9</pointsize>
+    </font>
    </property>
    <property name="text">
     <string>Left</string>
@@ -1045,6 +1164,11 @@ All</string>
      <height>31</height>
     </rect>
    </property>
+   <property name="font">
+    <font>
+     <pointsize>10</pointsize>
+    </font>
+   </property>
    <property name="text">
     <string>Set current
  Position</string>
@@ -1058,6 +1182,11 @@ All</string>
      <width>75</width>
      <height>31</height>
     </rect>
+   </property>
+   <property name="font">
+    <font>
+     <pointsize>10</pointsize>
+    </font>
    </property>
    <property name="text">
     <string>Set current
@@ -1073,6 +1202,11 @@ All</string>
      <height>40</height>
     </rect>
    </property>
+   <property name="font">
+    <font>
+     <pointsize>10</pointsize>
+    </font>
+   </property>
    <property name="text">
     <string>CREATE 
   movement</string>
@@ -1081,16 +1215,16 @@ All</string>
  </widget>
  <tabstops>
   <tabstop>lineEdit_MoveRobot</tabstop>
-  <tabstop>lineEdit_MoveRobotTranslationVelocity</tabstop>
-  <tabstop>spinBox_MoveRobotTranslationalVelocity</tabstop>
+  <tabstop>lineEdit_MoveRobotPosition</tabstop>
+  <tabstop>spinBox_MoveRobotPosition</tabstop>
   <tabstop>pushButton_Xminus</tabstop>
   <tabstop>pushButton_Xplus</tabstop>
   <tabstop>pushButton_Yminus</tabstop>
   <tabstop>pushButton_Yplus</tabstop>
   <tabstop>pushButton_Zminus</tabstop>
   <tabstop>pushButton_Zplus</tabstop>
-  <tabstop>lineEdit_lineEdit_MoveRobotRotationalVelocity</tabstop>
-  <tabstop>spinBox_MoveRobotRotationalVelocity</tabstop>
+  <tabstop>lineEdit_lineEdit_MoveRobotVelocity</tabstop>
+  <tabstop>spinBox_MoveRobotVelocity</tabstop>
   <tabstop>pushButton_J1minus</tabstop>
   <tabstop>pushButton_J1plus</tabstop>
   <tabstop>pushButton_J2minus</tabstop>
@@ -1111,8 +1245,8 @@ All</string>
   <tabstop>doubleSpin_Joint3_Value</tabstop>
   <tabstop>pushButton_SaveStartPosition</tabstop>
   <tabstop>pushButton_SaveEndPosition</tabstop>
-  <tabstop>lineEdit_MaxVel</tabstop>
-  <tabstop>spinBox_MaxVel</tabstop>
+  <tabstop>lineEdit_MovTime</tabstop>
+  <tabstop>doubleSpinBox_MoveTime</tabstop>
   <tabstop>lineEdit_TypeOfExercise</tabstop>
   <tabstop>radioButton_TypeOfExercise_Reaching</tabstop>
   <tabstop>radioButton_TypeOfExercise_HandtoMouth</tabstop>
@@ -1120,7 +1254,7 @@ All</string>
  <resources/>
  <connections/>
  <buttongroups>
-  <buttongroup name="buttonGroup_2"/>
   <buttongroup name="buttonGroup"/>
+  <buttongroup name="buttonGroup_2"/>
  </buttongroups>
 </ui>
