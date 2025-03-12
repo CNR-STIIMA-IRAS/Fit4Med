@@ -1,15 +1,31 @@
 import launch
-from launch.actions import ExecuteProcess, RegisterEventHandler
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, RegisterEventHandler
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch.event_handlers import OnProcessExit, OnShutdown
 
-
 def generate_launch_description():
+    # Declare the launch arguments
+    ssh_username_arg = DeclareLaunchArgument(
+        'ssh_username',
+        default_value='pauli',
+        description='Username for SSH connection'
+    )
+    ssh_address_arg = DeclareLaunchArgument(
+        'ssh_address',
+        default_value='192.168.46.101',
+        description='Address for SSH connection'
+    )
+
+    # Get the launch configurations
+    ssh_username = LaunchConfiguration('ssh_username')
+    ssh_address = LaunchConfiguration('ssh_address')
+
     # Check if there are alive ros2 nodes from previous sessions
     kill_remote_nodes = ExecuteProcess(
         cmd=[
-            'ssh', 'pauli@192.168.46.101',
-            '/home/pauli/scripts/kill_ros2_nodes.sh'
+            'ssh', [ssh_username, '@', ssh_address],
+            '/home/', ssh_username, '/projects/ros2_ws/src/Fit4Med/bash_scripts/kill_ros2_nodes.sh'
         ],
         shell=True,
         output='screen'
@@ -17,12 +33,12 @@ def generate_launch_description():
 
     # Launch remote control nodes via SSH on remote PC
     remote_node_launch = ExecuteProcess(
-    cmd=[
-        'ssh', 'pauli@192.168.46.101', 
-        '"echo Remote connection successful && sudo /etc/init.d/ethercat start && source /home/pauli/ros2_ws/install/setup.bash && ros2 launch tecnobody_workbench run_platform_moveit.launch.py"'
-    ],
-    shell=True,
-    output='screen'
+        cmd=[
+            'ssh', [ssh_username, '@', ssh_address],
+            '"echo Remote connection successful && sudo /etc/init.d/ethercat start && source /home/', ssh_username, '/ros2_ws/install/setup.bash && ros2 launch tecnobody_workbench run_platform_moveit.launch.py"'
+        ],
+        shell=True,
+        output='screen'
     )
 
     # Check the completion of homing procedure before triggering the GUI node
@@ -53,9 +69,10 @@ def generate_launch_description():
         )
     )
 
-    
     # Create the launch description and add actions
     ld = launch.LaunchDescription()
+    ld.add_action(ssh_username_arg)
+    ld.add_action(ssh_address_arg)
     ld.add_action(kill_remote_nodes)
     ld.add_action(remote_launcher)
     ld.add_action(gui_launcher)

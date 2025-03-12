@@ -1,0 +1,66 @@
+Starting node kill process...
+Nodes to kill: /controller_manager
+/ethercat_checker_node
+/fmrrehab_controller
+/homing_done_listener
+/joint_state_broadcaster
+/move_group
+/move_group_private_94685008177472
+/moveit_simple_controller_manager
+/robot_state_publisher
+/state_controller
+/transform_listener_impl_561d925e3ed0
+Sent SIGINT to node /controller_manager (pid 2465)
+Sent SIGINT to node /ethercat_checker_node (pid 2534)
+Sent SIGINT to node /move_group (pid 2536)
+Sent SIGINT to node /robot_state_publisher (pid 2471)
+Nodes to kill: /controller_manager
+/ethercat_checker_node
+/homing_done_listener
+/homing_node
+/move_group
+/moveit_simple_controller_manager
+/robot_state_publisher
+/spawner_state_controller
+Sent SIGINT to node /controller_manager (pid 2935)
+Sent SIGINT to node /ethercat_checker_node (pid 2534)
+Sent SIGINT to node /homing_node (pid 2939)
+Sent SIGINT to node /robot_state_publisher (pid 2937)
+Nodes to kill: /controller_manager
+/ethercat_checker_node
+/ethercat_checker_node
+/homing_completion_publisher
+/homing_done_listener
+/move_group
+/move_group
+/move_group_private_94873957189760
+/moveit_simple_controller_manager
+/moveit_simple_controller_manager
+/spawner_fmrrehab_controller
+/transform_listener_impl_56499098e890
+Sent SIGINT to node /controller_manager (pid 3035)
+Sent SIGINT to node /ethercat_checker_node (pid 3039)
+Sent SIGINT to node /ethercat_checker_node (pid 3039)
+Sent SIGINT to node /homing_completion_publisher (pid 3037)
+Sent SIGINT to node /move_group (pid 3041)
+Sent SIGINT to node /move_group (pid 3041)
+Nodes to kill: /FMRR_cell_node
+/controller_manager
+/ethercat_checker_node
+/move_group
+/move_group
+/move_group_private_94873957189760
+/moveit_simple_controller_manager
+/moveit_simple_controller_manager
+/transform_listener_impl_56499098e890
+Nodes to kill: /ethercat_checker_node
+/move_group
+/move_group_private_94873957189760
+/moveit_simple_controller_manager
+/transform_listener_impl_56499098e890
+Nodes to kill: /move_group
+/move_group_private_94873957189760
+/moveit_simple_controller_manager
+/transform_listener_impl_56499098e890
+No more nodes to kill. Exiting.
+Node kill process complete.
