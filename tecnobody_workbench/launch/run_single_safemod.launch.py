@@ -137,7 +137,7 @@ def generate_launch_description():
     admittance_controller_node = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['admittance_controller'],
+        arguments=['admittance_controller', '--inactive'],
         output='screen',
     )
     
@@ -170,7 +170,7 @@ def generate_launch_description():
     error_handlers_launcher = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=homing,
-            on_exit=[joint_controller_node, homing_done_publisher, eth_checker, ft_offset_updater],
+            on_exit=[joint_controller_node, admittance_controller_node, homing_done_publisher, eth_checker, ft_offset_updater],
         )
     )
     
@@ -180,13 +180,6 @@ def generate_launch_description():
             on_exit=[ros_contollers_checker],
         )
     )
-
-    # admittance_controller_launcher = RegisterEventHandler(
-    #     event_handler=OnProcessExit(
-    #         target_action=ft_offset_updater,
-    #         on_exit=[joint_controller_node],
-    #     )
-    # )
 
     controller_unspawner = RegisterEventHandler(
             event_handler=OnShutdown(
@@ -202,8 +195,7 @@ def generate_launch_description():
     ld.add_action(gpio_controller_node)
     ld.add_action(homing_launcher)
     ld.add_action(error_handlers_launcher)
-    ld.add_action(ros2_controllers_checker_launcher)
-    # ld.add_action(admittance_controller_launcher)
+    # ld.add_action(ros2_controllers_checker_launcher)
     ld.add_action(controller_unspawner)
 
     return ld

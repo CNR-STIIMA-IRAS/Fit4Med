@@ -5,7 +5,6 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from controller_manager_msgs.srv import ListControllers
 from std_msgs.msg import String
 from control_msgs.msg import DynamicInterfaceGroupValues, InterfaceValue
-from time import sleep
 
 
 class GPIOCommandPublisher(Node):
@@ -19,23 +18,27 @@ class GPIOCommandPublisher(Node):
             10
         )
 
-        # Create and publish initial GPIO message
-        self.publish_gpio_command(1.0)
+        # Create a timer to publish GPIO message
+        self.create_timer(0.1, self.publish_gpio_command)
         
-    def publish_gpio_command(self, value):
+        # Create a timer to shutdown the node
+        self.create_timer(5.0, self.shutdown_node)
+        
+    def publish_gpio_command(self):
         msg = DynamicInterfaceGroupValues(
             interface_groups=['safe_output'],
             interface_values=[
                 InterfaceValue(
                     interface_names=['d_output.1'],
-                    values=[value]
+                    values=[1.0]
                 )
             ]
         )
         self.gpio_publisher_.publish(msg)
-        self.shutdown_node()
         
     def shutdown_node(self):
+        self.destroy_timer(self.publish_gpio_command)
+        self.destroy_timer(self.shutdown_node)
         self.get_logger().info('gpio error state disabled, shutting down...')
         self.destroy_publisher(self.gpio_publisher_)
         self.destroy_node()
@@ -46,7 +49,15 @@ class GPIOCommandPublisher(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    GPIOCommandPublisher() 
+    node = GPIOCommandPublisher() 
+    
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
+
+    try:
+        executor.spin()
+    except KeyboardInterrupt:
+        node.get_logger().info('Keyboard interrupt, shutting down.\n')
 
 if __name__ == '__main__':
     main()
