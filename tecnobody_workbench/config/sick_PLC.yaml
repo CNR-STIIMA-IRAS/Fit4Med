@@ -1,0 +1,19 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 100  # Hz
+
+    PLC_controller:
+      type: plc_controller/PLCController
+
+PLC_controller:
+  ros__parameters:
+    gpios:
+      - PLC_node
+    command_interfaces:
+      PLC_node:
+        - interfaces:
+          - s_output.1
+    state_interfaces:
+      PLC_node:
+        - interfaces:
+          - s_input.1

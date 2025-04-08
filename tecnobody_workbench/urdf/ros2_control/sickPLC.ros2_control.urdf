@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<robot name = "workbench" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+    <ros2_control name="tecnobody" type="system">
+        <hardware>
+            <plugin>ethercat_driver/EthercatDriver</plugin>
+            <param name="master_id">0</param>
+            <param name="control_frequency">100</param>
+        </hardware>
+
+        <gpio name="PLC_node">
+            <command_interface name="s_output.1"/>
+            <state_interface name="s_msg"/>
+            <state_interface name="s_input.1"/>
+            <ec_module name="sickPLC">
+                <plugin>ethercat_generic_plugins/GenericEcSlave</plugin>
+                <param name="alias">0</param>
+                <param name="position">0</param>
+                <param name="slave_config">$(find tecnobody_workbench)/config/sick_getc100.yaml</param>
+            </ec_module>
+        </gpio>
+    </ros2_control>
+</robot>

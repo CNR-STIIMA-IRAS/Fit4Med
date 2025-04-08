@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>plc_controller</name>
+  <version>0.0.1</version>
+  <description>ROS2 controller that logs commands written to interfaces by other controllers</description>
+  <maintainer email="adriano.scibilia@cnr.it">Adriano Scibilia</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>controller_interface</depend>
+  <depend>hardware_interface</depend>
+  <depend>pluginlib</depend>
+  <depend>realtime_tools</depend>
+  <depend>std_msgs</depend>
+  <depend>gpio_controllers</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
