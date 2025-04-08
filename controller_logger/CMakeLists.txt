@@ -48,6 +48,19 @@ ament_target_dependencies(${PROJECT_NAME} PUBLIC
 # Export the plugin description file
 pluginlib_export_plugin_description_file(controller_interface controller_logger_plugin.xml)
 
+install(
+  DIRECTORY include/
+  DESTINATION include
+)
+
+install(
+  TARGETS
+  ${PROJECT_NAME}
+  RUNTIME DESTINATION bin
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+)
+
 # Export dependencies
 ament_export_dependencies(${THIS_PACKAGE_INCLUDE_DEPENDS})
 

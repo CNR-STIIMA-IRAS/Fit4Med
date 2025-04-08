@@ -17,6 +17,6 @@
   <depend>forward_command_controller</depend>
 
   <export>
-    <pluginlib plugin_manifest="controller_logger_plugin.xml"/>
+    <build_type>ament_cmake</build_type>
   </export>
 </package>

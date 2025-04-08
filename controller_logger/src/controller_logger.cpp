@@ -5,9 +5,6 @@ namespace controller_logger
 {
 controller_interface::CallbackReturn ControllerLogger::on_init()
 {
-  auto ret = ForwardCommandController::on_init();
-  if (ret != controller_interface::CallbackReturn::SUCCESS) return ret;
-
   param_listener_ = std::make_shared<ParamListener>(get_node());
   logger_publisher_ = get_node()->create_publisher<sensor_msgs::msg::JointState>("~/logged_commands", 10);
 
@@ -18,23 +15,25 @@ controller_interface::CallbackReturn ControllerLogger::on_init()
 
 controller_interface::InterfaceConfiguration ControllerLogger::command_interface_configuration() const
 {
-  return ForwardCommandController::command_interface_configuration();
+  auto state_interfaces_config_names = std::vector<std::string>{"dummy_interface"};
+  return {
+    controller_interface::interface_configuration_type::INDIVIDUAL, state_interfaces_config_names};
 }
 
-controller_interface::return_type ControllerLogger::update(const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
+controller_interface::InterfaceConfiguration ControllerLogger::state_interface_configuration() const
 {
-  // if (read_from_interface_ && logger_publisher_)
-  // {
-  //   logger_publisher_->msg_.data.clear();
-  //   for (const auto & interface : command_interfaces_)
-  //   {
-  //     logger_publisher_->msg_.data.push_back(interface.get().get_value());
-  //   }
-  //   logger_publisher_->unlockAndPublish();
-  // }
+  auto state_interfaces_config_names = std::vector<std::string>{"dummy_interface"};
+  return {
+    controller_interface::interface_configuration_type::INDIVIDUAL, state_interfaces_config_names};
+}
+
+
+controller_interface::return_type update_and_write_commands(
+  const rclcpp::Time & time, const rclcpp::Duration & period) {
 
   return controller_interface::return_type::OK;
 }
+
 } // namespace controller_logger
 
-PLUGINLIB_EXPORT_CLASS(controller_logger::ControllerLogger, controller_interface::ControllerInterface)
+PLUGINLIB_EXPORT_CLASS(controller_logger::ControllerLogger, controller_interface::ChainableControllerInterface)
