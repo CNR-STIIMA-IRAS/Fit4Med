@@ -1,0 +1,9 @@
+<library path="controller_logger">
+  <class name="controller_logger/ControllerLogger"
+         type="controller_logger::ControllerLogger" 
+         base_class_type="controller_interface::ControllerInterface">
+    <description>
+      This controller logs commands written to interfaces by other controllers.
+    </description>
+  </class>
+</library>
