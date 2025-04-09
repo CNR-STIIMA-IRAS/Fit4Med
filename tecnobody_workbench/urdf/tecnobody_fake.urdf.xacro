@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="tecnobody">
+    <xacro:arg name="initial_positions_file" default="$(find fmrrehab_moveit_config)/config/initial_positions.yaml" />
+
+    <!-- Import tecnobody urdf file -->
+    <xacro:include filename="$(find tecnobody_workbench)/urdf/platform_complete_moveit.urdf" />
+
+    <!-- Import control_xacro -->
+    <xacro:include filename="tecnobody_fake.ros2_control.xacro" />
+
+    <xacro:tecnobody_ros2_control name="FakeSystem" initial_positions_file="$(arg initial_positions_file)"/>
+
+</robot>

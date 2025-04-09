@@ -32,7 +32,7 @@ from sensor_msgs.msg import JointState # joints positions, velocities and effort
 from std_msgs.msg import Int16 
 from geometry_msgs.msg import Point
 
-import debugpy
+# import debugpy
 
 DEBUG = False
 
@@ -52,13 +52,6 @@ class MainProgram(Node, Ui_FMRRMainWindow):
 
     def __init__(self):
         Node.__init__(self, 'FMRR_cell_node') # type: ignore
-
-        if DEBUG:
-            # Start debugpy listener to enable attaching debugger
-            debugpy.listen(("0.0.0.0", 5678))
-            print("Waiting for debugger to attach...")
-            debugpy.wait_for_client()  # Pause execution until debugger attaches
-            print("Debugger attached. Starting node.")
 
         self.DialogMovementWindow = QtWidgets.QDialog()
         self.FMRRMainWindow = QtWidgets.QMainWindow() # FMRRMainWindow is an instance of the class QtWidgets.QMainWindow. Not to be confuse with the namof the file FMRRMainWindow.py
