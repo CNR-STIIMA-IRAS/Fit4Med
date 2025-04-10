@@ -7,11 +7,11 @@ from PyQt5.QtCore import QTimer
 
 # mathematics
 import numpy as np
-from sympy import true
+# from sympy import true
 
-import rclpy.action
-import rclpy.duration
-import rclpy.time
+# import rclpy.action
+# import rclpy.duration
+# import rclpy.time
 
 #MC Classes/methods
 from .MovementProgram import FMRR_Ui_MovementWindow 
@@ -30,7 +30,7 @@ from trajectory_msgs.msg import JointTrajectoryPoint
 
 from sensor_msgs.msg import JointState # joints positions, velocities and efforts
 from std_msgs.msg import Int16 
-from geometry_msgs.msg import Point
+# from geometry_msgs.msg import Point
 
 # import debugpy
 
