@@ -1,14 +1,7 @@
 from launch import LaunchDescription
-from launch.conditions import IfCondition
-from launch.substitutions import Command, FindExecutable, PathJoinSubstitution, LaunchConfiguration
+from launch.substitutions import Command, FindExecutable, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
-from launch_ros.parameter_descriptions import ParameterValue
-from launch.event_handlers import OnProcessExit
-from launch.actions import RegisterEventHandler
-from moveit_configs_utils import MoveItConfigsBuilder
-from launch import LaunchContext
-import yaml
 
 
 def generate_launch_description():
