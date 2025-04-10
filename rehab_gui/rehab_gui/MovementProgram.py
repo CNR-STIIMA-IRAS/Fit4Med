@@ -676,7 +676,10 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
 
 #       Joints lcd 
         _jointPosConvFact = self.ui_FMRRMainWindow._jointPosConvFact #
-        RobotJointPosition = self.ui_FMRRMainWindow.RobotJointPosition
+        try:
+            RobotJointPosition = self.ui_FMRRMainWindow.RobotJointPosition
+        except:
+            return
 #        print('ActualRobotJointPositon:')
 #        print(RobotJointPosition)
         RobotJointPosition = [Ji_position * _jointPosConvFact for Ji_position in RobotJointPosition]
