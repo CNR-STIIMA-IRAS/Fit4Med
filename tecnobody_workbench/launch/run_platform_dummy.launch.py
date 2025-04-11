@@ -48,6 +48,21 @@ def generate_launch_description():
         arguments=['fmrrehab_controller'],
         output='screen',
     )
+    
+    rviz_config_file = PathJoinSubstitution(
+        [FindPackageShare(description_package), "config", "robot_model.rviz"]
+    )
+    
+    rviz_node = Node(
+        package="rviz2",
+        executable="rviz2",
+        name="rviz2_moveit",
+        output="log",
+        arguments=["-d", rviz_config_file],
+        parameters=[
+            robot_description,
+        ],
+    )
 
     rehab_gui = Node(
         package="rehab_gui",
@@ -60,6 +75,6 @@ def generate_launch_description():
     ld.add_action(jsb)
     ld.add_action(rsp)
     ld.add_action(trajectory_controller_node)
-    # ld.add_action(rehab_gui)
+    ld.add_action(rviz_node)
 
     return ld

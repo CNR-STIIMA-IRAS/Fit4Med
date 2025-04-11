@@ -45,10 +45,12 @@ std::vector<hardware_interface::ComponentInfo> extract_gpios_from_hardware_info(
 }
 }  // namespace
 
+
 namespace plc_controller
 {
 
 PLCController::PLCController() : controller_interface::ControllerInterface() {}
+
 
 CallbackReturn PLCController::on_init()
 try
@@ -62,6 +64,7 @@ catch (const std::exception & e)
   fprintf(stderr, "Exception thrown during init stage with message: %s \n", e.what());
   return CallbackReturn::ERROR;
 }
+
 
 CallbackReturn PLCController::on_configure(const rclcpp_lifecycle::State &)
 try
@@ -101,6 +104,7 @@ catch (const std::exception & e)
   return CallbackReturn::ERROR;
 }
 
+
 controller_interface::InterfaceConfiguration
 PLCController::command_interface_configuration() const
 {
@@ -111,6 +115,7 @@ PLCController::command_interface_configuration() const
   return command_interfaces_config;
 }
 
+
 controller_interface::InterfaceConfiguration PLCController::state_interface_configuration()
   const
 {
@@ -120,6 +125,7 @@ controller_interface::InterfaceConfiguration PLCController::state_interface_conf
 
   return state_interfaces_config;
 }
+
 
 CallbackReturn PLCController::on_activate(const rclcpp_lifecycle::State &)
 {
@@ -141,11 +147,13 @@ CallbackReturn PLCController::on_activate(const rclcpp_lifecycle::State &)
   return CallbackReturn::SUCCESS;
 }
 
+
 CallbackReturn PLCController::on_deactivate(const rclcpp_lifecycle::State &)
 {
   rt_command_ptr_.reset();
   return CallbackReturn::SUCCESS;
 }
+
 
 controller_interface::return_type PLCController::update(
   const rclcpp::Time &, const rclcpp::Duration &)
@@ -153,6 +161,7 @@ controller_interface::return_type PLCController::update(
   update_plc_states();
   return update_plc_commands();
 }
+
 
 bool PLCController::update_dynamic_map_parameters()
 {
@@ -163,6 +172,7 @@ bool PLCController::update_dynamic_map_parameters()
   params_ = param_listener_->get_params();
   return true;
 }
+
 
 void PLCController::store_command_interface_types()
 {
@@ -175,6 +185,7 @@ void PLCController::store_command_interface_types()
   }
 }
 
+
 bool PLCController::should_broadcast_all_interfaces_of_configured_gpios() const
 {
   auto are_interfaces_empty = [](const auto & interfaces)
@@ -183,6 +194,7 @@ bool PLCController::should_broadcast_all_interfaces_of_configured_gpios() const
     params_.state_interfaces.gpios_map.cbegin(), params_.state_interfaces.gpios_map.cend(),
     are_interfaces_empty);
 }
+
 
 std::vector<hardware_interface::ComponentInfo> PLCController::get_gpios_from_urdf() const
 try
@@ -195,6 +207,7 @@ catch (const std::exception & e)
   fprintf(stderr, "Exception thrown during extracting gpios info from urdf %s \n", e.what());
   return {};
 }
+
 
 void PLCController::set_all_state_interfaces_of_configured_gpios()
 {
@@ -214,6 +227,7 @@ void PLCController::set_all_state_interfaces_of_configured_gpios()
     }
   }
 }
+
 
 void PLCController::store_state_interface_types()
 {
@@ -235,6 +249,7 @@ void PLCController::store_state_interface_types()
       [&](const auto & interface_name) { return gpio_name + "/" + interface_name; });
   }
 }
+
 
 void PLCController::initialize_plc_state_msg()
 {
@@ -270,6 +285,7 @@ InterfacesNames PLCController::get_plc_state_interfaces_names(
   return result;
 }
 
+
 template <typename T>
 std::unordered_map<std::string, std::reference_wrapper<T>>
 PLCController::create_map_of_references_to_interfaces(
@@ -293,6 +309,7 @@ PLCController::create_map_of_references_to_interfaces(
   return map;
 }
 
+
 template <typename T>
 bool PLCController::check_if_configured_interfaces_matches_received(
   const InterfacesNames & interfaces_from_params, const T & configured_interfaces)
@@ -311,6 +328,7 @@ bool PLCController::check_if_configured_interfaces_matches_received(
   }
   return true;
 }
+
 
 controller_interface::return_type PLCController::update_plc_commands()
 {
@@ -343,6 +361,7 @@ controller_interface::return_type PLCController::update_plc_commands()
   return controller_interface::return_type::OK;
 }
 
+
 void PLCController::apply_command(
   const CmdType & gpio_commands, std::size_t gpio_index, std::size_t command_interface_index) const
 {
@@ -362,6 +381,7 @@ void PLCController::apply_command(
       full_command_interface_name.c_str(), e.what());
   }
 }
+
 
 void PLCController::update_plc_states()
 {
@@ -384,6 +404,7 @@ void PLCController::update_plc_states()
   }
   realtime_plc_state_publisher_->unlockAndPublish();
 }
+
 
 void PLCController::apply_state_value(
   StateType & state_msg, std::size_t gpio_index, std::size_t interface_index) const
