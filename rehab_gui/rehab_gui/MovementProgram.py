@@ -690,7 +690,10 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
 
 ##       Handle lcd 
         _toolPosCovFact = self.ui_FMRRMainWindow._toolPosCovFact
-        HandlePosition = self.ui_FMRRMainWindow.HandlePosition
+        try:
+            HandlePosition = self.ui_FMRRMainWindow.HandlePosition
+        except:
+            return
         # print('HandlePosition:')
         # print(HandlePosition)
         HandlePosition[:] = [i_position * _toolPosCovFact for i_position in HandlePosition]

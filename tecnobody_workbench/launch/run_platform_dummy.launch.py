@@ -60,6 +60,6 @@ def generate_launch_description():
     ld.add_action(jsb)
     ld.add_action(rsp)
     ld.add_action(trajectory_controller_node)
-    ld.add_action(rehab_gui)
+    # ld.add_action(rehab_gui)
 
     return ld
