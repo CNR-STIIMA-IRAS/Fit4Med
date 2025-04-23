@@ -23,6 +23,12 @@ controller_manager:
     state_controller:
       type: ethercat_controllers/CiA402Controller
 
+    controller_logger:
+      type: controller_logger/ControllerLogger
+
+controller_logger:
+  ros__parameters:
+    interfaces: [ "joint_1/position", "joint_2/position", "joint_3/position" ]
 
 forward_velocity_controller:
   ros__parameters:
@@ -53,9 +59,9 @@ forward_command_controller:
 state_controller:
   ros__parameters:
     dofs:
-      - joint_1
-      - joint_2
-      - joint_3
+    - joint_1
+    - joint_2
+    - joint_3
 
 joint_trajectory_controller:
   ros__parameters:

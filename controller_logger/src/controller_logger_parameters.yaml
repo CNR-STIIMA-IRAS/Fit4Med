@@ -1,4 +1,3 @@
 controller_logger:
   joints: { type: string_array, default_value: [], description: "Name of the joints to control" }
-  interface_name: { type: string, default_value: "", description: "Name of the interface to command" }
-  read_from_interface: { type: bool, default_value: true, description: "Read from an interface instead of topic" }
+  interfaces: { type: string_array, default_value: [], description: "Name of the interface to command" }
