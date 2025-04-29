@@ -13,7 +13,21 @@ PLC_controller:
       PLC_node:
         - interfaces:
           - s_output.1
+          - s_output.2
+          - s_output.3
+          - s_output.4
+          - s_output.5
+          - s_output.6
+          - s_output.7
+          - s_output.8
     state_interfaces:
       PLC_node:
         - interfaces:
           - s_input.1
+          - s_input.2
+          - s_input.3
+          - s_input.4
+          - s_input.5
+          - s_input.6
+          - s_input.7
+          - s_input.8

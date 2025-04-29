@@ -15,11 +15,16 @@
 #include "plc_controller/plc_controller.hpp"
 
 #include <algorithm>
+#include <cstdint>
+#include <sys/types.h>
+#include <vector>
 
 #include "hardware_interface/component_parser.hpp"
 #include "rclcpp/logging.hpp"
 #include "rclcpp/qos.hpp"
 #include "rclcpp/subscription.hpp"
+
+#define MSG_LENGHT 8
 
 namespace
 {
@@ -253,22 +258,13 @@ void PLCController::store_state_interface_types()
 
 void PLCController::initialize_plc_state_msg()
 {
-  auto & gpio_state_msg = realtime_plc_state_publisher_->msg_;
-  gpio_state_msg.header.stamp = get_node()->now();
-  gpio_state_msg.interface_groups.resize(params_.gpios.size());
-  gpio_state_msg.interface_values.resize(params_.gpios.size());
-
-  for (std::size_t gpio_index = 0; gpio_index < params_.gpios.size(); ++gpio_index)
-  {
-    const auto gpio_name = params_.gpios[gpio_index];
-    gpio_state_msg.interface_groups[gpio_index] = gpio_name;
-    gpio_state_msg.interface_values[gpio_index].interface_names =
-      get_plc_state_interfaces_names(gpio_name);
-    gpio_state_msg.interface_values[gpio_index].values = std::vector<double>(
-      gpio_state_msg.interface_values[gpio_index].interface_names.size(),
-      std::numeric_limits<double>::quiet_NaN());
-  }
+  auto & plc_state_msg = realtime_plc_state_publisher_->msg_;
+  const auto gpio_name = params_.gpios.front();
+  plc_state_msg.interface_names = get_plc_state_interfaces_names(gpio_name);
+  plc_state_msg.values = std::vector<uint8_t>(
+    MSG_LENGHT,std::numeric_limits<uint8_t>::quiet_NaN());
 }
+
 
 InterfacesNames PLCController::get_plc_state_interfaces_names(
   const std::string & gpio_name) const
@@ -339,40 +335,58 @@ controller_interface::return_type PLCController::update_plc_commands()
   }
 
   const auto gpio_commands = *(*gpio_commands_ptr);
-  for (std::size_t gpio_index = 0; gpio_index < gpio_commands.interface_groups.size(); ++gpio_index)
+  const auto & gpio_name = params_.gpios.front();
+  if (
+    gpio_commands.values.size() !=
+    gpio_commands.interface_names.size())
   {
-    const auto & gpio_name = gpio_commands.interface_groups[gpio_index];
-    if (
-      gpio_commands.interface_values[gpio_index].values.size() !=
-      gpio_commands.interface_values[gpio_index].interface_names.size())
+    RCLCPP_ERROR(
+      get_node()->get_logger(), " %s interfaces_names do not match the values",
+      gpio_name.c_str());
+    return controller_interface::return_type::ERROR;
+  }
+
+  try
+  {
+   for(auto it = command_interfaces_map_.begin(); it != command_interfaces_map_.end(); ++it)
     {
-      RCLCPP_ERROR(
-        get_node()->get_logger(), "For gpio %s interfaces_names do not match values",
-        gpio_name.c_str());
-      return controller_interface::return_type::ERROR;
-    }
-    for (std::size_t command_interface_index = 0;
-         command_interface_index < gpio_commands.interface_values[gpio_index].values.size();
-         ++command_interface_index)
-    {
-      apply_command(gpio_commands, gpio_index, command_interface_index);
+      const auto & interface_name = it->first;
+      auto & command_interface = it->second;
+      if (command_interface.get().get_name() == interface_name)
+      {
+        auto command_interface_index = 
+          std::distance(
+            command_interfaces_map_.begin(),
+            it);
+        auto success = command_interface.get().set_value(gpio_commands.values[command_interface_index]);
+      }
     }
   }
+  catch (const std::exception & e)
+  {
+    fprintf(
+      stderr, "Exception thrown during applying command stage with message: %s \n",
+      e.what());
+  }
+
   return controller_interface::return_type::OK;
 }
 
-
 void PLCController::apply_command(
-  const CmdType & gpio_commands, std::size_t gpio_index, std::size_t command_interface_index) const
+  const CmdType & gpio_commands, std::size_t command_interface_index) const
 {
-  const auto full_command_interface_name =
-    gpio_commands.interface_groups[gpio_index] + '/' +
-    gpio_commands.interface_values[gpio_index].interface_names[command_interface_index];
+  const auto full_command_interface_name = gpio_commands.interface_names[command_interface_index];
   try
   {
-    command_interfaces_map_.at(full_command_interface_name)
+    bool success = command_interfaces_map_.at(full_command_interface_name)
       .get()
-      .set_value(gpio_commands.interface_values[gpio_index].values[command_interface_index]);
+      .set_value(gpio_commands.values[command_interface_index]);
+    if (!success)
+    {
+      RCLCPP_ERROR(
+        get_node()->get_logger(), "Failed to set command interface value for %s",
+        full_command_interface_name.c_str());
+    }
   }
   catch (const std::exception & e)
   {
@@ -390,37 +404,33 @@ void PLCController::update_plc_states()
     return;
   }
 
-  auto & gpio_state_msg = realtime_plc_state_publisher_->msg_;
-  gpio_state_msg.header.stamp = get_node()->now();
-  for (std::size_t gpio_index = 0; gpio_index < gpio_state_msg.interface_groups.size();
-       ++gpio_index)
-  {
-    for (std::size_t interface_index = 0;
-         interface_index < gpio_state_msg.interface_values[gpio_index].interface_names.size();
-         ++interface_index)
-    {
-      apply_state_value(gpio_state_msg, gpio_index, interface_index);
-    }
-  }
-  realtime_plc_state_publisher_->unlockAndPublish();
-}
-
-
-void PLCController::apply_state_value(
-  StateType & state_msg, std::size_t gpio_index, std::size_t interface_index) const
-{
-  const auto interface_name =
-    state_msg.interface_groups[gpio_index] + '/' +
-    state_msg.interface_values[gpio_index].interface_names[interface_index];
+  auto & plc_state_msg = realtime_plc_state_publisher_->msg_;
   try
   {
-    state_msg.interface_values[gpio_index].values[interface_index] =
-      state_interfaces_map_.at(interface_name).get().get_value();
+    plc_state_msg.values.clear();
+    plc_state_msg.interface_names.clear();
+    for(const auto & [interface_name, state_interface] : state_interfaces_map_)
+      {
+        if (state_interface.get().get_name() == interface_name)
+        {
+          plc_state_msg.interface_names.push_back(state_interface.get().get_interface_name());
+          auto optional_value = state_interface.get().get_optional<double>();
+          if (optional_value.has_value())
+          {
+            plc_state_msg.values.push_back(optional_value.value());
+          }
+          else
+          {
+            RCLCPP_ERROR(get_node()->get_logger(), "Failed to retrieve state interface value");
+          }
+        }
+      }
   }
   catch (const std::exception & e)
   {
-    fprintf(stderr, "Exception thrown during reading state of: %s \n", interface_name.c_str());
+    fprintf(stderr, "Exception thrown during reading state interface, error: %s \n", e.what());
   }
+  realtime_plc_state_publisher_->unlockAndPublish();
 }
 
 }  // namespace plc_controller

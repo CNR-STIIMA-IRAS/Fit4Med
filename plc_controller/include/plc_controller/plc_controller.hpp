@@ -20,7 +20,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include "control_msgs/msg/dynamic_interface_group_values.hpp"
+#include "plc_controller_msgs/msg/plc_controller_state.hpp"
+#include "plc_controller_msgs/msg/plc_controller_command.hpp"
 #include "controller_interface/controller_interface.hpp"
 #include "rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp"
 #include "rclcpp_lifecycle/state.hpp"
@@ -31,8 +32,8 @@
 
 namespace plc_controller
 {
-using CmdType = control_msgs::msg::DynamicInterfaceGroupValues;
-using StateType = control_msgs::msg::DynamicInterfaceGroupValues;
+using CmdType = plc_controller_msgs::msg::PlcControllerCommand;
+using StateType = plc_controller_msgs::msg::PlcControllerState;
 using CallbackReturn = controller_interface::CallbackReturn;
 using InterfacesNames = std::vector<std::string>;
 using MapOfReferencesToCommandInterfaces = std::unordered_map<
@@ -74,11 +75,8 @@ private:
   template <typename T>
   bool check_if_configured_interfaces_matches_received(
     const InterfacesNames & interfaces_from_params, const T & configured_interfaces);
-  void apply_state_value(
-    StateType & state_msg, std::size_t gpio_index, std::size_t interface_index) const;
-  void apply_command(
-    const CmdType & gpio_commands, std::size_t gpio_index,
-    std::size_t command_interface_index) const;
+  void apply_state_value(StateType & state_msg, std::size_t interface_index) const;
+  void apply_command(const CmdType & gpio_command, std::size_t command_interface_index) const;
   bool should_broadcast_all_interfaces_of_configured_gpios() const;
   void set_all_state_interfaces_of_configured_gpios();
   InterfacesNames get_plc_state_interfaces_names(const std::string & gpio_name) const;

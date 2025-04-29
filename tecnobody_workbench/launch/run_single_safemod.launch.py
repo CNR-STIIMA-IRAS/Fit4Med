@@ -153,8 +153,8 @@ def generate_launch_description():
         output='screen',
     )
 
-    gpio_controller_node = Node(
-        package='controller_manager',
+    plc_client_ps_node = Node(
+        package='tecnobody_workbench_utils',
         executable='spawner',
         arguments=['gpio_command_controller', '--param-file', initial_joint_controllers],
         output='screen',
@@ -162,7 +162,7 @@ def generate_launch_description():
 
     homing_launcher = RegisterEventHandler(
         event_handler=OnProcessExit(
-            target_action=gpio_controller_node,
+            target_action=plc_client_ps_node,
             on_exit=[gpio_command_publisher, homing, jsb, fsb],
         )
     )

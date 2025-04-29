@@ -10,8 +10,22 @@
 
         <gpio name="PLC_node">
             <command_interface name="s_output.1"/>
+            <command_interface name="s_output.2"/>
+            <command_interface name="s_output.3"/>
+            <command_interface name="s_output.4"/>
+            <command_interface name="s_output.5"/>
+            <command_interface name="s_output.6"/>
+            <command_interface name="s_output.7"/>
+            <command_interface name="s_output.8"/>
             <state_interface name="s_msg"/>
             <state_interface name="s_input.1"/>
+            <state_interface name="s_input.2"/>
+            <state_interface name="s_input.3"/>
+            <state_interface name="s_input.4"/>
+            <state_interface name="s_input.5"/>
+            <state_interface name="s_input.6"/>
+            <state_interface name="s_input.7"/>
+            <state_interface name="s_input.8"/>
             <ec_module name="sickPLC">
                 <plugin>ethercat_generic_plugins/GenericEcSlave</plugin>
                 <param name="alias">0</param>
