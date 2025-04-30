@@ -1,7 +1,6 @@
 #include "controller_logger/controller_logger.hpp"
 #include <controller_interface/controller_interface_base.hpp>
 #include <pluginlib/class_list_macros.hpp>
-#include "controller_interface/helpers.hpp"
 
 
 namespace controller_logger
@@ -32,36 +31,19 @@ controller_interface::CallbackReturn ControllerLogger::on_configure(
     // pre-reserve command interfaces
     command_interfaces_.reserve(command_interface_names_.size());
   
-    RCLCPP_INFO(this->get_node()->get_logger(), "configure successful");
+    RCLCPP_INFO(this->get_node()->get_logger(), "configure successfully completed");
   
     // The names should be in the same order as for command interfaces for easier matching
     reference_interface_names_ = command_interface_names_;
     // for any case make reference interfaces size of command interfaces
     reference_interfaces_.resize(
       reference_interface_names_.size(), std::numeric_limits<double>::quiet_NaN());
-  
     return controller_interface::CallbackReturn::SUCCESS;
 }
 
 controller_interface::CallbackReturn ControllerLogger::on_activate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  //  check if we have all resources defined in the "points" parameter
-  //  also verify that we *only* have the resources defined in the "points" parameter
-  // ATTENTION(destogl): Shouldn't we use ordered interface all the time?
-  std::vector<std::reference_wrapper<hardware_interface::LoanedCommandInterface>>
-    ordered_interfaces;
-  if (
-    !controller_interface::get_ordered_interfaces(
-      command_interfaces_, command_interface_names_, std::string(""), ordered_interfaces) ||
-    command_interface_names_.size() != ordered_interfaces.size())
-  {
-    RCLCPP_ERROR(
-      this->get_node()->get_logger(), "Expected %zu command interfaces, got %zu",
-      command_interface_names_.size(), ordered_interfaces.size());
-    return controller_interface::CallbackReturn::ERROR;
-  }
-
   // reset command buffer if a command came through callback when controller was inactive
   rt_buffer_ptr_ = realtime_tools::RealtimeBuffer<std::shared_ptr<DataType>>(nullptr);
 
@@ -86,8 +68,11 @@ bool ControllerLogger::on_set_chained_mode(bool /*chained_mode*/) { return true;
 
 controller_interface::InterfaceConfiguration ControllerLogger::command_interface_configuration() const
 {
-  return controller_interface::InterfaceConfiguration{
-    controller_interface::interface_configuration_type::NONE};
+  controller_interface::InterfaceConfiguration command_interfaces_config;
+  command_interfaces_config.type = controller_interface::interface_configuration_type::INDIVIDUAL;
+  command_interfaces_config.names = command_interface_names_;
+
+  return command_interfaces_config;
 }
 
 controller_interface::InterfaceConfiguration ControllerLogger::state_interface_configuration()
@@ -102,9 +87,12 @@ controller_interface::return_type ControllerLogger::update_and_write_commands(
 {
   std_msgs::msg::Float64MultiArray msg;
   msg.data.reserve(command_interfaces_.size());
-  for (const auto & interface : command_interfaces_)
+  for (size_t i = 0; i < command_interfaces_.size(); ++i)
   {
-    msg.data.push_back(interface.get_value());
+    if (!std::isnan(reference_interfaces_[i]))
+    {
+      msg.data.push_back(reference_interfaces_[i]);
+    }
   }
   logger_pub_->publish(msg);
 

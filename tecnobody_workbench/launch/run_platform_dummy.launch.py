@@ -1,12 +1,17 @@
+from numpy import add
 from launch import LaunchDescription
 from launch.substitutions import Command, FindExecutable, PathJoinSubstitution
+from launch.actions import DeclareLaunchArgument, RegisterEventHandler
+from launch.event_handlers import OnProcessExit
+from launch.conditions import IfCondition
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
     description_package = "tecnobody_workbench"
-    ros2_controllers = 'ros2_controllers.yaml'
+    ros2_controllers = 'controllers.yaml'
+    launch_rviz = "true"
 
     robot_description_content = Command(
         [
@@ -45,8 +50,24 @@ def generate_launch_description():
     trajectory_controller_node = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['fmrrehab_controller'],
+        arguments=['joint_trajectory_controller'],
         output='screen',
+    )
+    
+    controller_logger = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['controller_logger'],
+        output='screen',
+    )
+    
+    logger_launcher = (
+        RegisterEventHandler(
+            event_handler=OnProcessExit(
+                target_action=trajectory_controller_node,
+                on_exit=[controller_logger],
+            )
+        )
     )
     
     rviz_config_file = PathJoinSubstitution(
@@ -56,6 +77,7 @@ def generate_launch_description():
     rviz_node = Node(
         package="rviz2",
         executable="rviz2",
+        condition=IfCondition(launch_rviz),
         name="rviz2_moveit",
         output="log",
         arguments=["-d", rviz_config_file],
@@ -71,10 +93,12 @@ def generate_launch_description():
     )
 
     ld = LaunchDescription()
+
     ld.add_action(ros2_control_node)
     ld.add_action(jsb)
     ld.add_action(rsp)
     ld.add_action(trajectory_controller_node)
     ld.add_action(rviz_node)
+    ld.add_action(logger_launcher)
 
     return ld
