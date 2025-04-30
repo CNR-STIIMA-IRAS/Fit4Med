@@ -24,7 +24,6 @@
 #include "rclcpp/qos.hpp"
 #include "rclcpp/subscription.hpp"
 
-#define MSG_LENGHT 8
 
 namespace
 {
@@ -262,7 +261,7 @@ void PLCController::initialize_plc_state_msg()
   const auto gpio_name = params_.gpios.front();
   plc_state_msg.interface_names = get_plc_state_interfaces_names(gpio_name);
   plc_state_msg.values = std::vector<uint8_t>(
-    MSG_LENGHT,std::numeric_limits<uint8_t>::quiet_NaN());
+    plc_state_msg.interface_names.size(),std::numeric_limits<uint8_t>::quiet_NaN());
 }
 
 
@@ -372,30 +371,6 @@ controller_interface::return_type PLCController::update_plc_commands()
   return controller_interface::return_type::OK;
 }
 
-void PLCController::apply_command(
-  const CmdType & gpio_commands, std::size_t command_interface_index) const
-{
-  const auto full_command_interface_name = gpio_commands.interface_names[command_interface_index];
-  try
-  {
-    bool success = command_interfaces_map_.at(full_command_interface_name)
-      .get()
-      .set_value(gpio_commands.values[command_interface_index]);
-    if (!success)
-    {
-      RCLCPP_ERROR(
-        get_node()->get_logger(), "Failed to set command interface value for %s",
-        full_command_interface_name.c_str());
-    }
-  }
-  catch (const std::exception & e)
-  {
-    fprintf(
-      stderr, "Exception thrown during applying command stage of %s with message: %s \n",
-      full_command_interface_name.c_str(), e.what());
-  }
-}
-
 
 void PLCController::update_plc_states()
 {
@@ -432,6 +407,7 @@ void PLCController::update_plc_states()
   }
   realtime_plc_state_publisher_->unlockAndPublish();
 }
+
 
 }  // namespace plc_controller
 
