@@ -11,8 +11,7 @@ find_package(rosidl_default_generators REQUIRED)
 
 # generate messages in the 'msg' folder
 rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/PlcControllerState.msg"
-  "msg/PlcControllerCommand.msg"
+  "msg/PlcController.msg"
 )
 
 if(BUILD_TESTING)
