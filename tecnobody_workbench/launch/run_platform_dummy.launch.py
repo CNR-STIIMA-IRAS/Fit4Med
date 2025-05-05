@@ -10,7 +10,7 @@ from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
     description_package = "tecnobody_workbench"
-    ros2_controllers = 'controllers.yaml'
+    ros2_controllers = 'ros2_controllers.yaml'
     launch_rviz = "true"
 
     robot_description_content = Command(
@@ -97,8 +97,8 @@ def generate_launch_description():
     ld.add_action(ros2_control_node)
     ld.add_action(jsb)
     ld.add_action(rsp)
-    ld.add_action(trajectory_controller_node)
+    # ld.add_action(trajectory_controller_node)
     ld.add_action(rviz_node)
-    ld.add_action(logger_launcher)
+    # ld.add_action(logger_launcher)
 
     return ld

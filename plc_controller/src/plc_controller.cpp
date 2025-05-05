@@ -357,7 +357,7 @@ controller_interface::return_type PLCController::update_plc_commands()
           std::distance(
             command_interfaces_map_.begin(),
             it);
-        auto success = command_interface.get().set_value(gpio_commands.values[command_interface_index]);
+        auto success = command_interface.get().set_value(double(gpio_commands.values[command_interface_index]));
       }
     }
   }
