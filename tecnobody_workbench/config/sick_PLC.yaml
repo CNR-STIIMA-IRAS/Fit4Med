@@ -12,9 +12,9 @@ PLC_controller:
     command_interfaces:
       PLC_node:
         - interfaces:
-          - s_output.1
-          - s_output.2
-          - s_output.3
+          - mode_of_operation
+          - power_cutoff
+          - sonar_teach
           - s_output.4
           - s_output.5
           - s_output.6
@@ -23,9 +23,9 @@ PLC_controller:
     state_interfaces:
       PLC_node:
         - interfaces:
-          - s_input.1
-          - s_input.2
-          - s_input.3
+          - s_input.0        
+          - estop
+          - reset
           - s_input.4
           - s_input.5
           - s_input.6

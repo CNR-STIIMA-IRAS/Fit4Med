@@ -347,19 +347,22 @@ controller_interface::return_type PLCController::update_plc_commands()
 
   try
   {
-   for(auto it = command_interfaces_map_.begin(); it != command_interfaces_map_.end(); ++it)
+    for (const auto & [interface_name, command_interface] : command_interfaces_map_)
     {
-      const auto & interface_name = it->first;
-      auto & command_interface = it->second;
-      if (command_interface.get().get_name() == interface_name)
+      auto it = std::find(
+        gpio_commands.interface_names.begin(), gpio_commands.interface_names.end(), interface_name);
+    
+      if (it != gpio_commands.interface_names.end())
       {
-        auto command_interface_index = 
-          std::distance(
-            command_interfaces_map_.begin(),
-            it);
-        auto success = command_interface.get().set_value(double(gpio_commands.values[command_interface_index]));
+        auto index = std::distance(gpio_commands.interface_names.begin(), it);
+        command_interface.get().set_value(static_cast<double>(gpio_commands.values[index]));
+      }
+      else
+      {
+        RCLCPP_WARN(get_node()->get_logger(), "Interface %s not found in command message", interface_name.c_str());
       }
     }
+    
   }
   catch (const std::exception & e)
   {
@@ -384,22 +387,28 @@ void PLCController::update_plc_states()
   {
     plc_state_msg.values.clear();
     plc_state_msg.interface_names.clear();
-    for(const auto & [interface_name, state_interface] : state_interfaces_map_)
+
+    for (const auto & interface_name : state_interface_types_)
+    {
+      auto it = state_interfaces_map_.find(interface_name);
+      if (it != state_interfaces_map_.end())
       {
-        if (state_interface.get().get_name() == interface_name)
+        const auto & state_interface = it->second.get();
+        plc_state_msg.interface_names.push_back(state_interface.get_interface_name());
+
+        auto optional_value = state_interface.get_optional<double>();
+        if (optional_value.has_value())
         {
-          plc_state_msg.interface_names.push_back(state_interface.get().get_interface_name());
-          auto optional_value = state_interface.get().get_optional<double>();
-          if (optional_value.has_value())
-          {
-            plc_state_msg.values.push_back(optional_value.value());
-          }
-          else
-          {
-            RCLCPP_ERROR(get_node()->get_logger(), "Failed to retrieve state interface value");
-          }
+          plc_state_msg.values.push_back(optional_value.value());
+        }
+        else
+        {
+          RCLCPP_ERROR(get_node()->get_logger(), "Failed to retrieve state value for %s", interface_name.c_str());
+          plc_state_msg.values.push_back(std::numeric_limits<uint8_t>::quiet_NaN());
         }
       }
+    }
+
   }
   catch (const std::exception & e)
   {

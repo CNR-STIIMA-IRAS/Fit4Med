@@ -28,6 +28,7 @@ def generate_launch_description():
         package='controller_manager',
         executable='ros2_control_node',
         name='plc_controller_manager',
+        remappings=[('/robot_description', '/plc_description')],
         arguments=[],
         parameters=[initial_controllers],
         output='screen',
@@ -37,6 +38,7 @@ def generate_launch_description():
         package='robot_state_publisher',
         executable='robot_state_publisher',
         name='plc_state_publisher',
+        remappings=[('/robot_description', '/plc_description')],
         output='screen',
         parameters=[robot_description]
     )
