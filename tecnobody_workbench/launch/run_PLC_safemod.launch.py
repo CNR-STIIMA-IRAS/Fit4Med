@@ -5,7 +5,7 @@ from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch_ros.parameter_descriptions import ParameterValue
 from launch.event_handlers import OnProcessExit, OnShutdown
-from launch.actions import RegisterEventHandler, LogInfo
+from launch.actions import RegisterEventHandler, LogInfo, OpaqueFunction
 from moveit_configs_utils import MoveItConfigsBuilder
 import threading
 
@@ -51,26 +51,17 @@ def clean_shutdown():
             "ft_sensor_command_broadcaster",
         ],
     )
-    joint_trajectory_controller_unspawner = Node(
+    joint_controller_unspawner = Node(
         package='controller_manager',
         executable='unspawner',
         arguments=[
-            "joint_trajectory_controller",
-        ],
-    )
-    gpio_controller_unspawner = Node(
-        package='controller_manager',
-        executable='unspawner',
-        arguments=[
-            "gpio_command_controller",
+            "scaled_trajectory_controller",
         ],
     )
     return [
         joint_state_broadcaster_unspawner,
         state_controller_unspawner,
-        force_torque_sensor_broadcaster_unspawner,
-        joint_trajectory_controller_unspawner,
-        gpio_controller_unspawner
+        joint_controller_unspawner
     ]
 
 
@@ -84,7 +75,7 @@ def generate_launch_description():
         [
             PathJoinSubstitution([FindExecutable(name='xacro')]),
             ' ',
-            PathJoinSubstitution([FindPackageShare(description_package), "urdf",'tecnobody_single_safemod.config.urdf']),
+            PathJoinSubstitution([FindPackageShare(description_package), "urdf",'platform_complete_PLC.config.urdf']),
         ]
     )
     robot_description = {'robot_description': robot_description_content}
@@ -100,6 +91,7 @@ def generate_launch_description():
         output='screen',
         name='tecnobody_controller_manager',
     )
+    nodes_names.append('tecnobody_controller_manager')
 
     jsb = Node(
         package='controller_manager',
@@ -115,7 +107,7 @@ def generate_launch_description():
         output='screen',
         parameters=[robot_description]
     )
-    
+    nodes_names.append('tecnobody_state_publisher')
 
     ssb = Node(
         package='controller_manager',
@@ -134,8 +126,10 @@ def generate_launch_description():
     homing = Node(
         package='tecnobody_workbench_utils',
         executable='homing_node',
+        name='tecnobody_homing_node',
         output='screen',
     )
+    nodes_names.append('tecnobody_homing_node')
 
     homing_done_publisher = Node(
         package='tecnobody_workbench_utils',
@@ -146,8 +140,10 @@ def generate_launch_description():
     eth_checker = Node(
         package='tecnobody_workbench_utils',
         executable='ethercat_checker_node',
+        name='tecnobody_ethercat_checker_node',
         output='screen',
     )
+    nodes_names.append('tecnobody_ethercat_checker_node')
 
     ft_offset_updater = Node(
         package='tecnobody_workbench_utils',
@@ -168,62 +164,44 @@ def generate_launch_description():
         arguments=['admittance_controller', '--inactive'],
         output='screen',
     )
-    
-    gpio_command_publisher = Node(
-        package='tecnobody_workbench_utils',
-        executable='gpio_command_publisher',
-        output='screen',
-    )
-
-    ros_contollers_checker = Node(
-        package='tecnobody_workbench_utils',
-        executable='ros_controllers_checker',
-        output='screen',
-    )
-
-    plc_client_ps_node = Node(
-        package='tecnobody_workbench_utils',
-        executable='spawner',
-        arguments=['gpio_command_controller', '--param-file', initial_joint_controllers],
-        output='screen',
-    )
 
     homing_launcher = RegisterEventHandler(
         event_handler=OnProcessExit(
-            target_action=plc_client_ps_node,
-            on_exit=[gpio_command_publisher, homing, jsb, fsb],
+            target_action=ssb,
+            on_exit=[homing, jsb, fsb],
         )
     )
     
-    error_handlers_launcher = RegisterEventHandler(
+    controllers_launcher = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=homing,
             on_exit=[joint_controller_node, admittance_controller_node, homing_done_publisher, eth_checker, ft_offset_updater],
         )
     )
     
-    ros2_controllers_checker_launcher = RegisterEventHandler(
-        event_handler=OnProcessExit(
+    node_names_launcher = RegisterEventHandler(
+        OnProcessExit(
             target_action=joint_controller_node,
-            on_exit=[ros_contollers_checker],
+            on_exit=[
+                OpaqueFunction(function=set_node_names, args=nodes_names),
+            ],
         )
     )
-
+    
     controller_unspawner = RegisterEventHandler(
-            event_handler=OnShutdown(
-                on_shutdown=[LogInfo(msg=['Launch was asked to shutdown. Unspawning controllers...']),
-                    clean_shutdown()]
-            )
+        event_handler=OnShutdown(
+            on_shutdown=[LogInfo(msg=['Launch was asked to shutdown. Unspawning controllers...']),
+                clean_shutdown()] # type: ignore
+        )
     )
 
     ld = LaunchDescription()
     ld.add_action(ros2_control_node)
     ld.add_action(ssb)
     ld.add_action(rsp)
-    ld.add_action(gpio_controller_node)
     ld.add_action(homing_launcher)
-    ld.add_action(error_handlers_launcher)
-    # ld.add_action(ros2_controllers_checker_launcher)
+    ld.add_action(controllers_launcher)
+    ld.add_action(node_names_launcher)
     ld.add_action(controller_unspawner)
 
     return ld

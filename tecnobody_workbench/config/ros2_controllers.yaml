@@ -10,8 +10,6 @@ tecnobody_controller_manager:
       type: ethercat_controllers/CiA402Controller
 
     fmrrehab_controller:
-      # type: velocity_controllers/JointGroupVelocityController
-      # type: "joint_trajectory_controller/JointTrajectoryController"
       type: "scaled_fjt_controller/ScaledFjtController"
 
     ft_sensor_broadcaster:
