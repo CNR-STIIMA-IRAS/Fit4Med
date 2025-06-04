@@ -33,6 +33,7 @@ setup(
             'ros_controllers_checker = tecnobody_workbench_utils.check_active_controllers:main',
             'fake_fjt = tecnobody_workbench_utils.fake_follow_joint_trajectory:main',
             'launch_status_publisher = tecnobody_workbench_utils.launch_status_publisher',
+            'apriltag_azure_detector = tecnobody_workbench_utils.apriltag_azure_detector:main',
         ],
     },
 )
