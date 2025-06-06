@@ -22,7 +22,7 @@
             <ec_module name="delta1">
                 <plugin>ethercat_generic_plugins/EcCiA402Drive</plugin>
                 <param name="alias">0</param>
-                <param name="position">0</param>
+                <param name="position">2</param>
                 <param name="mode_of_operation">8</param>
                 <param name="slave_config">$(find tecnobody_workbench)/config/delta400.yaml</param>
             </ec_module>
@@ -62,7 +62,7 @@
             <ec_module name="delta1">
                 <plugin>ethercat_generic_plugins/EcCiA402Drive</plugin>
                 <param name="alias">0</param>
-                <param name="position">2</param>
+                <param name="position">0</param>
                 <param name="mode_of_operation">8</param>
                 <param name="slave_config">$(find tecnobody_workbench)/config/delta750.yaml</param>
             </ec_module>

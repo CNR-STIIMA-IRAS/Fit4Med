@@ -108,11 +108,18 @@ def generate_launch_description():
         parameters=[robot_description]
     )
     nodes_names.append('tecnobody_state_publisher')
+    
+    gpio_spawner = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['PLC_controller', '-c', '/tecnobody_controller_manager'],
+        output='screen',
+    )
 
     ssb = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['state_controller'],
+        arguments=['state_controller', '-c', '/tecnobody_controller_manager'],
         output='screen',
     )
 
@@ -154,28 +161,28 @@ def generate_launch_description():
     joint_controller_node = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['scaled_trajectory_controller'],
+        arguments=['joint_trajectory_controller', '-c', '/tecnobody_controller_manager'],
         output='screen',
     )
 
     admittance_controller_node = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['admittance_controller', '--inactive'],
+        arguments=['admittance_controller', '--inactive', '-c', '/tecnobody_controller_manager'],
         output='screen',
     )
 
     homing_launcher = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=ssb,
-            on_exit=[homing, jsb, fsb],
+            on_exit=[homing, jsb],
         )
     )
     
     controllers_launcher = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=homing,
-            on_exit=[joint_controller_node, admittance_controller_node, homing_done_publisher, eth_checker, ft_offset_updater],
+            on_exit=[joint_controller_node, homing_done_publisher, eth_checker, ft_offset_updater],
         )
     )
     
@@ -197,6 +204,7 @@ def generate_launch_description():
 
     ld = LaunchDescription()
     ld.add_action(ros2_control_node)
+    ld.add_action(gpio_spawner)
     ld.add_action(ssb)
     ld.add_action(rsp)
     ld.add_action(homing_launcher)
