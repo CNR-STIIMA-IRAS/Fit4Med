@@ -55,7 +55,7 @@ def clean_shutdown():
         package='controller_manager',
         executable='unspawner',
         arguments=[
-            "scaled_trajectory_controller",
+            "joint_trajectory_controller",
         ],
     )
     return [
@@ -89,37 +89,35 @@ def generate_launch_description():
         executable='ros2_control_node',
         parameters=[initial_joint_controllers],
         output='screen',
-        name='tecnobody_controller_manager',
     )
-    nodes_names.append('tecnobody_controller_manager')
+    nodes_names.append('controller_manager')
 
     jsb = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['joint_state_broadcaster', '-c', '/tecnobody_controller_manager'],
+        arguments=['joint_state_broadcaster'],
         output='screen',
     )
     
     rsp = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
-        name='tecnobody_state_publisher',
         output='screen',
         parameters=[robot_description]
     )
-    nodes_names.append('tecnobody_state_publisher')
+    nodes_names.append('robot_state_publisher')
     
     gpio_spawner = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['PLC_controller', '-c', '/tecnobody_controller_manager'],
+        arguments=['PLC_controller'],
         output='screen',
     )
 
     ssb = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['state_controller', '-c', '/tecnobody_controller_manager'],
+        arguments=['state_controller'],
         output='screen',
     )
 
@@ -133,10 +131,9 @@ def generate_launch_description():
     homing = Node(
         package='tecnobody_workbench_utils',
         executable='homing_node',
-        name='tecnobody_homing_node',
         output='screen',
     )
-    nodes_names.append('tecnobody_homing_node')
+    nodes_names.append('homing_node')
 
     homing_done_publisher = Node(
         package='tecnobody_workbench_utils',
@@ -161,14 +158,14 @@ def generate_launch_description():
     joint_controller_node = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['joint_trajectory_controller', '-c', '/tecnobody_controller_manager'],
+        arguments=['joint_trajectory_controller'],
         output='screen',
     )
 
     admittance_controller_node = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['admittance_controller', '--inactive', '-c', '/tecnobody_controller_manager'],
+        arguments=['admittance_controller', '--inactive'],
         output='screen',
     )
 

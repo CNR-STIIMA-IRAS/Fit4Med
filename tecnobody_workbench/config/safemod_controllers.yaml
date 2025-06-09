@@ -1,4 +1,4 @@
-tecnobody_controller_manager:
+controller_manager:
   ros__parameters:
     update_rate: 1000  # Hz
 
@@ -80,9 +80,9 @@ ft_sensor_command_broadcaster:
 joint_trajectory_controller:
   ros__parameters:
     joints:
-      - joint_1
-      - joint_2
       - joint_3
+      - joint_2
+      - joint_1
 
     command_interfaces:
       - position

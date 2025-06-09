@@ -70,7 +70,12 @@ class HomingNode(Node):
             return {}
 
     def handle_drive_status(self, msg):
+        self.get_logger().info('Received drive status message')
+        if not self.ethercat_ready:
+            self.get_logger().info('EtherCAT not ready, waiting for slaves to be in OP state...')
+            return
         if self.ethercat_ready:
+            self.get_logger().info('EtherCAT is ready, processing drive states...')
             for dof in self.dof_names:
                 try:
                     index = msg.dof_names.index(dof)

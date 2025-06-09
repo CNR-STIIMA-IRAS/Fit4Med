@@ -5,7 +5,7 @@ from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
-    controllers_file = 'controllers.yaml'
+    controllers_file = 'safemod_controllers.yaml'
 
     description_package = 'tecnobody_workbench'
 
@@ -13,7 +13,7 @@ def generate_launch_description():
         [
             PathJoinSubstitution([FindExecutable(name='xacro')]),
             ' ',
-            PathJoinSubstitution([FindPackageShare(description_package), "urdf", 'single.config.urdf']),
+            PathJoinSubstitution([FindPackageShare(description_package), "urdf", 'platform.config.urdf']),
             
         ]
     )
@@ -30,20 +30,12 @@ def generate_launch_description():
         output='screen',
     )
 
-    # velocity_controller_node = Node(
-    #    package='controller_manager',
-    #    executable='spawner',
-    #    arguments=['forward_velocity_controller'],
-    #    output='screen',
-    # )
-
-    velocity_controller_node = Node(
+    joint_controller_node = Node(
         package='controller_manager',
         executable='spawner',
         arguments=['joint_trajectory_controller'],
         output='screen',
     )
-
 
     jsb = Node(
         package='controller_manager',
@@ -67,6 +59,6 @@ def generate_launch_description():
     ld.add_action(ros2_control_node)
     ld.add_action(jsb)
     ld.add_action(rsp)
-    ld.add_action(velocity_controller_node)
+    ld.add_action(joint_controller_node)
 
     return ld

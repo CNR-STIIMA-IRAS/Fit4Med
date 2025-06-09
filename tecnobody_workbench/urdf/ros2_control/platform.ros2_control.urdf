@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<robot name = "workbench" xmlns:xacro="http://www.ros.org/wiki/xacro">
+<robot name="workbench" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
     <ros2_control name="tecnobody" type="system">
         <hardware>
@@ -49,17 +49,17 @@
         </joint>
 
         <joint name="joint_3">
-            <state_interface name="position"/>
-            <state_interface name="velocity"/>
-            <state_interface name="effort"/>
-            <state_interface name="mode_of_operation"/>
-            <state_interface name="status_word"/>
-            <command_interface name="velocity"/>
-            <command_interface name="reset_fault"/>
-            <command_interface name="position"/>
-            <command_interface name="control_word"/>
-            <command_interface name="mode_of_operation"/>
-            <ec_module name="delta3">
+            <state_interface name="position" />
+            <state_interface name="velocity" />
+            <state_interface name="effort" />
+            <state_interface name="mode_of_operation" />
+            <state_interface name="status_word" />
+            <command_interface name="velocity" />
+            <command_interface name="reset_fault" />
+            <command_interface name="position" />
+            <command_interface name="control_word" />
+            <command_interface name="mode_of_operation" />
+            <ec_module name="delta1">
                 <plugin>ethercat_generic_plugins/EcCiA402Drive</plugin>
                 <param name="alias">0</param>
                 <param name="position">2</param>
@@ -67,46 +67,5 @@
                 <param name="slave_config">$(find tecnobody_workbench)/config/delta750.yaml</param>
             </ec_module>
         </joint>
-        
     </ros2_control>
 </robot>
-
-<!--
-        <hardware>
-            <plugin>mock_components/GenericSystem</plugin>
-        </hardware>
-
-        <joint name="joint1">
-            <command_interface name="position" />
-            <state_interface name="position">
-                <param name="initial_value">0.0</param>
-                <param name="min">-1.57</param>
-                <param name="max">1.57</param>
-            </state_interface>
-            <state_interface name="velocity"> 
-                <param name="initial_value">0.0</param> 
-            </state_interface>
-        </joint>
-        <joint name="joint2">
-            <command_interface name="position"/>
-            <state_interface name="position">
-                <param name="initial_value">0.5.</param>
-                <param name="min">-1.57</param>
-                <param name="max">1.57</param>
-            </state_interface>
-            <state_interface name="velocity"> 
-                <param name="initial_value">0.0</param> 
-            </state_interface>
-        </joint>
-        <joint name="joint3">
-            <command_interface name="position"/>
-            <state_interface name="position">
-                <param name="initial_value">0.0</param>
-                <param name="min">0</param>
-                <param name="max">0.3</param>
-            </state_interface>
-            <state_interface name="velocity"> 
-                <param name="initial_value">0.0</param> 
-            </state_interface>
-        </joint>
-    </ros2_control>-->
