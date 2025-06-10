@@ -49,6 +49,13 @@ def generate_launch_description():
         executable='robot_state_publisher',
         output='screen',
         parameters=[robot_description])
+    
+    ssb = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['state_controller'],
+        output='screen',
+    )
 
     # Create the launch description and populate
     ld = LaunchDescription()
@@ -59,6 +66,7 @@ def generate_launch_description():
     ld.add_action(ros2_control_node)
     ld.add_action(jsb)
     ld.add_action(rsp)
+    ld.add_action(ssb)
     ld.add_action(joint_controller_node)
 
     return ld

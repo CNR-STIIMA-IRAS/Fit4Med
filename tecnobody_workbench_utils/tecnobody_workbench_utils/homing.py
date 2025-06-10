@@ -28,7 +28,7 @@ class HomingNode(Node):
         self.state = {dof: 'STATE_UNDEFINED' for dof in self.dof_names}
         self.mode = {dof: 'MODE_NO_MODE' for dof in self.dof_names}
         self.shutdown_initiated = False  # To track if shutdown is already requested
-        self.slave_indices = [2, 1, 0]  # Positions of the drives in the slaves list, check in ros2_control file
+        self.slave_indices = [0, 1, 2]  # Positions of the drives in the slaves list, check in ros2_control file
 
         # Flag to set true when homing process has completed
         self.homing_finished = False
@@ -90,7 +90,7 @@ class HomingNode(Node):
             elif 'STATE_SWITCH_ON_DISABLED' in self.state.values():
                 self.get_logger().info("Detected DISABLED state")
                 self.try_turn_on()
-            elif self.all_in_no_mode():
+            elif 'MODE_NO_MODE' in self.mode.values():
                 self.get_logger().info('Drives turned on. Setting homing mode.')
                 for dof in self.dof_names:
                     self.switch_mode(dof, 6)
