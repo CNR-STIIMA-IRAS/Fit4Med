@@ -98,9 +98,9 @@ class MainProgram(Node, Ui_FMRRMainWindow):
     def definePaths(self):
         self.FMRR_Paths = dict() 
         self.FMRR_Paths['Root'] = os.getcwd()
-        self.FMRR_Paths['Protocols'] = '/home/adriano/projects/ros2_ws/src/Fit4Med/rehab_gui/Protocols'
-        self.FMRR_Paths['Movements'] = '/home/adriano/projects/ros2_ws/src/Fit4Med/rehab_gui/Movements'  
-        self.FMRR_Paths['Joint_Configuration'] = '/home/adriano/projects/ros2_ws/src/Fit4Med/rehab_gui/config'
+        self.FMRR_Paths['Protocols'] = '/home/fit4med/fit4med_ws/src/Fit4Med/rehab_gui/Protocols'
+        self.FMRR_Paths['Movements'] = '/home/fit4med/fit4med_ws/src/Fit4Med/rehab_gui/Movements'  
+        self.FMRR_Paths['Joint_Configuration'] = '/home/fit4med/fit4med_ws/src/Fit4Med/rehab_gui/config'
 
         
     def startMovementWindow(self):
@@ -333,7 +333,7 @@ class MainProgram(Node, Ui_FMRRMainWindow):
         # self.pub_end_point = self.create_publisher(Point, '/end_point', 10)
 
     #   action client
-        self._clientFollowCartTraj = ActionClient(self, FollowJointTrajectory, '/fmrrehab_controller/follow_joint_trajectory')
+        self._clientFollowCartTraj = ActionClient(self, FollowJointTrajectory, '/scaled_trajectory_controller/follow_joint_trajectory')
      
 
     def startPauseService(self):

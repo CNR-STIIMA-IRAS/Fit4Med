@@ -6,7 +6,7 @@ import os
 os.environ['RCUTILS_CONSOLE_OUTPUT_FORMAT']="[{severity}] [{name}]: {message} ({function_name}() at {file_name}:{line_number})"
 
 def generate_launch_description():
-    controllers_file = 'sick_PLC.yaml'
+    controllers_file = 'safemod_controllers.yaml'
     description_package = 'tecnobody_workbench'
     
     robot_description_content = Command(

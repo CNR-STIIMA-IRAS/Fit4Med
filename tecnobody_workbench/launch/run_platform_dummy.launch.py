@@ -32,7 +32,7 @@ def set_node_names(context, *args, **kwargs):
 
 def generate_launch_description():
     description_package = "tecnobody_workbench"
-    ros2_controllers = 'ros2_controllers.yaml'
+    ros2_controllers = 'controllers.yaml'
     launch_rviz = "true"
     
     nodes_names = []
@@ -68,7 +68,7 @@ def generate_launch_description():
     fmrrehab_controller = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['fmrrehab_controller', '-c', '/tecnobody_controller_manager'],
+        arguments=['scaled_trajectory_controller', '-c', '/tecnobody_controller_manager'],
         output='screen',
     )
 

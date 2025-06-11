@@ -1,4 +1,4 @@
-controller_manager:
+tecnobody_controller_manager:
   ros__parameters:
     update_rate: 1000 # Hz
 
@@ -31,66 +31,66 @@ controller_manager:
 
 controller_logger:
   ros__parameters:
-    interfaces: [ "joint_1/position", "joint_2/position", "joint_3/position" ]
+    interfaces: ["joint_1/position", "joint_2/position", "joint_3/position"]
 
 forward_velocity_controller:
   ros__parameters:
     joints:
-    - joint_1
-    - joint_2
-    - joint_3
+      - joint_1
+      - joint_2
+      - joint_3
     command_interface:
-    - velocity
+      - velocity
 
 forward_position_controller:
   ros__parameters:
     joints:
-    - joint_1
-    - joint_2
-    - joint_3
+      - joint_1
+      - joint_2
+      - joint_3
     command_interface:
-    - position
+      - position
 
 forward_command_controller:
   ros__parameters:
     joints:
-    - joint_1
-    - joint_2
-    - joint_3
+      - joint_1
+      - joint_2
+      - joint_3
     interface_name: position
 
 state_controller:
   ros__parameters:
     dofs:
-    - joint_1
-    - joint_2
-    - joint_3
+      - joint_1
+      - joint_2
+      - joint_3
 
 joint_trajectory_controller:
   ros__parameters:
     joints:
-    - joint_1
-    - joint_2
-    - joint_3
+      - joint_1
+      - joint_2
+      - joint_3
 
     command_interfaces:
-    - position
+      - position
 
     state_interfaces:
-    - position
-    - velocity
+      - position
+      - velocity
 
 scaled_trajectory_controller:
   ros__parameters:
     joints:
-    - joint_1
-    - joint_2
-    - joint_3
+      - joint_1
+      - joint_2
+      - joint_3
     command_interfaces:
-    - position
+      - position
     state_interfaces:
-    - position
-    - velocity
+      - position
+      - velocity
     open_loop_control: true
     constraints:
       goal_time: 0.0
@@ -126,21 +126,22 @@ scaled_trajectory_controller:
   #     i_clamp: 30000.0
   #     ff_velocity_scale: 0.1
 
-  admittance_controller:
+admittance_controller:
   ros__parameters:
     joints:
-    - joint_3
-
+      - joint_1
+      - joint_2
+      - joint_3
     command_interfaces:
-    - position
+      - position
 
     state_interfaces:
-    - position
-    - velocity
+      - position
+      - velocity
 
     chainable_command_interfaces:
-    - position
-    - velocity
+      - position
+      - velocity
 
     kinematics:
       plugin_name: kinematics_interface_kdl/KinematicsInterfaceKDL
@@ -176,43 +177,42 @@ scaled_trajectory_controller:
       CoG:
         # specifies the center of gravity of the end effector
         pos:
-        - 0.001 # x
-        - 0.2 # y
-        - 0.142 # z
+          - 0.001 # x
+          - 0.2 # y
+          - 0.142 # z
         force: 10.0 #9.81 # mass * 9.81
 
     admittance:
       selected_axes:
-      - false # x
-      - false # y
-      - true # z
-      - false # rx
-      - false # ry
-      - false # rz
+        - false # x
+        - false # y
+        - true # z
+        - false # rx
+        - false # ry
+        - false # rz
       # Having ".0" at the end is MUST, otherwise there is a loading error
       # F = M*a + D*v + S*(x - x_d)
       mass:
-      - 5.5
-      - 6.6
-      - 2.0
-      - 8.8
-      - 9.9
-      - 10.10
+        - 5.5
+        - 6.6
+        - 2.0
+        - 8.8
+        - 9.9
+        - 10.10
 
       damping_ratio:
-      # damping can be used instead: zeta = D / (2 * sqrt( M * S ))
-      - 2.828427 # x
-      - 2.828427 # y
-      - 2.828427 # z
-      - 2.828427 # rx
-      - 2.828427 # ry
-      - 2.828427 # rz
+        # damping can be used instead: zeta = D / (2 * sqrt( M * S ))
+        - 2.828427 # x
+        - 2.828427 # y
+        - 2.828427 # z
+        - 2.828427 # rx
+        - 2.828427 # ry
+        - 2.828427 # rz
 
       stiffness:
-      - 214.4
-      - 214.4
-      - 10.0
-      - 214.4
-      - 214.5
-      - 214.6
-
+        - 214.4
+        - 214.4
+        - 10.0
+        - 214.4
+        - 214.5
+        - 214.6

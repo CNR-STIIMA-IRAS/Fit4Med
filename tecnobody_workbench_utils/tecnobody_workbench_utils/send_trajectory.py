@@ -20,7 +20,7 @@ class TrajectoryActionClient(Node):
         super().__init__('trajectory_action_client')
         
         # Declare default params
-        self.declare_parameter('controller_name', 'joint_trajectory_controller')
+        self.declare_parameter('controller_name', 'scaled_trajectory_controller')
         controller_name = self.get_parameter('controller_name').value
 
         # Compose action server name
