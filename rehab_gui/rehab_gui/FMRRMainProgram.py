@@ -15,6 +15,7 @@ import numpy as np
 
 #MC Classes/methods
 from .MovementProgram import FMRR_Ui_MovementWindow 
+from .RobotProgram import FMRR_Ui_RobotWindow 
 from .FMRRMainWindow import Ui_FMRRMainWindow # import from file FMRRMainWindow the class Ui_FMRRMainWindow  
 from . import MC_Tools
 import yaml
@@ -54,6 +55,7 @@ class MainProgram(Node, Ui_FMRRMainWindow):
         Node.__init__(self, 'FMRR_cell_node') # type: ignore
 
         self.DialogMovementWindow = QtWidgets.QDialog()
+        self.DialogRobotWindow = QtWidgets.QDialog()
         self.FMRRMainWindow = QtWidgets.QMainWindow() # FMRRMainWindow is an instance of the class QtWidgets.QMainWindow. Not to be confuse with the namof the file FMRRMainWindow.py
         self.get_logger().info("FMRR cell node started.")
         self._joint_state = None
@@ -63,12 +65,15 @@ class MainProgram(Node, Ui_FMRRMainWindow):
         self.trainingOn = False
         self.FIRST_TIME = True
         self.JogOn = False
-
+        
+    def updateTimercallback(self):
+        self.uiRobotWindow.updateRobotWindow( self.DialogRobotWindow )
+        
          
     def updateTimer(self):
         self._update_timer = QTimer()                                           # creo l'oggetto
         self._update_timer.timeout.connect( 
-        lambda: self.uiMovementWindow.updateMovementWindow( self.DialogMovementWindow ) ) # lo collego ad una seconda  callback
+        self.updateTimercallback  ) # lo collego ad una seconda  callback
         self._update_timer.start(self._update_period)
 
         
@@ -97,11 +102,20 @@ class MainProgram(Node, Ui_FMRRMainWindow):
     
     def definePaths(self):
         self.FMRR_Paths = dict() 
+        current_directory = os.path.dirname(os.path.abspath(__file__))  # Get the current file's directory
+        parent_directory = os.path.dirname(current_directory)  # Step to the parent folder
         self.FMRR_Paths['Root'] = os.getcwd()
-        self.FMRR_Paths['Protocols'] = '/home/fit4med/fit4med_ws/src/Fit4Med/rehab_gui/Protocols'
-        self.FMRR_Paths['Movements'] = '/home/fit4med/fit4med_ws/src/Fit4Med/rehab_gui/Movements'  
-        self.FMRR_Paths['Joint_Configuration'] = '/home/fit4med/fit4med_ws/src/Fit4Med/rehab_gui/config'
+        self.FMRR_Paths['Protocols'] = parent_directory + '/Protocols'
+        self.FMRR_Paths['Movements'] = parent_directory + '/Movements'  
+        self.FMRR_Paths['Joint_Configuration'] = parent_directory + '/config'
 
+    def startRobotWindow(self):
+        self.uiRobotWindow = FMRR_Ui_RobotWindow()
+        self.uiRobotWindow.ui_FMRRMainWindow = self  # type: ignore #Needed to be able to chenge MainWindow Widgets from Movement Window
+        self.uiRobotWindow.setupUi_RobotWindow(self.DialogRobotWindow)
+        self.uiRobotWindow.retranslateUi_RobotWindow(self.DialogRobotWindow)
+        self.uiRobotWindow.DialogRobotWindow = self.DialogRobotWindow # type: ignore # Needed to be able to hide window from Movement Window
+        self.uiRobotWindow.DialogFMRRMainWindow = self.FMRRMainWindow # type: ignore
         
     def startMovementWindow(self):
         self.uiMovementWindow = FMRR_Ui_MovementWindow()
@@ -111,7 +125,10 @@ class MainProgram(Node, Ui_FMRRMainWindow):
         self.uiMovementWindow.DialogMovementWindow = self.DialogMovementWindow # type: ignore # Needed to be able to hide window from Movement Window
         self.uiMovementWindow.DialogFMRRMainWindow = self.FMRRMainWindow # type: ignore
 
-        
+    def clbk_BtnMoveRobot(self):
+        self.FMRRMainWindow.hide()
+        self.DialogRobotWindow.show()
+                
     def clbk_BtnLoadCreateMovement(self):
         self.FMRRMainWindow.hide()
         self.DialogMovementWindow.show()
@@ -288,6 +305,7 @@ class MainProgram(Node, Ui_FMRRMainWindow):
                     
 #   ENABLE Buttons      
         self.pushButton_LoadCreateMovement.enablePushButton(1)
+        self.pushButton_MoveRobot.enablePushButton(1)
         self.pushButton_CLOSEprogram.enablePushButton(1)
 
 #   DISABLE Buttons
@@ -301,6 +319,7 @@ class MainProgram(Node, Ui_FMRRMainWindow):
 #   CALLBACKS 
 #    Buttons
         self.pushButton_LoadCreateMovement.clicked.connect(self.clbk_BtnLoadCreateMovement)
+        self.pushButton_MoveRobot.clicked.connect(self.clbk_BtnMoveRobot)
         self.pushButton_LoadCreateProtocol.clicked.connect(self.clbk_BtnLoadCreateProtocol)
         self.pushButton_CLOSEprogram.clicked.connect(self.clbk_BtnCLOSEprogram)
         self.pushButton_STARTtrainig.clicked.connect(self.clbk_STARTtrainig)        
@@ -503,6 +522,7 @@ def main(args=None):
     ui.setupUi_MainWindow()
     ui.retranslateUi_MainWindow(app)
     ui.definePaths()
+    ui.startRobotWindow()
     ui.startMovementWindow()
     ui.start_ROS_functions()
     ui.rosTimer()

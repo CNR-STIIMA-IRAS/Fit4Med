@@ -10,6 +10,7 @@ from json import load
 import os
 import sys
 from PyQt5 import QtWidgets, QtCore
+from PyQt5.QtWidgets import QMessageBox
 from .MovementWindow import Ui_MovementWindow
 import yaml
 from yaml.loader import SafeLoader
@@ -32,101 +33,6 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
     def __init__(self) -> None:
         super().__init__()
 
-  
- 
-##############################################################################################################
-#####                                                                                                    #####  
-#####                                        MOVE THE ROBOT TO DEFINED POSITION                          ##### 
-#####                                                 callbacks                                          #####
-#####                                                                                                    #####
-##############################################################################################################
-    
-    ###### Callback of buttons to MOVE (TRANSLATIONS and ROTATIONS)      
-    def clbk_BtnPlusMinusCoordinate(self, SignIncrement, CoordinateNr): # NCoordinate = 0,1,2 --> x,y,z or 0,1,2,3,4,5 -->J1,J2,J3 ..,J6.
-        if self.ui_FMRRMainWindow.AnswerPauseService:
-            self.ui_FMRRMainWindow.AnswerPauseService = self.ui_FMRRMainWindow.pauseService(False)
-            print( 'The robot movement was resumed: %s' % self.ui_FMRRMainWindow.AnswerPauseService )        
-
-        self.ui_FMRRMainWindow.JogOn = True
-        
-        if CoordinateNr < 3:
-            Increment = self.spinBox_MoveRobotPosition.value()
-            NewHandlePosition = self.ui_FMRRMainWindow.RobotJointPosition #[0.0, 0.0, 0.0]  # initialization of  position = [x,y,z,q1,q2,q3,q4] coorinates are RELATIVE!!!
-            print('The current handle postions are: %s' % NewHandlePosition)
-
-            self.ui_FMRRMainWindow.clearFCT()
-            _TimeFromStart = Duration(sec=0, nanosec=0)          
-            self.ui_FMRRMainWindow.add_pointFCT(NewHandlePosition,_TimeFromStart)
-
-            NewHandlePosition [CoordinateNr] = self.ui_FMRRMainWindow.RobotJointPosition[CoordinateNr] + SignIncrement * float(Increment) /100.0 # conversion from meters to cm
-            print('The new handle postions are: %s' % NewHandlePosition)
-            _TimeFromStart = Duration(sec=1, nanosec=0)          
-            self.ui_FMRRMainWindow.add_pointFCT(NewHandlePosition,_TimeFromStart)
-            self.ui_FMRRMainWindow.startMovementFCT()
-        else:
-            print("coordinate number must be between 1 and 3 for this platform")
-            # Increment =  self.spinBox_MoveRobotRotationalVelocity.value()
-            # CoordinateNr -= 3 # minus x,y,z coordinates
-            # ActualRobotConfiguration  = self.ui_FMRRMainWindow.RobotJointPosition
-            # print('The current joint configuration is: %s' % ActualRobotConfiguration)
-            # NewRobotConfiguration = ActualRobotConfiguration
-            # NewRobotConfiguration[CoordinateNr] += SignIncrement * float(Increment)*np.pi/180.0# conversion from degrees to radiants
-            # print('The new RobotConfiguration is: %s' % NewRobotConfiguration)
-            # _TimeFromStart = Duration(1.0) # duration in s    
-            # _TimeTolerance = Duration(0.1)       
-            # self.ui_FMRRMainWindow.clearFJT()              
-            # self.ui_FMRRMainWindow.add_pointFJT(NewRobotConfiguration, _TimeFromStart, _TimeTolerance)
-            # self.ui_FMRRMainWindow.startMovementFJT()
-
-        self.ui_FMRRMainWindow.JogOn = False
-   
-#        ToRobotNewPositions = self.FromRobotPositions
-#        ToRobotNewPositions[CoordinateNr] = self.FromRobotPositions[CoordinateNr] + SignIncrement * Increment
-#        self.CurrentPositions[CoordinateNr].display(ToRobotNewPositions[CoordinateNr]) 
-#        self.setNewPositions(ToRobotNewPositions)
-    
-
-    def clbk_BtnEnableApproach(self):
-        _translate = QtCore.QCoreApplication.translate
-        if self.pushButton_EnableApproach.State:
-
-           self.pushButton_EnableApproach.setText(_translate("MovementWindow", "Disable approach"))
-           self.pushButton_EnableApproach.State = 0
-
-           self.pushButton_Approach_Joint1.enablePushButton(1)
-           self.pushButton_Approach_Joint2.enablePushButton(1)
-           self.pushButton_Approach_Joint3.enablePushButton(1)
-        #    self.pushButton_Approach_Joint4.enablePushButton(1)
-        #    self.pushButton_Approach_Joint5.enablePushButton(1)
-        #    self.pushButton_Approach_Joint6.enablePushButton(1)
-           self.pushButton_ApproachAllJoint.enablePushButton(1)
-
-        else:
-           self.pushButton_EnableApproach.setText(_translate("MovementWindow", "Enable approach"))
-           self.pushButton_EnableApproach.State = 1
-           
-           self.pushButton_Approach_Joint1.enablePushButton(0)
-           self.pushButton_Approach_Joint2.enablePushButton(0)
-           self.pushButton_Approach_Joint3.enablePushButton(0)
-        #    self.pushButton_Approach_Joint4.enablePushButton(0)
-        #    self.pushButton_Approach_Joint5.enablePushButton(0)
-        #    self.pushButton_Approach_Joint6.enablePushButton(0)
-           self.pushButton_ApproachAllJoint.enablePushButton(0)
-           
-    def clbk_JointApproach(self, JointNr):
-        ActualRobotConfiguration  = self.ui_FMRRMainWindow.RobotJointPosition
-        print('The current joint configuration is: %s' % ActualRobotConfiguration)
-        NewRobotConfiguration = ActualRobotConfiguration
-        if JointNr == 3:
-            NewRobotConfiguration = self.JointTargetPosition
-        else:
-            NewRobotConfiguration[JointNr] = self.JointTargetPosition[JointNr]
-        print('The new RobotConfiguration is: %s' % NewRobotConfiguration)
-        _TimeFromStart = Duration(sec=5, nanosec=0) # duration in s            
-        _TimeTolerance = Duration(sec= 5, nanosec=int(1e-9))       
-        self.ui_FMRRMainWindow.clearFCT()              
-        self.ui_FMRRMainWindow.add_pointFCT(NewRobotConfiguration, _TimeFromStart, _TimeTolerance)
-        self.ui_FMRRMainWindow.startMovementFCT()
     
 ##############################################################################################################
 #####                                                                                                    #####  
@@ -136,6 +42,38 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
 ##############################################################################################################            
 #
     def clbk_BtnCreateMovementData(self):
+        
+        # Create a Dialogn Button to ask to manually guide the robot to end position
+        MyString = "Go to the desired final position"
+        question = QMessageBox(QMessageBox.Warning, "Manual Guidance", MyString)
+        stop_button = question.addButton("Stop", QMessageBox.RejectRole)
+        start_button = question.addButton("Start", QMessageBox.AcceptRole)
+        decision = question.exec_()
+        # You can check which button was pressed:
+        if question.clickedButton() == start_button:
+            # Start Admittance controller
+            pass
+        elif question.clickedButton() == stop_button:
+            # Stop admittance and load scaled
+            pass        
+        
+        # Get the end position of the handle
+        _toolPosCovFact = self.ui_FMRRMainWindow._toolPosCovFact        
+        HandlePosition = self.ui_FMRRMainWindow.HandlePosition
+        RobotJointPosition = self.ui_FMRRMainWindow.RobotJointPosition# 
+        
+        # save data to create movement
+        self.End_HandlePosition = deepcopy( self.ui_FMRRMainWindow.HandlePosition )
+        self.End_RobotJointPosition = RobotJointPosition
+        
+        # visualize data            
+        HandlePosition[:] = [iPosition * _toolPosCovFact for iPosition in HandlePosition]
+        self.lcdNumber_EndPos_X.display( int( HandlePosition[0] ) ) 
+        self.lcdNumber_EndPos_Y.display( int( HandlePosition[1] ) ) 
+        self.lcdNumber_EndPos_Z.display( int( HandlePosition[2] ) )
+        self.pushButton_CREATEMovement.enablePushButton(1)
+        
+        # create trajectory
         MovementsPath = self.ui_FMRRMainWindow.FMRR_Paths['Movements']
         
         if self.radioButton_SideLeft.isChecked() == True:
@@ -161,10 +99,15 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         else:
             self.vel_profile = 0
             print('0')
-            
-        x_begin = deepcopy(self.Start_HandlePosition[0]); x_end = deepcopy(self.End_HandlePosition[0])        
-        y_begin = deepcopy(self.Start_HandlePosition[1]); y_end = deepcopy(self.End_HandlePosition[1])
-        z_begin = deepcopy(self.Start_HandlePosition[2]); z_end = deepcopy(self.End_HandlePosition[2])
+           
+        # Set start and end positions 
+        x_begin = 0   
+        y_begin = 0
+        z_begin = 0
+        x_end = deepcopy(self.End_HandlePosition[0])
+        y_end = deepcopy(self.End_HandlePosition[1])
+        z_end = deepcopy(self.End_HandlePosition[2])
+        
         x12 = x_end-x_begin; y12 = y_end-y_begin; z12 = z_end-z_begin
         L12 = np.sqrt( x12**2 + y12**2 + z12**2 )
         x1 = 0; y1 = 0; z1 = 0
@@ -301,7 +244,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
 #       %%% new abscissa calculation, and resampling
             abscissa = np.cumsum( 0.5 * ( v1[0:-1] + v1[1:] ) * np.diff(_time) ) # definition of integral 0.5*[V(i)+V(i+1))]*dt
             s3 = np.concatenate( ([0], abscissa ), axis = None)
-             
+            
             samples = np.zeros( (1, numSamples), dtype = int, order='C' )
             samples[0,0] = 0
   
@@ -408,7 +351,6 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             
             self.TrjYamlData =TrjYamlData
             NewFilename = QtWidgets.QFileDialog.getSaveFileName(None, "Save new movement as:", MovementsPath, "*.yaml")            
-            self.pushButton_SAVEMovement.enablePushButton(1)
 
             if bool(NewFilename[0]):
                 print('This is the filename of the loaded movement: ')
@@ -416,17 +358,9 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
                 print('This is T: %s' %T)
                 self.SaveNewFile(TrjYamlData, NewFilename[0])
             else:
-                self.pushButton_CREATEMovement.enablePushButton(0)
+                # self.pushButton_CREATEMovement.enablePushButton(0)
                 print('No proper filename was selected. Create movemement again or use the SaveMovement button')
 
-    def clbk_BtnSAVEMovement(self):
-        MovementsPath = self.ui_FMRRMainWindow.FMRR_Paths['Movements']
-        NewFilename = QtWidgets.QFileDialog.getSaveFileName(None, "Save new movement as:", MovementsPath, "*.yaml")            
-            
-        if bool(NewFilename[0]):
-            print('This is the filename of the loaded movement:')
-            print(NewFilename[0])
-            self.SaveNewFile(self.TrjYamlData, NewFilename[0])
     
     def SaveNewFile(self, Data, NewFilename):
         print('This is the new file.yaml:')
@@ -460,7 +394,6 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             self.lineEdit.setText(_translate("MovementWindow", MovementName))
             self.lineEdit.MovementIsLoaded = 1 # da sistemare, va messo sotto l'altra finestra in modo da non resettare MovementWindow quando ci ritorno!!!
             self.pushButton_GOtoTraining.enablePushButton(1)
-            self.pushButton_SAVEMovement.enablePushButton(1)
  
 
 ##############################################################################################################
@@ -525,24 +458,12 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             
             StartPos[:] = [i_position * _toolPosCovFact for i_position in StartPos]
             EndPos[:]   = [i_position * _toolPosCovFact for i_position in EndPos]
-
-            self.lcdNumber_StartPos_X.display(int( StartPos[0] ))
-            self.lcdNumber_StartPos_Y.display(int( StartPos[1] ))    
-            self.lcdNumber_StartPos_Z.display(int( StartPos[2] ))    
+ 
             self.lcdNumber_EndPos_X.display(int( EndPos[0] ))
             self.lcdNumber_EndPos_Y.display(int( EndPos[1] ))    
             self.lcdNumber_EndPos_Z.display(int( EndPos[2] ))
             self.doubleSpinBox_MoveTime.setValue(MovTime)
-            
-#           Spin values of Joint approachconfiguration are loaded, converted in degrees nbd displayed
 
-            JointData = self.TrjYamlData.get("a_movement_definition").get("begin_joint_config") [0]
-            self.JointTargetPosition = JointData
-#       Put doublespin values in list to allow for iteration 
-            JointTargetPositions = (self.doubleSpin_Joint1_Value, self.doubleSpin_Joint2_Value, self.doubleSpin_Joint3_Value) #, self.doubleSpin_Joint4_Value, self.doubleSpin_Joint5_Value, self.doubleSpin_Joint6_Value)
-
-            for iJoint in range(0,3):
-                JointTargetPositions[iJoint].setValue(JointData[iJoint]*180/np.pi)
 
 ##### Start and End positions needed to create a new movement            
             self.Start_HandlePosition = deepcopy( self.TrjYamlData.get("a_movement_definition").get("begin_config")[0] )
@@ -554,20 +475,6 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         else:
             print('No file was selected!')
 
-    def clbk_BtnLoadJointPosition(self):
-        FMRR_RootPath = self.ui_FMRRMainWindow.FMRR_Paths['Root']
-        JoinDataPath = self.ui_FMRRMainWindow.FMRR_Paths['Joint_Configuration']
-        filename = QtWidgets.QFileDialog.getOpenFileName(None, "Load Joint Conf", JoinDataPath, "*.yaml")
-     
-        if bool(filename[0]):
-            JointTargetPosition = yaml.load(open(filename [0]), Loader=SafeLoader)
-            JointData = JointTargetPosition.get("a_movement_definition").get("begin_joint_config") [0]
-            self.JointTargetPosition = JointData
-#       Put doublespin values in list to allow for iteration 
-            JointTargetPositions = (self.doubleSpin_Joint1_Value, self.doubleSpin_Joint2_Value, self.doubleSpin_Joint3_Value) #, self.doubleSpin_Joint4_Value, self.doubleSpin_Joint5_Value, self.doubleSpin_Joint6_Value)
-
-            for iJoint in range(0,3):
-                JointTargetPositions[iJoint].setValue(JointData[iJoint])
             
 ##############################################################################################################
 #####                                                                                                    #####  
@@ -576,61 +483,12 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
 #####                                                                                                    #####
 ##############################################################################################################            
 
-    ###### Callback of buttonsSetCurrentPos_1 AND SetCurrentPos_2      
-    def clbk_pushButton_SetCurrentPos(self, NrButton):
-        _toolPosCovFact = self.ui_FMRRMainWindow._toolPosCovFact        
-        HandlePosition = self.ui_FMRRMainWindow.HandlePosition
-        RobotJointPosition = self.ui_FMRRMainWindow.RobotJointPosition#       Put doublespin values in list to allow for iteration 
-            
-        if NrButton == 1:
-            start_msg = Point()
-        # "save" data to create movement
-            self.Start_HandlePosition = deepcopy( self.ui_FMRRMainWindow.HandlePosition )
-            self.Start_RobotJointPosition = RobotJointPosition
 
-        # visualize data            
-            HandlePosition[:] = [iPosition * _toolPosCovFact for iPosition in HandlePosition]
-            self.lcdNumber_StartPos_X.display( int( HandlePosition[0] ) ) 
-            self.lcdNumber_StartPos_Y.display( int( HandlePosition[1] ) ) 
-            self.lcdNumber_StartPos_Z.display( int( HandlePosition[2] ) )
-
-            start_msg.x = HandlePosition[0]/100.0
-            start_msg.y = HandlePosition[1]/100.0
-            start_msg.z = HandlePosition[2]/100.0
-            # self.ui_FMRRMainWindow.pub_start_point.publish(start_msg)
-            
-            self.pushButton_SetCurrentPos_2.enablePushButton(1)
-            JointTargetPositions = (self.doubleSpin_Joint1_Value, self.doubleSpin_Joint2_Value, self.doubleSpin_Joint3_Value) #, self.doubleSpin_Joint4_Value, self.doubleSpin_Joint5_Value, self.doubleSpin_Joint6_Value)
-            for iJoint in range(0,3):
-                JointTargetPositions[iJoint].setValue(RobotJointPosition[iJoint])
-
-            
-        elif NrButton == 2:
-            end_msg = Point()
-
-        # save data to create movement
-            self.End_HandlePosition = deepcopy( self.ui_FMRRMainWindow.HandlePosition )
-            self.End_RobotJointPosition = RobotJointPosition
-        # visualize data            
-            HandlePosition[:] = [iPosition * _toolPosCovFact for iPosition in HandlePosition]
-            self.lcdNumber_EndPos_X.display( int( HandlePosition[0] ) ) 
-            self.lcdNumber_EndPos_Y.display( int( HandlePosition[1] ) ) 
-            self.lcdNumber_EndPos_Z.display( int( HandlePosition[2] ) )
-            self.pushButton_CREATEMovement.enablePushButton(1)
-
-            end_msg.x = HandlePosition[0]/100.0
-            end_msg.y = HandlePosition[1]/100.0
-            end_msg.z = HandlePosition[2]/100.0
-            # self.ui_FMRRMainWindow.pub_end_point.publish(end_msg)
-            
-
-        
     def clbk_BtnGOtoTraining(self):
         if self.lineEdit.MovementIsLoaded:
             self.ui_FMRRMainWindow.pushButton_LoadCreateProtocol.enablePushButton(1)
         else:
             self.ui_FMRRMainWindow.pushButton_LoadCreateProtocol.enablePushButton(0)
-       
         if self.SideOfMovement == 1: #Left
             print('side of movement1:')
             print(self.SideOfMovement)
@@ -645,7 +503,6 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             print('non dovrei essere qui')
             self.ui_FMRRMainWindow.radioButton_SideLeft.setChecked(False)
             self.ui_FMRRMainWindow.radioButton_SideRight.setChecked(False)
-          
         if self.TypeOfMovement == 1: # Reaching 
             self.ui_FMRRMainWindow.radioButton_TypeOfExercise_Reaching.setChecked(True)
 #            self.ui_FMRRMainWindow.radioButton_TypeOfExercise_HandtoMouth.setChecked(False)
@@ -655,7 +512,6 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         else:
             self.ui_FMRRMainWindow.radioButton_TypeOfExercise_Reaching.setChecked(False)
             self.ui_FMRRMainWindow.radioButton_TypeOfExercise_HandtoMouth.setChecked(False)
-            
         if self.vel_profile == 1: # Reaching 
             self.radioButton_VelocityProfileConstant.setChecked(True)
 #            self.ui_FMRRMainWindow.radioButton_TypeOfExercise_HandtoMouth.setChecked(False)
@@ -665,62 +521,29 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         else:
             self.radioButton_VelocityProfileConstant.setChecked(False)
             self.radioButton_VelocityProfileBellshaped.setChecked(False)
-        
         self.DialogFMRRMainWindow.show()
         self.DialogMovementWindow.hide()
-        
-######
-    def updateMovementWindow(self, MovementWindow):
-#       Joint and tool postions are converted and displayed 
-#       conversion factors (fromm RAD to Degree and from meters tocentimeteres are declared at the beginning od the FMRRMainProgram class    
 
-#       Joints lcd 
-        _jointPosConvFact = self.ui_FMRRMainWindow._jointPosConvFact #
-        try:
-            RobotJointPosition = self.ui_FMRRMainWindow.RobotJointPosition
-        except:
-            return
-#        print('ActualRobotJointPositon:')
-#        print(RobotJointPosition)
-        RobotJointPosition = [Ji_position * _jointPosConvFact for Ji_position in RobotJointPosition]
-        
-        CurrentDisplayedJointPos = [self.lcdNumber_J1, self.lcdNumber_J2, self.lcdNumber_J3] #, self.lcdNumber_J4, self.lcdNumber_J5, self.lcdNumber_J6]
-        for iJoint in range(0,3):
-            CurrentDisplayedJointPos[iJoint].display( int(RobotJointPosition[iJoint]) ) # 
 
-##       Handle lcd 
-        _toolPosCovFact = self.ui_FMRRMainWindow._toolPosCovFact
-        try:
-            HandlePosition = self.ui_FMRRMainWindow.HandlePosition
-        except:
-            return
-        # print('HandlePosition:')
-        # print(HandlePosition)
-        HandlePosition[:] = [i_position * _toolPosCovFact for i_position in HandlePosition]
+    def clbk_BtnGOtoRobotMovement(self):
+        self.ui_FMRRMainWindow.DialogRobotWindow.show()
+        self.DialogMovementWindow.hide()
 
-        CurrentDisplayedHandlePos = [self.lcdNumber_X, self.lcdNumber_Y, self.lcdNumber_Z]
-        for iCoord in range(0,3):
-            CurrentDisplayedHandlePos[iCoord].display( int(HandlePosition[iCoord]) )         
-##        
-            
+
     def setupUi_MovementWindow(self, MovementWindow):
         Ui_MovementWindow.setupUi(self, MovementWindow)
         MovementWindow.IsMovementReady = 0
                 
+                
     def retranslateUi_MovementWindow(self, MovementWindow):
-        
         _translate = QtCore.QCoreApplication.translate
         MovementWindow.setWindowTitle(_translate("MovementWindow", "Movement Window"))
-        
-#       SHARED Variables
         self.lineEdit.MovementIsLoaded = 0
 
 ############################      Modify LCDs
 ######
       
-        LcdWidgets  = [ self.lcdNumber_X, self.lcdNumber_Y, self.lcdNumber_Z, self.lcdNumber_J1,
-        self.lcdNumber_J2, self.lcdNumber_J3, self.lcdNumber_StartPos_X, self.lcdNumber_StartPos_Y, self.lcdNumber_StartPos_Z, self.lcdNumber_EndPos_X,
-        self.lcdNumber_EndPos_Y, self.lcdNumber_EndPos_Z ]  #, self.lcdNumber_J4, self.lcdNumber_J5, self.lcdNumber_J6,
+        LcdWidgets  = [self.lcdNumber_EndPos_X, self.lcdNumber_EndPos_Y, self.lcdNumber_EndPos_Z ]  #, self.lcdNumber_J4, self.lcdNumber_J5, self.lcdNumber_J6,
 
         for iWidget in LcdWidgets:
             iWidget.setSegmentStyle(QtWidgets.QLCDNumber.Flat)
@@ -748,103 +571,14 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         ##############################################################################################        
         
 # ENABLE
-        self.pushButton_LoadJointPosition.enablePushButton(1)
-
-        self.pushButton_Xminus.enablePushButton(1)
-        self.pushButton_Yminus.enablePushButton(1)
-        self.pushButton_Zminus.enablePushButton(1)
-
-        self.pushButton_Xplus.enablePushButton(1) 
-        self.pushButton_Yplus.enablePushButton(1)
-        self.pushButton_Zplus.enablePushButton(1)
-        
-        self.pushButton_J1minus.enablePushButton(1)
-        self.pushButton_J2minus.enablePushButton(1)
-        self.pushButton_J3minus.enablePushButton(1)
-        # self.pushButton_J4minus.enablePushButton(1)
-        # self.pushButton_J5minus.enablePushButton(1)
-        # self.pushButton_J6minus.enablePushButton(1)
-        
-        self.pushButton_J1plus.enablePushButton(1)
-        self.pushButton_J2plus.enablePushButton(1)
-        self.pushButton_J3plus.enablePushButton(1)
-        # self.pushButton_J4plus.enablePushButton(1)
-        # self.pushButton_J5plus.enablePushButton(1)
-        # self.pushButton_J6plus.enablePushButton(1)
-                 
         self.pushButton_LOADMovement.enablePushButton(1)
         self.pushButton_GOtoTraining.enablePushButton(1)
+        self.pushButton_GOtoRobotMovement.enablePushButton(1)
         
-        self.pushButton_StartMoveRobotManually.enablePushButton(1)
-        
-        self.pushButton_SetCurrentPos_1.enablePushButton(1)
-        self.pushButton_SetCurrentPos_2.enablePushButton(0)
-        
-        self.pushButton_EnableApproach.enablePushButton(1)
     
 # DISABLE        
-        self.pushButton_StopMoveRobotManually.enablePushButton(0)
+        self.pushButton_CREATEMovement.enablePushButton(1)
         
-        self.pushButton_Approach_Joint1.enablePushButton(0)
-        self.pushButton_Approach_Joint2.enablePushButton(0)
-        self.pushButton_Approach_Joint3.enablePushButton(0)
-        # self.pushButton_Approach_Joint4.enablePushButton(0)
-        # self.pushButton_Approach_Joint5.enablePushButton(0)
-        # self.pushButton_Approach_Joint6.enablePushButton(0)
-        self.pushButton_ApproachAllJoint.enablePushButton(0)
-        
-        self.pushButton_SaveStartPosition.enablePushButton(0)
-        self.pushButton_SAVEMovement.enablePushButton(0)
-        self.pushButton_CREATEMovement.enablePushButton(0)
-        
-      
-
-        ##############################################################################################
-        #####                                                                                    #####  
-        #####                         MOVE THE ROBOT TO DEFINED POSITION                         ##### 
-        #####                                      Connections                                   #####
-        #####                                                                                    #####
-        ##############################################################################################
-
-
-        self.pushButton_LoadJointPosition.clicked.connect(lambda: self.clbk_BtnLoadJointPosition())
-
-        self.pushButton_Xminus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(-1 ,0) )
-        self.pushButton_Yminus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(-1, 1) )
-        self.pushButton_Zminus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(-1, 2) )
-
-        self.pushButton_Xplus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(1 ,0) ) 
-        self.pushButton_Yplus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(1, 1) )
-        self.pushButton_Zplus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(1, 2) )
-
-        self.pushButton_J1minus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(-1, 3) )
-        self.pushButton_J2minus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(-1, 4) )
-        self.pushButton_J3minus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(-1, 5) )
-        # self.pushButton_J4minus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(-1, 6) )
-        # self.pushButton_J5minus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(-1, 7) )
-        # self.pushButton_J6minus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(-1, 8) )
-        
-        self.pushButton_J1plus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(1, 3) )
-        self.pushButton_J2plus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(1, 4) )
-        self.pushButton_J3plus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(1, 5) )
-        # self.pushButton_J4plus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(1, 6) )
-        # self.pushButton_J5plus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(1, 7) )
-        # self.pushButton_J6plus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(1, 8) )
-        
-
-#        self.pushButton_EnableApproach.setCheckable(True)
-#        self.pushButton_EnableApproach.toggle()
-        
-        self.pushButton_EnableApproach.clicked.connect( lambda: self.clbk_BtnEnableApproach() )
-        
-        self.pushButton_Approach_Joint1.clicked.connect( lambda: self.clbk_JointApproach(0) )
-        self.pushButton_Approach_Joint2.clicked.connect( lambda: self.clbk_JointApproach(1) )
-        self.pushButton_Approach_Joint3.clicked.connect( lambda: self.clbk_JointApproach(2) )
-        # self.pushButton_Approach_Joint4.clicked.connect( lambda: self.clbk_JointApproach(3) )
-        # self.pushButton_Approach_Joint5.clicked.connect( lambda: self.clbk_JointApproach(4) )
-        # self.pushButton_Approach_Joint6.clicked.connect( lambda: self.clbk_JointApproach(5) )
-        self.pushButton_ApproachAllJoint.clicked.connect( lambda: self.clbk_JointApproach(6) )
-  
         ##############################################################################################
         #####                                                                                    #####  
         #####                                   MOVEMENT PARAMETERS                              ##### 
@@ -852,14 +586,8 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         #####                                                                                    #####
         ##############################################################################################
         
-        self.pushButton_SetCurrentPos_1.clicked.connect(lambda: self.clbk_pushButton_SetCurrentPos(1) )        
-        self.pushButton_SetCurrentPos_2.clicked.connect(lambda: self.clbk_pushButton_SetCurrentPos(2) )
-
         self.pushButton_LOADMovement.clicked.connect(lambda: self.clbk_BtnLoadMovementData())
         self.pushButton_CREATEMovement.clicked.connect(lambda: self.clbk_BtnCreateMovementData())
-        self.pushButton_SAVEMovement.clicked.connect(lambda: self.clbk_BtnSAVEMovement())
-
-
 
         ##############################################################################################
         #####                                                                                    #####  
@@ -869,6 +597,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         ##############################################################################################
 
         self.pushButton_GOtoTraining.clicked.connect(lambda: self.clbk_BtnGOtoTraining())
+        self.pushButton_GOtoRobotMovement.clicked.connect(lambda: self.clbk_BtnGOtoRobotMovement())
         MovementWindow.adjustSize()
         
 
