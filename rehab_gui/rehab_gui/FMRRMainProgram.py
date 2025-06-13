@@ -28,12 +28,15 @@ from builtin_interfaces.msg import Duration
 from rclpy.action import ActionClient
 from control_msgs.action import FollowJointTrajectory
 from trajectory_msgs.msg import JointTrajectoryPoint  
-
+from rclpy.executors import MultiThreadedExecutor
 from sensor_msgs.msg import JointState # joints positions, velocities and efforts
 from std_msgs.msg import Int16 
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from ethercat_controller_msgs.srv import SwitchDriveModeOfOperation
+from controller_manager_msgs.srv import UnloadController, LoadController, ConfigureController, SwitchController
 # from geometry_msgs.msg import Point
-
 # import debugpy
+import time 
 
 DEBUG = False
 
@@ -103,7 +106,7 @@ class MainProgram(Node, Ui_FMRRMainWindow):
     def definePaths(self):
         self.FMRR_Paths = dict() 
         current_directory = os.path.dirname(os.path.abspath(__file__))  # Get the current file's directory
-        parent_directory = os.path.dirname(current_directory)  # Step to the parent folder
+        parent_directory = '/home/fit4med/fit4med_ws/src/Fit4Med/rehab_gui'  # Step to the parent folder
         self.FMRR_Paths['Root'] = os.getcwd()
         self.FMRR_Paths['Protocols'] = parent_directory + '/Protocols'
         self.FMRR_Paths['Movements'] = parent_directory + '/Movements'  
@@ -167,7 +170,7 @@ class MainProgram(Node, Ui_FMRRMainWindow):
         
     def clbk_BtnCLOSEprogram(self):
         MyString = "Do you want to exit?"
-        question = QMessageBox(QMessageBox.Question, "Question", MyString, QMessageBox.Yes | QMessageBox.No)
+        question = QMessageBox(QMessageBox.Question, "Exit Program", MyString, QMessageBox.Yes | QMessageBox.No)
         decision = question.exec_()
         if decision == QMessageBox.Yes:
 #              app.activeWindow().close()
@@ -263,6 +266,110 @@ class MainProgram(Node, Ui_FMRRMainWindow):
         speed_ovr_msg = Int16()
         speed_ovr_msg.data = speed_ovr_Value
         self.pub_speed_ovr.publish(speed_ovr_msg)
+
+    def start_homing_procedure(self):
+        switch_client = self.create_client(SwitchController, '/controller_manager/switch_controller')
+        if switch_client.wait_for_service(timeout_sec=5.0):
+            switch_req = SwitchController.Request()
+            switch_req.activate_controllers = []
+            switch_req.deactivate_controllers = [self.controller_name]
+            switch_req.strictness = SwitchController.Request.STRICT
+            self.get_logger().info(f'Deactivating controller {self.controller_name}...')
+            future = switch_client.call_async(switch_req)
+            rclpy.spin_until_future_complete(self, future)
+            time.sleep(0.3)
+            self.unload_controller_before_homing()
+        else:
+            self.get_logger().error('Failed to deactivate controller before homing.')
+
+    def unload_controller_before_homing(self):
+        client = self.create_client(UnloadController, '/controller_manager/unload_controller')
+        if client.wait_for_service(timeout_sec=5.0):
+            request = UnloadController.Request()
+            request.name = self.controller_name
+            self.get_logger().info(f'Unloading controller {self.controller_name}...')
+            future = client.call_async(request)
+            rclpy.spin_until_future_complete(self, future)
+            time.sleep(0.3)
+            self.set_homing_mode_all_dofs()
+        else:
+            self.get_logger().error('Error unloading the controller before homing.')
+
+    def set_homing_mode_all_dofs(self):
+        self.remaining_homing_dofs = set(JOINT_NAMES)
+        self._set_mode_for_next_dof(6, after_all_done=self.load_controller_after_homing)
+
+    def load_controller_after_homing(self):
+        time.sleep(0.5)
+        load_client = self.create_client(LoadController, '/controller_manager/load_controller')
+        if load_client.wait_for_service(timeout_sec=5.0):
+            load_req = LoadController.Request()
+            load_req.name = self.controller_name
+            self.get_logger().info(f'Loading controller {self.controller_name}...')
+            future = load_client.call_async(load_req)
+            rclpy.spin_until_future_complete(self, future)
+            time.sleep(0.3)
+            self.configure_controller_after_loading()
+        else:
+            self.get_logger().error('Failed to load controller after homing.')
+
+    def configure_controller_after_loading(self):
+        config_client = self.create_client(ConfigureController, '/controller_manager/configure_controller')
+        if config_client.wait_for_service(timeout_sec=5.0):
+            config_req = ConfigureController.Request()
+            config_req.name = self.controller_name
+            self.get_logger().info(f'Configuring controller {self.controller_name}...')
+            future = config_client.call_async(config_req)
+            rclpy.spin_until_future_complete(self, future)
+            time.sleep(0.3)
+            self.activate_controller_after_config()
+        else:
+            self.get_logger().error('Failed to configure controller after loading.')
+
+    def activate_controller_after_config(self):
+        switch_client = self.create_client(SwitchController, '/controller_manager/switch_controller')
+        if switch_client.wait_for_service(timeout_sec=5.0):
+            switch_req = SwitchController.Request()
+            switch_req.activate_controllers = [self.controller_name]
+            switch_req.deactivate_controllers = []
+            switch_req.strictness = SwitchController.Request.STRICT
+            self.get_logger().info(f'Activating controller {self.controller_name}...')
+            future = switch_client.call_async(switch_req)
+            rclpy.spin_until_future_complete(self, future)
+            time.sleep(0.5)
+            self.set_cyclic_mode_all_dofs()
+        else:
+            self.get_logger().error('Failed to activate controller after configure.')
+
+    def set_cyclic_mode_all_dofs(self):
+        self.remaining_cyclic_dofs = set(JOINT_NAMES)
+        self._set_mode_for_next_dof(8, after_all_done=self.confirm_homing_completed)
+
+    def _set_mode_for_next_dof(self, mode_value, after_all_done):
+        target_dofs = self.remaining_homing_dofs if mode_value == 6 else self.remaining_cyclic_dofs
+
+        if not target_dofs:
+            after_all_done()
+            return
+
+        dof = target_dofs.pop()
+        client = self.create_client(SwitchDriveModeOfOperation, '/state_controller/switch_mode_of_operation')
+        if client.wait_for_service(timeout_sec=5.0):
+            req = SwitchDriveModeOfOperation.Request()
+            req.dof_name = dof
+            req.mode_of_operation = mode_value
+            self.get_logger().info(f"Setting mode {mode_value} for {dof}...")
+            future = client.call_async(req)
+            rclpy.spin_until_future_complete(self, future)
+            time.sleep(0.2)
+            self._set_mode_for_next_dof(mode_value, after_all_done)
+        else:
+            self.get_logger().error(f"Service unavailable to set mode {mode_value} for {dof}")
+            self._set_mode_for_next_dof(mode_value, after_all_done)
+
+    def confirm_homing_completed(self):
+        self.get_logger().info('✅ Homing procedure completed successfully.')
+     
            
               
 ######################## MAIN FUNCTIONS ###########################
@@ -341,6 +448,8 @@ class MainProgram(Node, Ui_FMRRMainWindow):
 ##############################      ROS     ###################################
 
     def start_ROS_functions(self):
+        self.controller_name = 'joint_trajectory_controller'
+
     #   subscribers        
         self.joint_subscriber = self.create_subscription(JointState, 'joint_states', self.getJointState, 1)
         self.tool_subscriber = self.create_subscription(JointState, 'joint_states', self.getToolPosition, 1)
@@ -352,7 +461,7 @@ class MainProgram(Node, Ui_FMRRMainWindow):
         # self.pub_end_point = self.create_publisher(Point, '/end_point', 10)
 
     #   action client
-        self._clientFollowCartTraj = ActionClient(self, FollowJointTrajectory, '/scaled_trajectory_controller/follow_joint_trajectory')
+        self._clientFollowCartTraj = ActionClient(self, FollowJointTrajectory, f'/{self.controller_name}/follow_joint_trajectory')
      
 
     def startPauseService(self):
@@ -526,6 +635,12 @@ def main(args=None):
     ui.startMovementWindow()
     ui.start_ROS_functions()
     ui.rosTimer()
+
+    ui._ros_timer = QTimer()
+    ui._ros_timer.timeout.connect(lambda: rclpy.spin_once(ui, timeout_sec=0))
+    ui._ros_timer.start(ui._ros_period)
+
+
     # rclpy.spin_once(ui)
     ui.FMRR_clientFollowCartTraj()
     ui.updateTimer()

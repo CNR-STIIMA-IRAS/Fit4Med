@@ -105,12 +105,11 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
 ##############################################################################################################            
 #
     def clbk_BtnCreateMovementData(self):
-        dialog = ManualGuidanceDialog()
-        dialog.finish_pressed.connect(self.on_manual_guidance_finish)
-        dialog.exec_()
-        
+    #     dialog = ManualGuidanceDialog()
+    #     dialog.finish_pressed.connect(self.on_manual_guidance_finish)
+    #     dialog.exec_()
     
-    def on_manual_guidance_finish(self):    
+    # def on_manual_guidance_finish(self):    
         # Get the end position of the handle
         _toolPosCovFact = self.ui_FMRRMainWindow._toolPosCovFact        
         HandlePosition = self.ui_FMRRMainWindow.HandlePosition
@@ -158,12 +157,17 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         x_begin = 0   
         y_begin = 0
         z_begin = 0
-        x_end = deepcopy(self.End_HandlePosition[0])
-        y_end = deepcopy(self.End_HandlePosition[1])
-        z_end = deepcopy(self.End_HandlePosition[2])
+        # x_end = deepcopy(self.End_HandlePosition[0])
+        # y_end = deepcopy(self.End_HandlePosition[1])
+        # z_end = deepcopy(self.End_HandlePosition[2])
+        x_end = 0.4
+        y_end = -0.1
+        z_end = 0.35
         
         if all([x_end == 0, y_end == 0, z_end == 0]):
-            QMessageBox.warning(self.ui_FMRRMainWindow, "Warning", "End position is zero. Please set a valid position.")
+            question = QMessageBox(QMessageBox.Warning, "Warning", "End position is zero. Please set a valid position.", QMessageBox.Ok)
+            question.button(QMessageBox.Ok)
+            decision = question.exec_()
             return
         else: 
             x12 = x_end-x_begin; y12 = y_end-y_begin; z12 = z_end-z_begin
@@ -295,7 +299,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
                 
                 elif self.vel_profile == 2: # bell shaped velocity profile (sinus)
                     Tg=2*T
-                    v1 = (np.pi / Tg) * np.sin( 2* np.pi/Tg * _time )
+                    v1 = (np.pi / Tg) * np.sin( 2* np.pi/Tg * _time ) * np.sin( 2* np.pi/Tg * _time )
                 else:
                     pass     
                 
@@ -305,7 +309,6 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
                 
                 samples = np.zeros( (1, numSamples), dtype = int, order='C' )
                 samples[0,0] = 0
-
 
                 for i in range(1, numSamples-1):
                     samples[0,i] =  int( np.round( _numPoints*s3[i] ) )   
@@ -365,7 +368,6 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
                 a_movement_definition['side'] = [ self.SideOfMovement ]
                 a_movement_definition['vel_profile'] = [ self.vel_profile ]
                 a_movement_definition['total_time'] = [ T ]
-                a_movement_definition['begin_joint_config'] = [self.Start_RobotJointPosition ]
                 a_movement_definition['begin_config'] = [ [x_begin, y_begin, z_begin] ]
                 a_movement_definition['end_config'] = [ [x_end, y_end, z_end] ]
         
@@ -408,8 +410,9 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
                 TrjYamlData['cart_trj3'] = cart_trj3
                 
                 self.TrjYamlData =TrjYamlData
+                print("----------------------2----------------------------")
                 NewFilename = QtWidgets.QFileDialog.getSaveFileName(None, "Save new movement as:", MovementsPath, "*.yaml")            
-
+                print("----------------------3----------------------------")
                 if bool(NewFilename[0]):
                     print('This is the filename of the loaded movement: ')
                     print(NewFilename[0])

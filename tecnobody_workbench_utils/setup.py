@@ -34,6 +34,7 @@ setup(
             'fake_fjt = tecnobody_workbench_utils.fake_follow_joint_trajectory:main',
             'launch_status_publisher = tecnobody_workbench_utils.launch_status_publisher',
             'apriltag_azure_detector = tecnobody_workbench_utils.apriltag_azure_detector:main',
+            'extract_bags = tecnobody_workbench_utils.extract_bags:main',
         ],
     },
 )

@@ -27,13 +27,14 @@ from builtin_interfaces.msg import Duration
 #import rospkg
 from geometry_msgs.msg import Point
 #from StringIO import StringIO
+from std_srvs.srv import Trigger
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 
 
 class FMRR_Ui_RobotWindow(Ui_RobotWindow):
     def __init__(self) -> None:
         super().__init__()
 
-  
  
 ##############################################################################################################
 #####                                                                                                    #####  
@@ -131,7 +132,6 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
         self.ui_FMRRMainWindow.startMovementFCT()
         
     def clbk_StartMoveRobotManually(self):
-        
         self.pushButton_StartMoveRobotManually.enablePushButton(0)
         self.pushButton_StopMoveRobotManually.enablePushButton(1)
         #attiva manual guidance
@@ -140,9 +140,9 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
     def clbk_StopMoveRobotManually(self):
         self.pushButton_StartMoveRobotManually.enablePushButton(1)
         self.pushButton_StopMoveRobotManually.enablePushButton(0)
-        
         #attiva position control
-    
+        pass
+
     def clbk_BtnAbsoluteHoming(self):
         
         file_path = '/tmp/absolute_homing_performed'
@@ -191,8 +191,8 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
             except Exception as e:
                 print(f"Failed to remove {file_path}: {e}")
         print(f"Files removed {not os.path.exists(file_path)}")
-        # chiamare homing
-        
+        # Call homing service
+        self.ui_FMRRMainWindow.start_homing_procedure()
         # Create an empty file under /tmp
         with open('/tmp/relative_homing_performed', 'w') as f:
             f.write("homing performed")

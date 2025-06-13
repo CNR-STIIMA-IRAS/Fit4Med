@@ -24,7 +24,7 @@
                 <param name="alias">0</param>
                 <param name="position">0</param>
                 <param name="mode_of_operation">8</param>
-                <param name="slave_config">$(find tecnobody_workbench)/config/delta400.yaml</param>
+                <param name="slave_config">$(find tecnobody_workbench)/config/delta400x.yaml</param>
             </ec_module>
         </joint>
 
@@ -44,7 +44,7 @@
                 <param name="alias">0</param>
                 <param name="position">1</param>
                 <param name="mode_of_operation">8</param>
-                <param name="slave_config">$(find tecnobody_workbench)/config/delta400.yaml</param>
+                <param name="slave_config">$(find tecnobody_workbench)/config/delta400y.yaml</param>
             </ec_module>
         </joint>
 
