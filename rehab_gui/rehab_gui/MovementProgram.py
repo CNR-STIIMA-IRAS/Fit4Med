@@ -387,6 +387,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
                 print(NewFilename[0])
                 print('This is T: %s' %T)
                 self.SaveNewFile(TrjYamlData, NewFilename[0])
+                self.lineEdit.MovementIsLoaded = 1
             else:
                 self.pushButton_CREATEMovement.enablePushButton(0)
                 print('No proper filename was selected. Create movemement again or use the SaveMovement button')
