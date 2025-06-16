@@ -27,8 +27,8 @@
   <widget class="QLineEdit" name="lineEdit_MovTime">
    <property name="geometry">
     <rect>
-     <x>340</x>
-     <y>233</y>
+     <x>40</x>
+     <y>323</y>
      <width>81</width>
      <height>22</height>
     </rect>
@@ -48,8 +48,8 @@
   <widget class="QDoubleSpinBox" name="doubleSpinBox_MoveTime">
    <property name="geometry">
     <rect>
-     <x>340</x>
-     <y>260</y>
+     <x>40</x>
+     <y>350</y>
      <width>61</width>
      <height>22</height>
     </rect>
@@ -223,8 +223,8 @@
   <widget class="QPushButton" name="pushButton_LOADMovement">
    <property name="geometry">
     <rect>
-     <x>40</x>
-     <y>350</y>
+     <x>170</x>
+     <y>450</y>
      <width>101</width>
      <height>41</height>
     </rect>
@@ -242,9 +242,9 @@
   <widget class="QLineEdit" name="lineEdit">
    <property name="geometry">
     <rect>
-     <x>220</x>
-     <y>370</y>
-     <width>211</width>
+     <x>320</x>
+     <y>470</y>
+     <width>141</width>
      <height>20</height>
     </rect>
    </property>
@@ -255,8 +255,8 @@
   <widget class="QLabel" name="labelFileName_14">
    <property name="geometry">
     <rect>
-     <x>220</x>
-     <y>340</y>
+     <x>320</x>
+     <y>440</y>
      <width>121</width>
      <height>21</height>
     </rect>
@@ -286,7 +286,7 @@
    <property name="geometry">
     <rect>
      <x>340</x>
-     <y>480</y>
+     <y>590</y>
      <width>101</width>
      <height>41</height>
     </rect>
@@ -427,7 +427,7 @@
   <widget class="QPushButton" name="pushButton_CREATEMovement">
    <property name="geometry">
     <rect>
-     <x>200</x>
+     <x>340</x>
      <y>230</y>
      <width>101</width>
      <height>51</height>
@@ -447,7 +447,7 @@
    <property name="geometry">
     <rect>
      <x>40</x>
-     <y>480</y>
+     <y>590</y>
      <width>111</width>
      <height>41</height>
     </rect>
@@ -455,6 +455,33 @@
    <property name="text">
     <string>MOVE
  Robot</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_SAVEMovement">
+   <property name="geometry">
+    <rect>
+     <x>40</x>
+     <y>450</y>
+     <width>101</width>
+     <height>41</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>SAVE
+ movement</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="pushButton_SetCurrentPos_2">
+   <property name="geometry">
+    <rect>
+     <x>200</x>
+     <y>240</y>
+     <width>88</width>
+     <height>25</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>SET current</string>
    </property>
   </widget>
  </widget>
@@ -468,7 +495,7 @@
  <resources/>
  <connections/>
  <buttongroups>
-  <buttongroup name="buttonGroup_2"/>
   <buttongroup name="buttonGroup"/>
+  <buttongroup name="buttonGroup_2"/>
  </buttongroups>
 </ui>
