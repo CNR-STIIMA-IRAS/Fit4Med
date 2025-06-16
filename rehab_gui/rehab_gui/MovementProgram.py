@@ -516,10 +516,10 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             JointData = self.TrjYamlData.get("a_movement_definition").get("begin_joint_config") [0]
             self.JointTargetPosition = JointData
 #       Put doublespin values in list to allow for iteration 
-            JointTargetPositions = (self.doubleSpin_Joint1_Value, self.doubleSpin_Joint2_Value, self.doubleSpin_Joint3_Value) #, self.doubleSpin_Joint4_Value, self.doubleSpin_Joint5_Value, self.doubleSpin_Joint6_Value)
+            # JointTargetPositions = (self.doubleSpin_Joint1_Value, self.doubleSpin_Joint2_Value, self.doubleSpin_Joint3_Value)
 
-            for iJoint in range(0,3):
-                JointTargetPositions[iJoint].setValue(JointData[iJoint]*180/np.pi)
+            # for iJoint in range(0,3):
+            #     JointTargetPositions[iJoint].setValue(JointData[iJoint]*180/np.pi)
 
 ##### Start and End positions needed to create a new movement            
             self.Start_HandlePosition = deepcopy( self.TrjYamlData.get("a_movement_definition").get("begin_config")[0] )
