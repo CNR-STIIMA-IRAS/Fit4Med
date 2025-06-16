@@ -131,14 +131,9 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             self.vel_profile = 0
             print('0')
             
-        x_begin = deepcopy(self.Start_HandlePosition[0])        
-        y_begin = deepcopy(self.Start_HandlePosition[1])
-        z_begin = deepcopy(self.Start_HandlePosition[2])
-        
-        if not all(abs(x) < 1e-4 for x in self.Start_HandlePosition[0]):
-                print("Start position is not zero, please re-define the movement before creation. ")
-                return -1
-        
+        x_begin = 0.0        
+        y_begin = 0.0
+        z_begin = 0.0
         x_end = deepcopy(self.End_HandlePosition[0])
         y_end = deepcopy(self.End_HandlePosition[1])
         z_end = deepcopy(self.End_HandlePosition[2])
@@ -341,7 +336,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             a_movement_definition['side'] = [ self.SideOfMovement ]
             a_movement_definition['vel_profile'] = [ self.vel_profile ]
             a_movement_definition['total_time'] = [ T ]
-            a_movement_definition['begin_joint_config'] = [self.Start_RobotJointPosition ]
+            a_movement_definition['begin_joint_config'] = [ [x_begin, y_begin, z_begin] ]
             a_movement_definition['begin_config'] = [ [x_begin, y_begin, z_begin] ]
             a_movement_definition['end_config'] = [ [x_end, y_end, z_end] ]
     

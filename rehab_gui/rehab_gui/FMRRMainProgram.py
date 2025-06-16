@@ -524,11 +524,11 @@ class MainProgram(Node, Ui_FMRRMainWindow):
         home_goal.trajectory.points.append(home_init_point)  # type: ignore
 
         home_point = JointTrajectoryPoint()
-        home_point.positions = 0.0 * len(JOINT_NAMES)
+        home_point.positions = [0.0] * len(JOINT_NAMES)
         home_point.velocities = [0.0] * len(JOINT_NAMES)
         home_point.accelerations = [0.0] * len(JOINT_NAMES)
         home_point.effort = []
-        home_point.time_from_start = Duration(sec=1, nanosec=0)
+        home_point.time_from_start = Duration(sec=3, nanosec=0)
         home_goal.trajectory.points.append(home_point) # type: ignore
         
         home_goal.trajectory.header.stamp = self.get_clock().now().to_msg()
