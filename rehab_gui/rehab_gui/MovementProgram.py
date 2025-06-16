@@ -299,8 +299,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
                 
                 elif self.vel_profile == 2: # bell shaped velocity profile (sinus)
                     Tg=2*T
-                    v1 = (np.pi / Tg) * np.sin( 2* np.pi/Tg * _time ) * np.sin( 2* np.pi/Tg * _time )
-                else:
+                    v1 = (np.pi / Tg) * np.sin( 2* np.pi/Tg * _time )
                     pass     
                 
                 # new abscissa calculation, and resampling
@@ -418,9 +417,10 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
                     print(NewFilename[0])
                     print('This is T: %s' %T)
                     self.SaveNewFile(TrjYamlData, NewFilename[0])
+                    self.lineEdit.MovementIsLoaded = 1
                 else:
                     # self.pushButton_CREATEMovement.enablePushButton(0)
-                    print('No proper filename was selected. Create movemement again or use the SaveMovement button')
+                    print('No proper filename was selected. Create movemement again')
 
     
     def SaveNewFile(self, Data, NewFilename):

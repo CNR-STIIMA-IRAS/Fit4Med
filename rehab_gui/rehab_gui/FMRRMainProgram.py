@@ -27,13 +27,11 @@ from rclpy.node import Node
 from builtin_interfaces.msg import Duration
 from rclpy.action import ActionClient
 from control_msgs.action import FollowJointTrajectory
-from trajectory_msgs.msg import JointTrajectoryPoint  
-from rclpy.executors import MultiThreadedExecutor
+from trajectory_msgs.msg import JointTrajectoryPoint
 from sensor_msgs.msg import JointState # joints positions, velocities and efforts
 from std_msgs.msg import Int16 
-from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from ethercat_controller_msgs.srv import SwitchDriveModeOfOperation
-from controller_manager_msgs.srv import UnloadController, LoadController, ConfigureController, SwitchController
+from controller_manager_msgs.srv import SwitchController
 # from geometry_msgs.msg import Point
 # import debugpy
 import time 
@@ -277,56 +275,17 @@ class MainProgram(Node, Ui_FMRRMainWindow):
             self.get_logger().info(f'Deactivating controller {self.controller_name}...')
             future = switch_client.call_async(switch_req)
             rclpy.spin_until_future_complete(self, future)
-            time.sleep(0.3)
-            self.unload_controller_before_homing()
+            # time.sleep(0.3)
+            self.set_homing_mode_all_dofs()
         else:
             self.get_logger().error('Failed to deactivate controller before homing.')
 
-    def unload_controller_before_homing(self):
-        client = self.create_client(UnloadController, '/controller_manager/unload_controller')
-        if client.wait_for_service(timeout_sec=5.0):
-            request = UnloadController.Request()
-            request.name = self.controller_name
-            self.get_logger().info(f'Unloading controller {self.controller_name}...')
-            future = client.call_async(request)
-            rclpy.spin_until_future_complete(self, future)
-            time.sleep(0.3)
-            self.set_homing_mode_all_dofs()
-        else:
-            self.get_logger().error('Error unloading the controller before homing.')
-
     def set_homing_mode_all_dofs(self):
         self.remaining_homing_dofs = set(JOINT_NAMES)
-        self._set_mode_for_next_dof(6, after_all_done=self.load_controller_after_homing)
+        self._set_mode_for_next_dof(6, after_all_done=self.activate_controller_after_homing)
 
-    def load_controller_after_homing(self):
+    def activate_controller_after_homing(self):
         time.sleep(0.5)
-        load_client = self.create_client(LoadController, '/controller_manager/load_controller')
-        if load_client.wait_for_service(timeout_sec=5.0):
-            load_req = LoadController.Request()
-            load_req.name = self.controller_name
-            self.get_logger().info(f'Loading controller {self.controller_name}...')
-            future = load_client.call_async(load_req)
-            rclpy.spin_until_future_complete(self, future)
-            time.sleep(0.3)
-            self.configure_controller_after_loading()
-        else:
-            self.get_logger().error('Failed to load controller after homing.')
-
-    def configure_controller_after_loading(self):
-        config_client = self.create_client(ConfigureController, '/controller_manager/configure_controller')
-        if config_client.wait_for_service(timeout_sec=5.0):
-            config_req = ConfigureController.Request()
-            config_req.name = self.controller_name
-            self.get_logger().info(f'Configuring controller {self.controller_name}...')
-            future = config_client.call_async(config_req)
-            rclpy.spin_until_future_complete(self, future)
-            time.sleep(0.3)
-            self.activate_controller_after_config()
-        else:
-            self.get_logger().error('Failed to configure controller after loading.')
-
-    def activate_controller_after_config(self):
         switch_client = self.create_client(SwitchController, '/controller_manager/switch_controller')
         if switch_client.wait_for_service(timeout_sec=5.0):
             switch_req = SwitchController.Request()
@@ -336,7 +295,6 @@ class MainProgram(Node, Ui_FMRRMainWindow):
             self.get_logger().info(f'Activating controller {self.controller_name}...')
             future = switch_client.call_async(switch_req)
             rclpy.spin_until_future_complete(self, future)
-            time.sleep(0.5)
             self.set_cyclic_mode_all_dofs()
         else:
             self.get_logger().error('Failed to activate controller after configure.')
@@ -361,7 +319,7 @@ class MainProgram(Node, Ui_FMRRMainWindow):
             self.get_logger().info(f"Setting mode {mode_value} for {dof}...")
             future = client.call_async(req)
             rclpy.spin_until_future_complete(self, future)
-            time.sleep(0.2)
+            # time.sleep(0.2)
             self._set_mode_for_next_dof(mode_value, after_all_done)
         else:
             self.get_logger().error(f"Service unavailable to set mode {mode_value} for {dof}")
