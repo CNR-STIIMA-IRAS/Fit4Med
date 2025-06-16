@@ -174,8 +174,11 @@ class Ui_MovementWindow(object):
         self.pushButton_SAVEMovement.setGeometry(QtCore.QRect(40, 450, 101, 41))
         self.pushButton_SAVEMovement.setObjectName("pushButton_SAVEMovement")
         self.pushButton_SetCurrentPos_2 = QtWidgets.QPushButton(MovementWindow)
-        self.pushButton_SetCurrentPos_2.setGeometry(QtCore.QRect(200, 240, 88, 25))
+        self.pushButton_SetCurrentPos_2.setGeometry(QtCore.QRect(200, 230, 88, 25))
         self.pushButton_SetCurrentPos_2.setObjectName("pushButton_SetCurrentPos_2")
+        self.pushButton_GOtoZERO = QtWidgets.QPushButton(MovementWindow)
+        self.pushButton_GOtoZERO.setGeometry(QtCore.QRect(200, 260, 88, 25))
+        self.pushButton_GOtoZERO.setObjectName("pushButton_GOtoZERO")
 
         self.retranslateUi(MovementWindow)
         QtCore.QMetaObject.connectSlotsByName(MovementWindow)
@@ -211,6 +214,7 @@ class Ui_MovementWindow(object):
         self.pushButton_SAVEMovement.setText(_translate("MovementWindow", "SAVE\n"
 " movement"))
         self.pushButton_SetCurrentPos_2.setText(_translate("MovementWindow", "SET current"))
+        self.pushButton_GOtoZERO.setText(_translate("MovementWindow", "GO to START"))
 
 
 if __name__ == "__main__":

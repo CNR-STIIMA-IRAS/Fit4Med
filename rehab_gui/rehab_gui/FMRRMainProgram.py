@@ -508,6 +508,34 @@ class MainProgram(Node, Ui_FMRRMainWindow):
 
             # rclpy.spin_until_future_complete(self, home_future)
             return False
+        
+        
+    def clbk_BtnGOtoZero(self):
+        self.get_logger().info("Going to zero position...")
+        home_goal = FollowJointTrajectory.Goal()
+        home_goal.trajectory.joint_names = JOINT_NAMES
+
+        home_init_point = JointTrajectoryPoint()
+        home_init_point.positions = self.RobotJointPosition
+        home_init_point.velocities = [0.0] * len(JOINT_NAMES)
+        home_init_point.accelerations = [0.0] * len(JOINT_NAMES)
+        home_init_point.effort = []
+        home_init_point.time_from_start = Duration(sec=0, nanosec=0)
+        home_goal.trajectory.points.append(home_init_point)  # type: ignore
+
+        home_point = JointTrajectoryPoint()
+        home_point.positions = 0.0 * len(JOINT_NAMES)
+        home_point.velocities = [0.0] * len(JOINT_NAMES)
+        home_point.accelerations = [0.0] * len(JOINT_NAMES)
+        home_point.effort = []
+        home_point.time_from_start = Duration(sec=1, nanosec=0)
+        home_goal.trajectory.points.append(home_point) # type: ignore
+        
+        home_goal.trajectory.header.stamp = self.get_clock().now().to_msg()
+        home_future = self._clientFollowCartTraj.send_goal_async(home_goal)
+        home_future.add_done_callback(self.goal_response_callback)
+
+        return True
      
     
     def goal_response_callback(self, future):

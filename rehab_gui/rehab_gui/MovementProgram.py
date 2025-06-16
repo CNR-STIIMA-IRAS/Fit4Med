@@ -652,7 +652,8 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         self.pushButton_LOADMovement.enablePushButton(1)
         self.pushButton_GOtoTraining.enablePushButton(1)
         self.pushButton_GOtoRobotMovement.enablePushButton(1)
-        self.pushButton_SetCurrentPos_2.enablePushButton(1)      
+        self.pushButton_SetCurrentPos_2.enablePushButton(1)    
+        self.pushButton_GOtoZERO.enablePushButton(1)  
         self.pushButton_CREATEMovement.enablePushButton(0)
         self.pushButton_SAVEMovement.enablePushButton(0)
         
@@ -667,6 +668,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         self.pushButton_CREATEMovement.clicked.connect(lambda: self.clbk_BtnCreateMovementData())
         self.pushButton_SetCurrentPos_2.clicked.connect(lambda: self.clbk_pushButton_SetCurrentPos() )
         self.pushButton_SAVEMovement.clicked.connect(lambda: self.clbk_BtnSAVEMovement())
+        self.pushButton_GOtoZERO.clicked.connect(lambda: self.ui_FMRRMainWindow.clbk_BtnGOtoZero())
 
         ##############################################################################################
         #####                                                                                    #####  
