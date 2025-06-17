@@ -201,12 +201,12 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
                 s1 = np.concatenate( ([0], cum_distances), axis = None)    #% Cumulative sum to calculate abscissa S  
                 L1 = s1[-1]                                             # L1 = trajectory length
                 interp_function_1 = interpolate.interp1d(s1, xyz, 'cubic')
-                CSn_1 = np.linspace(0, L1, _numPoints/1000 )
-                xyz_1 = interp_function_1( CSn_1 )
-                print('L1:')
-                print(L1)
                 print('_numpoints')
                 print(_numPoints)
+                print('L1:')
+                print(L1)
+                CSn_1 = np.linspace(0, L1, _numPoints)
+                xyz_1 = interp_function_1( CSn_1 )
                 _numPoints2 = len( xyz_1)
                 print('_numpoints2')
                 print(_numPoints2)                
@@ -268,7 +268,6 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             elif self.vel_profile == 2: # bell shaped velocity profile (sinus)
                 Tg=2*T
                 v1 = (np.pi / Tg) * np.sin( 2* np.pi/Tg * _time )
-            else:
                 pass     
     
 #       %%% new abscissa calculation, and resampling
@@ -388,6 +387,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
                 print(NewFilename[0])
                 print('This is T: %s' %T)
                 self.SaveNewFile(TrjYamlData, NewFilename[0])
+                self.ui_FMRRMainWindow.PhaseDuration = 2 * T
                 self.lineEdit.MovementIsLoaded = 1
             else:
                 self.pushButton_CREATEMovement.enablePushButton(0)
@@ -452,6 +452,8 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             self.vel_profile = self.TrjYamlData.get("a_movement_definition").get("vel_profile")[0]            
             MovTime =  self.TrjYamlData.get("a_movement_definition").get("total_time")[0]
 
+            self.ui_FMRRMainWindow.PhaseDuration = 2* MovTime
+
 #            print('TypeOfMovement[0]')
 #            print(TypeOfMovement[0])
 #            print('TypeOfMovement[0][0]')
@@ -496,8 +498,8 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             
             _toolPosCovFact = self.ui_FMRRMainWindow._toolPosCovFact
             
-            StartPos = deepcopy(self.TrjYamlData.get("a_movement_definition").get("begin_config")[0])
-            EndPos = deepcopy(self.TrjYamlData.get("a_movement_definition").get("end_config")[0])
+            StartPos = deepcopy(self.TrjYamlData.get("a_movement_definition").get("begin_config")[0][0:3]) # take only first 3 elements, the last one is the orientation
+            EndPos = deepcopy(self.TrjYamlData.get("a_movement_definition").get("end_config")[0][0:3])
             
             StartPos[:] = [i_position * _toolPosCovFact for i_position in StartPos]
             EndPos[:]   = [i_position * _toolPosCovFact for i_position in EndPos]

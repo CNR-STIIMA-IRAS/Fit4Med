@@ -37,6 +37,7 @@ from controller_manager_msgs.srv import SwitchController
 import time 
 from rclpy.parameter import Parameter
 from rclpy.parameter_client import AsyncParameterClient
+from action_msgs.msg import GoalStatus
 
 DEBUG = False
 
@@ -66,8 +67,10 @@ class MainProgram(Node, Ui_FMRRMainWindow):
     def initializeVariables(self):
         self.AnswerPauseService = False
         self.trainingOn = False
-        self.FIRST_TIME = True
+        # self.FIRST_TIME = True
         self.JogOn = False
+        self._ovr_setpoint = 50 # initial value of the override
+        self._actual_ovr = 50 # initial value of the override
         
     def updateTimercallback(self):
         self.uiRobotWindow.updateRobotWindow( self.DialogRobotWindow )
@@ -144,8 +147,8 @@ class MainProgram(Node, Ui_FMRRMainWindow):
            # load data  
             self.ProtocolData = yaml.load(open(filename [0]), Loader=SafeLoader) # type: ignore
     #      # get values       
-            self.PhaseDuration = self.ProtocolData["PhaseDuration"] [0] [0]
-            self.Vmax = self.ProtocolData["V_max"] [0] [0]
+            # self.PhaseDuration = self.ProtocolData["PhaseDuration"] [0] [0]
+            self.Vmax = -99 # self.ProtocolData["V_max"] [0] [0]
             self.PhaseIsEnabled = self.ProtocolData["Phases"].get('PhaseIsEnabled')[0]
             self.NrEnabledPhases = sum( self.PhaseIsEnabled ) #Sistemare se non si usa
             self.TotalTrainingTime =  self.PhaseDuration * self.NrEnabledPhases
@@ -159,6 +162,8 @@ class MainProgram(Node, Ui_FMRRMainWindow):
             
             for iPhases in range(20):
                 self.lcdNumberPhases[iPhases].setNumDigits(3) # type: ignore
+                if iPhases==0:
+                    self.Percentage[iPhases]=50
                 iPhaseVel = int( float(self.Percentage[iPhases]) /100 * self.Vmax )
                 self.lcdNumberPhases[iPhases].display( iPhaseVel ) # type: ignore
                 self.spinBoxPhases[iPhases].setValue(self.Percentage[iPhases]) # type: ignore
@@ -183,11 +188,12 @@ class MainProgram(Node, Ui_FMRRMainWindow):
         self.ActualTrainingTime = 0
         self.iPhase = 0
         self.NumberExecMovements = 0
+        self._home_goal_sent = False
         # self.AnswerPauseService = self.pauseService(False)
         
         self.sendTrajectoryFCT()
         self.updateTrainingTimer()
-        self.OverrideActualValue = self.Percentage[0]
+        self.setOverride(self.Percentage[0])
         self.ModalityActualValue = self.Modalities[0]
         self.KeepOnMovingBool = True
         self.startMovementFCT()        
@@ -225,9 +231,10 @@ class MainProgram(Node, Ui_FMRRMainWindow):
     
               
     def update_TrainingParameters(self):
+        self.updateOverride() # update the override value
         if self.trainingOn:
             if self.KeepOnMovingBool:
-                self.ActualTrainingTime += self._update_TrainingTime/1000 * int(self.OverrideActualValue)/100 # +1 second infact _update_TrainingTime = 1000, frequency of the training timer
+                self.ActualTrainingTime += self._update_TrainingTime/1000 * int(self.getOverride())/100 # +1 second infact _update_TrainingTime = 1000, frequency of the training timer
             # print( 'Actual training time: %s' % self.ActualTrainingTime )
             # print( 'Total remaining training time: %s' % (self.TotalTrainingTime - self.ActualTrainingTime) )
             if  self.ActualTrainingTime < self.TotalTrainingTime:        
@@ -238,11 +245,11 @@ class MainProgram(Node, Ui_FMRRMainWindow):
                     self.progressBarPhases[iPhase].setValue(_ActualPhasePercTime) # type: ignore
                     if iPhase > 0:
                         self.progressBarPhases[iPhase - 1].setValue(100) # type: ignore
-                        self.OverrideActualValue = self.Percentage[iPhase]
+                        self.setOverride(self.Percentage[iPhase])
                     if self.iPhase != iPhase:
-                        if self.goHome():
+                        if self.resetMovementStart():
                             self.iPhase = iPhase
-                            self.OverrideActualValue = self.Percentage[iPhase] # Change here the topic value
+                            self.setOverride(self.Percentage[iPhase]) # Change here the topic value
                             self.ModalityActualValue = self.Modalities[iPhase] # change here the modality 
                             self.NumberExecMovements += 1
                             print('Number of movements: %d' %self.NumberExecMovements)
@@ -267,6 +274,7 @@ class MainProgram(Node, Ui_FMRRMainWindow):
         self.pub_speed_ovr.publish(speed_ovr_msg)
 
     def start_homing_procedure(self):
+        self.homing_done = False
         switch_client = self.create_client(SwitchController, '/controller_manager/switch_controller')
         if switch_client.wait_for_service(timeout_sec=5.0):
             switch_req = SwitchController.Request()
@@ -328,6 +336,7 @@ class MainProgram(Node, Ui_FMRRMainWindow):
 
     def confirm_homing_completed(self):
         self.get_logger().info('✅ Homing procedure completed successfully.')
+        self.homing_done = True
      
            
               
@@ -347,6 +356,7 @@ class MainProgram(Node, Ui_FMRRMainWindow):
         self._ros_timer.start(self._ros_period)
         self.cm_param_client = AsyncParameterClient(self, 'controller_manager')
         param_client_success= self.cm_param_client.wait_for_services(5.0)
+        self.homing_done = False
         if not param_client_success:
             self.get_logger().error("Parameter client services are not ready.")
             rclpy.shutdown()
@@ -429,7 +439,7 @@ class MainProgram(Node, Ui_FMRRMainWindow):
 ##############################      ROS     ###################################
 
     def start_ROS_functions(self):
-        self.controller_name = 'joint_trajectory_controller'
+        self.controller_name = 'scaled_trajectory_controller'
 
     #   subscribers        
         self.joint_subscriber = self.create_subscription(JointState, 'joint_states', self.getJointState, 1)
@@ -475,41 +485,51 @@ class MainProgram(Node, Ui_FMRRMainWindow):
  
 
     def startMovementFCT(self):
-        if self.FIRST_TIME:
-            self.OverrideActualValue = 50
-            self.FIRST_TIME = False
+        # if self.FIRST_TIME:
+        #     self.OverrideActualValue = 50
+        #     self.FIRST_TIME = False
+        self._home_status = GoalStatus.STATUS_UNKNOWN
+        self._home_goal_sent = False
         self._goalFCT.trajectory.header.stamp = self.get_clock().now().to_msg()
         # sleep_duration = rclpy.duration.Duration(seconds=0, nanoseconds=int(5 * 1e9))
         # self.get_clock().sleep_for(sleep_duration)
         self._send_goal_future = self._clientFollowCartTraj.send_goal_async(self._goalFCT)
         self._send_goal_future.add_done_callback(self.goal_response_callback)
         speed_ovr_msg = Int16()
-        speed_ovr_msg.data = int(self.OverrideActualValue)
+        speed_ovr_msg.data = int(self.getOverride())
         self.pub_speed_ovr.publish(speed_ovr_msg) 
         print('Speed PCT: %d' %speed_ovr_msg.data)
 
 
-    def goHome(self):
-        home_from_yaml = self._goalFCT.trajectory.points[0].positions.tolist() # type: ignore
-        tolerance = 1e-4
-        if all(abs(a - b) < tolerance for a, b in zip(self.RobotJointPosition, home_from_yaml)):
+    def setOverride(self, speed_ovr):
+        self._ovr_setpoint = speed_ovr
+        return True
+    
+    def updateOverride(self):
+        if self._actual_ovr < self._ovr_setpoint:
+            self._actual_ovr = self._actual_ovr + 1
+        elif self._actual_ovr > self._ovr_setpoint:
+            self._actual_ovr = self._actual_ovr - 1
+
+    def getOverride(self):
+        return self._actual_ovr
+
+    def resetMovementStart(self):
+        home_from_yaml = [0.0] * len(JOINT_NAMES)
+
+        if self._home_status == GoalStatus.STATUS_SUCCEEDED:
             self.KeepOnMovingBool = True
             return True
-        else:
+        elif not self._home_goal_sent:
             self.KeepOnMovingBool = False
 
             home_goal = FollowJointTrajectory.Goal()
             home_goal.trajectory.joint_names = JOINT_NAMES
 
             home_init_point = JointTrajectoryPoint()
-            # print("go home")
-            # print(self.RobotJointPosition)
-            # print(self._joint_state)
-            # print("----------")
             home_init_point.positions = self.RobotJointPosition
             home_init_point.velocities = [0.0] * len(home_from_yaml)
             home_init_point.accelerations = [0.0] * len(home_from_yaml)
-            home_init_point.effort = []
             home_init_point.time_from_start = Duration(sec=0, nanosec=0)
             home_goal.trajectory.points.append(home_init_point)  # type: ignore
 
@@ -517,21 +537,77 @@ class MainProgram(Node, Ui_FMRRMainWindow):
             home_point.positions = home_from_yaml
             home_point.velocities = [0.0] * len(home_from_yaml)
             home_point.accelerations = [0.0] * len(home_from_yaml)
-            home_point.effort = []
             home_point.time_from_start = Duration(sec=1, nanosec=0)
-            home_goal.trajectory.points.append(home_point) # type: ignore
-            
+            home_goal.trajectory.points.append(home_point)  # type: ignore
+
             home_goal.trajectory.header.stamp = self.get_clock().now().to_msg()
-            home_future = self._clientFollowCartTraj.send_goal_async(home_goal)
+            self.home_future = self._clientFollowCartTraj.send_goal_async(
+                home_goal, feedback_callback=self.feedback_callback)
+            self.home_future.add_done_callback(self.goal_response_callback)
 
             speed_ovr_msg = Int16()
             speed_ovr_msg.data = 100
-            self.pub_speed_ovr.publish(speed_ovr_msg) 
-            print('Going home with speed PCT: %d' %speed_ovr_msg.data)
+            self.pub_speed_ovr.publish(speed_ovr_msg)
+            print('Going home with speed PCT: %d' % speed_ovr_msg.data)
 
-            # rclpy.spin_until_future_complete(self, home_future)
+            self._home_goal_sent = True
             return False
+
+        # Caso 3: goal già inviato ma non ancora completato
+        else:
+            return False
+
         
+    def goal_response_callback(self, future):
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            self.get_logger().info("Goal rejected :(")
+            return
+
+        self.get_logger().info("Goal accepted :)")
+
+        self._get_result_future = goal_handle.get_result_async()
+        self._get_result_future.add_done_callback(self.get_result_callback)
+
+        self.monitor_status(goal_handle)
+        
+    def get_result_callback(self, future):
+        self._home_result = future.result().result
+        self._home_status = future.result().status
+        self.get_logger().info(f"Goal result: {self._home_result}")
+        self.get_logger().info(f"Goal status: {self._home_status}")
+
+        if self._home_status != GoalStatus.STATUS_SUCCEEDED:
+            self._home_goal_sent = False  # try again
+
+
+    def feedback_callback(self, feedback_msg):
+        feedback = feedback_msg.feedback
+        self.get_logger().info(f"Received feedback: {feedback}")
+
+    def monitor_status(self, goal_handle):
+        self.timer = self.create_timer(0.5, lambda: self.check_status(goal_handle))
+
+    def check_status(self, goal_handle):
+        self._home_status = goal_handle.status
+        status_string = self.get_status_string(self._home_status)
+        self.get_logger().info(f'Current status: {status_string}')
+
+        if self._home_status == GoalStatus.STATUS_SUCCEEDED:
+            self.timer.cancel()
+
+    @staticmethod
+    def get_status_string(status):
+        status_dict = {
+            GoalStatus.STATUS_UNKNOWN: 'UNKNOWN',
+            GoalStatus.STATUS_ACCEPTED: 'ACCEPTED',
+            GoalStatus.STATUS_EXECUTING: 'EXECUTING',
+            GoalStatus.STATUS_CANCELING: 'CANCELING',
+            GoalStatus.STATUS_SUCCEEDED: 'SUCCEEDED',
+            GoalStatus.STATUS_CANCELED: 'CANCELED',
+            GoalStatus.STATUS_ABORTED: 'ABORTED'
+        }
+        return status_dict.get(status, 'UNKNOWN')
         
     def clbk_BtnGOtoZero(self):
         self.get_logger().info("Going to zero position...")

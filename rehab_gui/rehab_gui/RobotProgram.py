@@ -62,7 +62,7 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
 
             NewHandlePosition [CoordinateNr] = self.ui_FMRRMainWindow.RobotJointPosition[CoordinateNr] + SignIncrement * float(Increment) /100.0 # conversion from meters to cm
             print('The new handle postions are: %s' % NewHandlePosition)
-            _TimeFromStart = Duration(sec=1, nanosec=0)          
+            _TimeFromStart = Duration(sec=3, nanosec=0)          
             self.ui_FMRRMainWindow.add_pointFCT(NewHandlePosition,_TimeFromStart)
             self.ui_FMRRMainWindow.startMovementFCT()
         else:
