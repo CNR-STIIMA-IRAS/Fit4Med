@@ -256,7 +256,7 @@ hr { height: 1px; border-width: 0; }
 li.unchecked::marker { content: &quot;\2610&quot;; }
 li.checked::marker { content: &quot;\2612&quot;; }
 &lt;/style&gt;&lt;/head&gt;&lt;body style=&quot; font-family:'Ubuntu'; font-size:11pt; font-weight:400; font-style:normal;&quot;&gt;
-&lt;p align=&quot;center&quot; style=&quot; margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;&quot;&gt;&lt;span style=&quot; font-family:'MS Shell Dlg 2'; font-size:8pt;&quot;&gt;SINGLE PHASE duration (min)&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+&lt;p align=&quot;center&quot; style=&quot; margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;&quot;&gt;&lt;span style=&quot; font-family:'MS Shell Dlg 2'; font-size:10pt;&quot;&gt;Movement duration&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
      </property>
     </widget>
     <widget class="QPushButton" name="pushButton_STOPtrainig">
@@ -266,7 +266,7 @@ li.checked::marker { content: &quot;\2612&quot;; }
      <property name="geometry">
       <rect>
        <x>365</x>
-       <y>550</y>
+       <y>560</y>
        <width>100</width>
        <height>40</height>
       </rect>
@@ -605,16 +605,6 @@ li.checked::marker { content: &quot;\2612&quot;; }
       </property>
      </item>
     </widget>
-    <widget class="QSpinBox" name="spinBox_SinglePhaseDuration">
-     <property name="geometry">
-      <rect>
-       <x>138</x>
-       <y>515</y>
-       <width>42</width>
-       <height>22</height>
-      </rect>
-     </property>
-    </widget>
     <widget class="QPushButton" name="pushButton_LoadCreateProtocol">
      <property name="enabled">
       <bool>false</bool>
@@ -723,7 +713,7 @@ li.checked::marker { content: &quot;\2612&quot;; }
      <property name="geometry">
       <rect>
        <x>255</x>
-       <y>550</y>
+       <y>560</y>
        <width>100</width>
        <height>40</height>
       </rect>
@@ -782,7 +772,7 @@ li.checked::marker { content: &quot;\2612&quot;; }
      <property name="geometry">
       <rect>
        <x>145</x>
-       <y>550</y>
+       <y>560</y>
        <width>100</width>
        <height>40</height>
       </rect>
@@ -1342,8 +1332,8 @@ li.checked::marker { content: &quot;\2612&quot;; }
     <widget class="QSpinBox" name="spinBox_MaxVel">
      <property name="geometry">
       <rect>
-       <x>41</x>
-       <y>515</y>
+       <x>40</x>
+       <y>520</y>
        <width>42</width>
        <height>22</height>
       </rect>
@@ -1590,6 +1580,16 @@ li.checked::marker { content: &quot;\2612&quot;; }
      </property>
      <property name="text">
       <string>Move Robot</string>
+     </property>
+    </widget>
+    <widget class="QDoubleSpinBox" name="doubleSpinBox_SinglePhaseDuration">
+     <property name="geometry">
+      <rect>
+       <x>180</x>
+       <y>520</y>
+       <width>65</width>
+       <height>26</height>
+      </rect>
      </property>
     </widget>
    </widget>

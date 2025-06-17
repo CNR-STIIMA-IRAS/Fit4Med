@@ -153,7 +153,7 @@ class MainProgram(Node, Ui_FMRRMainWindow):
             self.Percentage = self.ProtocolData["Phases"].get('Percentage')[0]
     
     #     # set values/properties        
-            self.spinBox_SinglePhaseDuration.setValue(self.PhaseDuration)
+            self.doubleSpinBox_SinglePhaseDuration.setValue(self.PhaseDuration)
             self.lcdNumberExerciseTotalTime.display( np.floor(self.TotalTrainingTime/60) )
             self.spinBox_MaxVel.setValue(self.Vmax)
             
