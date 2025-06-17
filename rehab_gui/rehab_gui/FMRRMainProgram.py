@@ -35,6 +35,8 @@ from controller_manager_msgs.srv import SwitchController
 # from geometry_msgs.msg import Point
 # import debugpy
 import time 
+from rclpy.parameter import Parameter
+from rclpy.parameter_client import AsyncParameterClient
 
 DEBUG = False
 
@@ -125,6 +127,7 @@ class MainProgram(Node, Ui_FMRRMainWindow):
         self.uiMovementWindow.retranslateUi_MovementWindow(self.DialogMovementWindow)
         self.uiMovementWindow.DialogMovementWindow = self.DialogMovementWindow # type: ignore # Needed to be able to hide window from Movement Window
         self.uiMovementWindow.DialogFMRRMainWindow = self.FMRRMainWindow # type: ignore
+        
 
     def clbk_BtnMoveRobot(self):
         self.FMRRMainWindow.hide()
@@ -181,18 +184,16 @@ class MainProgram(Node, Ui_FMRRMainWindow):
         self.iPhase = 0
         self.NumberExecMovements = 0
         # self.AnswerPauseService = self.pauseService(False)
+        
         self.sendTrajectoryFCT()
         self.updateTrainingTimer()
         self.OverrideActualValue = self.Percentage[0]
         self.ModalityActualValue = self.Modalities[0]
         self.KeepOnMovingBool = True
-#
-        # print(type(self.pub_speed_ovr))   
         self.startMovementFCT()        
 #        
         self.pushButton_PAUSEtrainig.enablePushButton(1)
         self.pushButton_STOPtrainig.enablePushButton(1)
-        # print('End of StartTraining.')
     
     
     def clbk_PAUSEtrainig(self):
@@ -226,7 +227,7 @@ class MainProgram(Node, Ui_FMRRMainWindow):
     def update_TrainingParameters(self):
         if self.trainingOn:
             if self.KeepOnMovingBool:
-                self.ActualTrainingTime += 1 * int(self.OverrideActualValue)/100 # +1 second infact _update_TrainingTime = 1000, frequency of the training timer
+                self.ActualTrainingTime += self._update_TrainingTime/1000 * int(self.OverrideActualValue)/100 # +1 second infact _update_TrainingTime = 1000, frequency of the training timer
             # print( 'Actual training time: %s' % self.ActualTrainingTime )
             # print( 'Total remaining training time: %s' % (self.TotalTrainingTime - self.ActualTrainingTime) )
             if  self.ActualTrainingTime < self.TotalTrainingTime:        
@@ -340,6 +341,28 @@ class MainProgram(Node, Ui_FMRRMainWindow):
 
     def setupUi_MainWindow(self):
         Ui_FMRRMainWindow.setupUi(self, self.FMRRMainWindow)
+
+        self._ros_timer = QTimer()
+        self._ros_timer.timeout.connect(lambda: rclpy.spin_once(ui, timeout_sec=0))
+        self._ros_timer.start(self._ros_period)
+        self.cm_param_client = AsyncParameterClient(self, 'controller_manager')
+        param_client_success= self.cm_param_client.wait_for_services(5.0)
+        if not param_client_success:
+            self.get_logger().error("Parameter client services are not ready.")
+            rclpy.shutdown()
+            sys.exit(1)
+
+        self.update_rate = -1 
+        future =  self.cm_param_client.get_parameters(['update_rate'])
+        rclpy.spin_until_future_complete(self,future)
+        result = future.result()   #rcl_interfaces.srv.GetParameters_Response
+        if result:
+            self.get_logger().info(f"Read: update rate = {result.values[0].integer_value}")
+            self.update_rate = result.values[0].integer_value
+        else:
+            self.get_logger().error("Failed to read update rate parameter.")
+            rclpy.shutdown()
+            sys.exit(1)
     
     
 ### My chnages in FMRR MainWindow
@@ -581,9 +604,9 @@ class MainProgram(Node, Ui_FMRRMainWindow):
 
 
     def sendTrajectoryFCT(self):       
-        CartesianMovementData = self.uiMovementWindow.CartesianMovementData
-        self.CartesianPositions = CartesianMovementData.get("cart_trj3").get("cart_positions")
-        self.TimeFromStart = CartesianMovementData.get("cart_trj3").get("time_from_start")
+        TrjYamlData = self.uiMovementWindow.TrjYamlData
+        self.CartesianPositions = TrjYamlData.get("cart_trj3").get("cart_positions")
+        self.TimeFromStart = TrjYamlData.get("cart_trj3").get("time_from_start")
         self.clearFCT()
         _numSample = len(self.TimeFromStart)
         for iPoint in range(0, _numSample): 
@@ -621,10 +644,6 @@ def main(args=None):
     ui.startMovementWindow()
     ui.start_ROS_functions()
     ui.rosTimer()
-
-    ui._ros_timer = QTimer()
-    ui._ros_timer.timeout.connect(lambda: rclpy.spin_once(ui, timeout_sec=0))
-    ui._ros_timer.start(ui._ros_period)
 
 
     # rclpy.spin_once(ui)

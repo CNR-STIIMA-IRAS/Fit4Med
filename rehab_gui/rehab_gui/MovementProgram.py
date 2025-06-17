@@ -143,7 +143,8 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         x2 = x12; y2 = y12; z2 = z12
 
         T = self.doubleSpinBox_MoveTime.value() # total movement time in sec 
-        _time = np.linspace(0, T, int(T/0.008)+1, endpoint = True) # To satisfy Beschi's condition of having steps = 8ms
+        t_sample = 1/self.ui_FMRRMainWindow.update_rate # sampling time in sec
+        _time = np.linspace(0, T, int(T/t_sample)+1, endpoint = True) # To satisfy Beschi's condition of having steps = 8ms
         print("_time")
         print(_time[0:4])
         numSamples = len(_time) # length of the final vectors, the ones given as results
@@ -429,7 +430,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             print('This is the filename of the loaded movement:')
             print(filename)
             self.TrjYamlData = yaml.load(open(filename [0]), Loader=SafeLoader)
-            self.CartesianMovementData = yaml.load(open(filename [0]), Loader=SafeLoader)
+            # self.CartesianMovementData = yaml.load(open(filename [0]), Loader=SafeLoader)
             _translate = QtCore.QCoreApplication.translate
             MovementName = filename [0][ len(FMRR_RootPath+MovementsPath)+2:-5 ] # +2 for the / symbols
             self.lineEdit.setText(_translate("MovementWindow", MovementName))
@@ -509,19 +510,26 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             
 #           Spin values of Joint approachconfiguration are loaded, converted in degrees nbd displayed
 
-            JointData = self.TrjYamlData.get("a_movement_definition").get("begin_joint_config") [0]
+            JointData = self.TrjYamlData.get("a_movement_definition").get("end_config") [0]
             self.JointTargetPosition = JointData
-#       Put doublespin values in list to allow for iteration 
-            # JointTargetPositions = (self.doubleSpin_Joint1_Value, self.doubleSpin_Joint2_Value, self.doubleSpin_Joint3_Value)
-
-            # for iJoint in range(0,3):
-            #     JointTargetPositions[iJoint].setValue(JointData[iJoint]*180/np.pi)
+            JointTargetPositions = [0, 0, 0]
+# 
+            for iJoint in range(0,3):
+                JointTargetPositions[iJoint]= JointData[iJoint]*180/np.pi
 
 ##### Start and End positions needed to create a new movement            
             self.Start_HandlePosition = deepcopy( self.TrjYamlData.get("a_movement_definition").get("begin_config")[0] )
             self.End_HandlePosition = deepcopy( self.TrjYamlData.get("a_movement_definition").get("end_config")[0] )
             self.Start_RobotJointPosition  = deepcopy( self.TrjYamlData.get("a_movement_definition").get("begin_joint_config") [0] )
             self.pushButton_CREATEMovement.enablePushButton(1)
+
+            if all(abs(x) < 1 for x in JointTargetPositions):
+                print("End position is zero, please recreate the movement")
+                return -1
+
+            self.lcdNumber_EndPos_X.display( int( JointTargetPositions[0] ) )
+            self.lcdNumber_EndPos_Y.display( int( JointTargetPositions[1] ) )
+            self.lcdNumber_EndPos_Z.display( int( JointTargetPositions[2] ) )
 #            
 
         else:
