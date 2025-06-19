@@ -516,7 +516,6 @@ class MainProgram(Node, Ui_FMRRMainWindow):
 
     def resetMovementStart(self):
         home_from_yaml = [0.0] * len(JOINT_NAMES)
-
         if self._home_status == GoalStatus.STATUS_SUCCEEDED:
             self.KeepOnMovingBool = True
             return True
@@ -541,9 +540,8 @@ class MainProgram(Node, Ui_FMRRMainWindow):
             home_goal.trajectory.points.append(home_point)  # type: ignore
 
             home_goal.trajectory.header.stamp = self.get_clock().now().to_msg()
-            self.home_future = self._clientFollowCartTraj.send_goal_async(
-                home_goal, feedback_callback=self.feedback_callback)
-            self.home_future.add_done_callback(self.goal_response_callback)
+            self.home_future = self._clientFollowCartTraj.send_goal_async(home_goal)
+            self.home_future.add_done_callback(self.home_goal_response_callback)
 
             speed_ovr_msg = Int16()
             speed_ovr_msg.data = 100
@@ -557,8 +555,7 @@ class MainProgram(Node, Ui_FMRRMainWindow):
         else:
             return False
 
-        
-    def goal_response_callback(self, future):
+    def home_goal_response_callback(self, future):
         goal_handle = future.result()
         if not goal_handle.accepted:
             self.get_logger().info("Goal rejected :(")
@@ -579,11 +576,6 @@ class MainProgram(Node, Ui_FMRRMainWindow):
 
         if self._home_status != GoalStatus.STATUS_SUCCEEDED:
             self._home_goal_sent = False  # try again
-
-
-    def feedback_callback(self, feedback_msg):
-        feedback = feedback_msg.feedback
-        self.get_logger().info(f"Received feedback: {feedback}")
 
     def monitor_status(self, goal_handle):
         self.timer = self.create_timer(0.5, lambda: self.check_status(goal_handle))
