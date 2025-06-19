@@ -274,7 +274,7 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
             file_path = '/tmp/relative_homing_performed'
             if os.path.exists(file_path):
                 self.lineEdit_MoveRobotPosition_GoalPosition.setText( "Goal Position (RELATIVE FRAME)" ) # type: ignore
-                self.frame_GoalPosition.setStyleSheet("background-color: rgb(0, 0, 190);")
+                self.frame_GoalPosition.setStyleSheet("Background: light blue")
                 self.frame_GoalPosition.setEnabled(True)
                 self.pushButton_LoadJointPosition.setEnabled(False)
                 self.pushButton_SaveStartPosition.setEnabled(False)
