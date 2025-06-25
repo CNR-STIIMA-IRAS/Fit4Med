@@ -56,64 +56,20 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
             NewHandlePosition = self.ui_FMRRMainWindow.RobotJointPosition #[0.0, 0.0, 0.0]  # initialization of  position = [x,y,z,q1,q2,q3,q4] coorinates are RELATIVE!!!
             print('The current handle postions are: %s' % NewHandlePosition)
 
-            self.ui_FMRRMainWindow.clearFCT()
-            _TimeFromStart = Duration(sec=0, nanosec=0)          
-            self.ui_FMRRMainWindow.add_pointFCT(NewHandlePosition,_TimeFromStart)
+            self.ui_FMRRMainWindow.MovementWorker.clearFCT()
+            _TimeFromStart = Duration(sec=0, nanosec=0)    
+            self.ui_FMRRMainWindow.MovementWorker.setFCT([NewHandlePosition],[_TimeFromStart])
 
             NewHandlePosition [CoordinateNr] = self.ui_FMRRMainWindow.RobotJointPosition[CoordinateNr] + SignIncrement * float(Increment) /100.0 # conversion from meters to cm
             print('The new handle postions are: %s' % NewHandlePosition)
             _TimeFromStart = Duration(sec=3, nanosec=0)          
-            self.ui_FMRRMainWindow.add_pointFCT(NewHandlePosition,_TimeFromStart)
+            self.ui_FMRRMainWindow.MovementWorker.setFCT([NewHandlePosition],[_TimeFromStart])
             self.ui_FMRRMainWindow.startMovementFCT()
         else:
             print("coordinate number must be between 1 and 3 for this platform")
-            # Increment =  self.spinBox_MoveRobotRotationalVelocity.value()
-            # CoordinateNr -= 3 # minus x,y,z coordinates
-            # ActualRobotConfiguration  = self.ui_FMRRMainWindow.RobotJointPosition
-            # print('The current joint configuration is: %s' % ActualRobotConfiguration)
-            # NewRobotConfiguration = ActualRobotConfiguration
-            # NewRobotConfiguration[CoordinateNr] += SignIncrement * float(Increment)*np.pi/180.0# conversion from degrees to radiants
-            # print('The new RobotConfiguration is: %s' % NewRobotConfiguration)
-            # _TimeFromStart = Duration(1.0) # duration in s    
-            # _TimeTolerance = Duration(0.1)       
-            # self.ui_FMRRMainWindow.clearFJT()              
-            # self.ui_FMRRMainWindow.add_pointFJT(NewRobotConfiguration, _TimeFromStart, _TimeTolerance)
-            # self.ui_FMRRMainWindow.startMovementFJT()
 
         self.ui_FMRRMainWindow.JogOn = False
    
-#        ToRobotNewPositions = self.FromRobotPositions
-#        ToRobotNewPositions[CoordinateNr] = self.FromRobotPositions[CoordinateNr] + SignIncrement * Increment
-#        self.CurrentPositions[CoordinateNr].display(ToRobotNewPositions[CoordinateNr]) 
-#        self.setNewPositions(ToRobotNewPositions)
-    
-
-    # def clbk_BtnEnableApproach(self):
-    #     _translate = QtCore.QCoreApplication.translate
-    #     if self.pushButton_EnableApproach.State:
-
-    #        self.pushButton_EnableApproach.setText(_translate("RobotWindow", "Disable approach"))
-    #        self.pushButton_EnableApproach.State = 0
-
-    #        self.pushButton_Approach_Joint1.enablePushButton(1)
-    #        self.pushButton_Approach_Joint2.enablePushButton(1)
-    #        self.pushButton_Approach_Joint3.enablePushButton(1)
-    #     #    self.pushButton_Approach_Joint4.enablePushButton(1)
-    #     #    self.pushButton_Approach_Joint5.enablePushButton(1)
-    #     #    self.pushButton_Approach_Joint6.enablePushButton(1)
-    #        self.pushButton_ApproachAllJoint.enablePushButton(1)
-
-    #     else:
-    #        self.pushButton_EnableApproach.setText(_translate("RobotWindow", "Enable approach"))
-    #        self.pushButton_EnableApproach.State = 1
-           
-    #        self.pushButton_Approach_Joint1.enablePushButton(0)
-    #        self.pushButton_Approach_Joint2.enablePushButton(0)
-    #        self.pushButton_Approach_Joint3.enablePushButton(0)
-    #     #    self.pushButton_Approach_Joint4.enablePushButton(0)
-    #     #    self.pushButton_Approach_Joint5.enablePushButton(0)
-    #     #    self.pushButton_Approach_Joint6.enablePushButton(0)
-    #        self.pushButton_ApproachAllJoint.enablePushButton(0)
            
     def clbk_JointApproach(self, JointNr):
         ActualRobotConfiguration  = self.ui_FMRRMainWindow.RobotJointPosition
@@ -127,8 +83,9 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
         print('The new RobotConfiguration is: %s' % NewRobotConfiguration)
         _TimeFromStart = Duration(sec=5, nanosec=0) # duration in s            
         _TimeTolerance = Duration(sec= 5, nanosec=int(1e-9))       
-        self.ui_FMRRMainWindow.clearFCT()              
-        self.ui_FMRRMainWindow.add_pointFCT(NewRobotConfiguration, _TimeFromStart, _TimeTolerance)
+        self.ui_FMRRMainWindow.MovementWorker.clearFCT()
+        self.ui_FMRRMainWindow.MovementWorker.setFCT([NewRobotConfiguration], [_TimeFromStart], _TimeTolerance )
+        #self.ui_FMRRMainWindow.MovementWorker.add_pointFCT(NewRobotConfiguration, _TimeFromStart, _TimeTolerance)
         self.ui_FMRRMainWindow.startMovementFCT()
         
     def clbk_StartMoveRobotManually(self):

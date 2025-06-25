@@ -68,6 +68,40 @@
             </ec_module>
         </joint>
 
+        <sensor name="torsiometer_y">
+            <state_interface name="status1"/>
+            <state_interface name="status2"/>
+            <state_interface name="torque"/>
+            <state_interface name="live_counter"/>
+            <state_interface name="array_counter"/>
+            <command_interface name="ctrl1"/>
+            <ec_module name="AtiAxia90">
+                <plugin>ethercat_generic_plugins/GenericEcSlave</plugin>
+                <param name="alias">0</param>
+                <param name="position">3</param>
+                <param name="slave_config">$(find tecnobody_workbench)/config/burster9251.yaml</param>
+            </ec_module>
+        </sensor>
+
+        <sensor name="ft_sensor">
+            <state_interface name="force.x" />
+            <state_interface name="force.y" />
+            <state_interface name="force.z" />
+            <state_interface name="torque.x" />
+            <state_interface name="torque.y" />
+            <state_interface name="torque.z" />
+            <state_interface name="Status_Code" />
+            <state_interface name="Sample_Counter" />
+            <command_interface name="Control_1" />
+            <param name="frame_id">ee_link</param>
+            <ec_module name="AtiAxia90">
+                <plugin>ethercat_generic_plugins/GenericEcSlave</plugin>
+                <param name="alias">0</param>
+                <param name="position">4</param>
+                <param name="slave_config">$(find tecnobody_workbench)/config/axia90.yaml</param>
+            </ec_module>
+        </sensor>
+
         <gpio name="PLC_node">
             <command_interface name="mode_of_operation"/>
             <command_interface name="power_cutoff"/>
@@ -89,7 +123,7 @@
             <ec_module name="sickPLC">
                 <plugin>ethercat_generic_plugins/GenericEcSlave</plugin>
                 <param name="alias">0</param>
-                <param name="position">3</param>
+                <param name="position">5</param>
                 <param name="slave_config">$(find tecnobody_workbench)/config/sick_getc100.yaml</param>
             </ec_module>
         </gpio>

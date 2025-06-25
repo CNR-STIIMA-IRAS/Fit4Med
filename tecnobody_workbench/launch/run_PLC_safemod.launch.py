@@ -172,14 +172,14 @@ def generate_launch_description():
     homing_launcher = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=ssb,
-            on_exit=[homing, jsb],
+            on_exit=[homing, jsb, fsb],
         )
     )
     
     controllers_launcher = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=homing,
-            on_exit=[joint_controller_node, homing_done_publisher, eth_checker],
+            on_exit=[joint_controller_node, homing_done_publisher, eth_checker, ft_offset_updater],
         )
     )
     

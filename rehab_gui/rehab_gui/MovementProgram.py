@@ -96,6 +96,9 @@ class ManualGuidanceDialog(QtWidgets.QDialog):
 class FMRR_Ui_MovementWindow(Ui_MovementWindow):
     def __init__(self) -> None:
         super().__init__()
+        self.SideOfMovement = 0 
+        self.TypeOfMovement = 0
+        self.vel_profile = 0
     
 ##############################################################################################################
 #####                                                                                                    #####  
@@ -123,13 +126,10 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
 
         if self.radioButton_VelocityProfileConstant.isChecked() == True:
             self.vel_profile = 1    
-            print('1')
         elif self.radioButton_VelocityProfileBellshaped.isChecked() == True:
             self.vel_profile = 2
-            print('2')
         else:
             self.vel_profile = 0
-            print('0')
             
         x_begin = 0.0        
         y_begin = 0.0
@@ -585,7 +585,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
 #            self.ui_FMRRMainWindow.radioButton_SideLeft.setChecked(False)
             self.ui_FMRRMainWindow.radioButton_SideRight.setChecked(True)
         else:
-            print('non dovrei essere qui')
+            print('No MOVEMENT TYPE selected - this is weird, it should never happen but at the start')
             self.ui_FMRRMainWindow.radioButton_SideLeft.setChecked(False)
             self.ui_FMRRMainWindow.radioButton_SideRight.setChecked(False)
         if self.TypeOfMovement == 1: # Reaching 
