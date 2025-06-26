@@ -79,6 +79,7 @@ class MovementActionWorker(QObject):
         t_spl = np.zeros(_numSample)
         self._time_from_start_duration = [0] * _numSample
         self._point_velocities = [0.0] * _numSample
+        self._point_accelerations= [0.0] * _numSample
         for iPoint in range(0, _numSample):
             if type(time_from_start[iPoint]) is not Duration:
                 _time_from_start_s = time_from_start[iPoint][0]
@@ -88,7 +89,7 @@ class MovementActionWorker(QObject):
 
         # Interpolate trajectory and calculate velocities and accelerations
         P = np.array(cartesian_positions)
-        splines = [CubicSpline(t_spl, P[:, i]) for i in range(3)]
+        splines = [CubicSpline(t_spl, P[:, i], bc_type='clamped') for i in range(3)]
 
         for iPoint in range(_numSample):
             t_iPoint = t_spl[iPoint]
@@ -97,22 +98,29 @@ class MovementActionWorker(QObject):
             acc = np.array([s.derivative(2)(t_iPoint) for s in splines])
             self._time_from_start_duration[iPoint] = Duration(sec=int(t_iPoint),nanosec=int((t_iPoint - int(t_iPoint)) * 1e9))
             self._point_velocities[iPoint] = vel
+
             self.add_pointFCT(pos, vel, acc, t_iPoint, **kwargs)
 
     def setSpeedOverrideFCT(self, speed_ovr):
-        speed_scale = speed_ovr / 100.0
-        vel_scaled = [v * speed_scale for v in self._point_velocities]
+        self.speed_scale = speed_ovr / 100.0
+        vel_scaled = [v * self.speed_scale for v in self._point_velocities]
 
         for iPoint in range(len(self._goalFCT.trajectory.points)):
             _d = self._time_from_start_duration[iPoint]
-            _time_from_start_s = (_d.sec + (_d.nanosec / 1e9)) / speed_scale
+            _time_from_start_s = (_d.sec + (_d.nanosec / 1e9)) / self.speed_scale
 
             self._goalFCT.trajectory.points[iPoint].time_from_start = Duration(
                 sec=int(_time_from_start_s),
                 nanosec=int((_time_from_start_s - int(_time_from_start_s)) * 1e9)
             )
             self._goalFCT.trajectory.points[iPoint].velocities = vel_scaled[iPoint]
-            print(f'SET SPEED OVR {speed_ovr}:\t TIME {self._goalFCT.trajectory.points[iPoint].time_from_start}\t VEL:{self._goalFCT.trajectory.points[iPoint].velocities}')
+            if iPoint==0 or iPoint==len(self._goalFCT.trajectory.points):
+                if vel_scaled[iPoint].any() != 0:
+                    print(f"Warning: Velocity at point {iPoint} is not zero, but it should be. Vel: {vel_scaled[iPoint]}")
+            with open("trajectory_log.txt", "a") as log_file:
+                log_file.write(
+                    f'SET SPEED OVR {speed_ovr}:\t TIME {self._goalFCT.trajectory.points[iPoint].time_from_start}\t POS:{self._goalFCT.trajectory.points[iPoint].positions}\t VEL:{self._goalFCT.trajectory.points[iPoint].velocities}\t ACC:{self._goalFCT.trajectory.points[iPoint].accelerations}\n'
+                )
 
     def add_pointFCT(self, positions, velocities, accelerations, time, **kwargs):
         point=JointTrajectoryPoint()
@@ -144,11 +152,6 @@ class MovementActionWorker(QObject):
 
     def _done_callback(self, future):
         try:
-            if self.getDisplacementFromZero() > 0.001:
-                # self.resetMovementStart()
-                # if self.getDisplacementFromZero() > 0.001:
-                self._node.get_logger().info('Displacement from zero is greater than 0.001, ???????????????????????????????????????????')
-
             self.finished.emit()
             self.timer.cancel()
         except Exception as e:
@@ -164,7 +167,7 @@ class MovementActionWorker(QObject):
             self._node.get_logger().info(f'Action transition from {old_status_string} to {status_string}')
 
         actual_time = time.time()
-        actual_time_from_start_percentage = float(actual_time - self._init_time_s)/float(self._total_time_s) * 100
+        actual_time_from_start_percentage = float(actual_time - self._init_time_s)/float(self._total_time_s/self.speed_scale) * 100
         self.progress.emit(int(actual_time_from_start_percentage))
             
     @staticmethod
@@ -187,91 +190,80 @@ class MovementActionWorker(QObject):
         else:
             self._node.get_logger().info('goal handle has not been created yet')
 
+
+class RosManager(Node):
+    _ros_period = 1
     
-    def getDisplacementFromZero(self):
-        # if self._joint_state is not None:
-        #     displacement = 0
-        #     for i, joint_name in enumerate(JOINT_NAMES):
-        #         if joint_name in self._joint_state.name:
-        #             index = self._joint_state.name.index(joint_name)
-        #             displacement = displacement + self._joint_state.position[index]*self._joint_state.position[index]
-        #     return np.sqrt(displacement)
-        # else:
-        #     self.get_logger().error("Joint state not available.")
-        #     return None
-        return 0
+    def __init__(self):
+        Node.__init__(self, 'FMRR_cell_node') # type: ignore
+        self._ros_timer = QTimer()
+        self._ros_timer.timeout.connect(self.spin_ros_once)
+        self._ros_timer.start(self._ros_period)
+    #   subscribers        
+        self.joint_subscriber = self.create_subscription(JointState, 'joint_states', self.getJointState, 1)
+        self.tool_subscriber = self.create_subscription(JointState, 'joint_states', self.getToolPosition, 1)
+        # rospy.Subscriber( 'speed_ovr', Int16, self.getSpeedOveride )
+    #   publishers        
+        self.pub_speed_ovr = self.create_publisher(Int16, '/speed_ovr', 10)
 
-    # def resetMovementStart(self):
-    #     self.get_logger().info("-----------------Resetting movement start function called-------------------")
-     
-    #     if not self._home_goal_sent:
-    #         self.get_logger().info(f"Homing n. {self._counter_request_homing_procedure+1} - init status UNKNOWN, trying to go home...")
-    #         self._counter_request_homing_procedure =  self._counter_request_homing_procedure+1
-    #         home_from_yaml = [0.0] * len(JOINT_NAMES)
-    #         home_goal = FollowJointTrajectory.Goal()
-    #         home_goal.trajectory.joint_names = JOINT_NAMES
+        self.cm_param_client = AsyncParameterClient(self, 'controller_manager')
+        param_client_success= self.cm_param_client.wait_for_services(5.0)
 
-    #         home_init_point = JointTrajectoryPoint()
-    #         home_init_point.positions = self.RobotJointPosition
-    #         home_init_point.velocities = [0.0] * len(home_from_yaml)
-    #         home_init_point.accelerations = [0.0] * len(home_from_yaml)
-    #         home_init_point.time_from_start = Duration(sec=0, nanosec=0)
-    #         home_goal.trajectory.points.append(home_init_point)  # type: ignore
+        if not param_client_success:
+            self.get_logger().error("Parameter client services are not ready.")
+            rclpy.shutdown()
+            sys.exit(1)
+        self.update_rate = -1 
+        future =  self.cm_param_client.get_parameters(['update_rate'])
+        rclpy.spin_until_future_complete(self,future)
+        result = future.result()   #rcl_interfaces.srv.GetParameters_Response
+        if result:
+            self.get_logger().info(f"Read: update rate = {result.values[0].integer_value}")
+            self.update_rate = result.values[0].integer_value
+        else:
+            self.get_logger().error("Failed to read update rate parameter.")
+            rclpy.shutdown()
+            sys.exit(1)
+        self._joint_state = None
 
-    #         home_point = JointTrajectoryPoint()
-    #         home_point.positions = home_from_yaml
-    #         home_point.velocities = [0.0] * len(home_from_yaml)
-    #         home_point.accelerations = [0.0] * len(home_from_yaml)
-    #         home_point.time_from_start = Duration(sec=1, nanosec=0)
-    #         home_goal.trajectory.points.append(home_point)  # type: ignore
+    def getJointState(self, data):
+        self._joint_state = data
+        self.RobotJointPosition = list(self._joint_state.position)
 
-    #         home_goal.trajectory.header.stamp = self.get_clock().now().to_msg()
-    #         self.get_logger().info(f"Homing n. {self._counter_request_homing_procedure} - Send goal")
-    #         self.home_goal_future = self._clientFollowCartTraj.send_goal_async(home_goal)
-    #         self.home_goal_future.add_done_callback(self.home_goal_response_callback)
-    #         self._home_goal_sent = True
+    def getToolPosition(self, data):
+        ToolPosition = data
+        self.HandlePosition = [0,0,0]
+        self.HandlePosition[0] = ToolPosition.position[0]
+        self.HandlePosition[1] = ToolPosition.position[1]
+        self.HandlePosition[2] = ToolPosition.position[2]
+        
+    def spin_ros_once(self):
+        rclpy.spin_once(self, timeout_sec=0)
 
-    #         speed_ovr_msg = Int16()
-    #         speed_ovr_msg.data = 100
-    #         self.pub_speed_ovr.publish(speed_ovr_msg)
-    #         self.get_logger().info(f"Homing n. {self._counter_request_homing_procedure} - speed PCT: {speed_ovr_msg.data}")
-
-    #         while self._home_status != GoalStatus.STATUS_SUCCEEDED:
-    #             time.sleep(0.1)  # Wait for the goal to be accepted
-    #         return True
-
-    #     else:
-    #         self.get_logger().info(f"Homing n. {self._counter_request_homing_procedure} - Goal is not achieved, waiting for execution termination...")
-    #     return False
      
 
-class MainProgram(Node, Ui_FMRRMainWindow, QtCore.QObject): 
+class MainProgram(Ui_FMRRMainWindow, QtCore.QObject): 
     _update_windows_period = 500
     _update_TrainingTime = 20
-    _ros_period = 1
     _toolPosCovFact = 100 # to display coordinatates in centimeters (are given in meters in the yaml files) (used in MovementWindow to display data)
     _jointPosConvFact = 180/np.pi # conversion from radiants to degrees (used in MovementWindow to display data)
     trigger_worker = pyqtSignal(int) 
 
     def __init__(self):
         QtCore.QObject.__init__(self)
-        Node.__init__(self, 'FMRR_cell_node') # type: ignore
+        self.ROS = RosManager()
         self.DialogMovementWindow = QtWidgets.QDialog()
         self.DialogRobotWindow = QtWidgets.QDialog()
         self.FMRRMainWindow = QtWidgets.QMainWindow() # FMRRMainWindow is an instance of the class QtWidgets.QMainWindow. Not to be confuse with the namof the file FMRRMainWindow.py
-        self.get_logger().info("FMRR cell node started.")
-        self._joint_state = None
+        self.ROS.get_logger().info("FMRR cell node started.")
 
         # Set up Movement Worker
         self.worker_thread = QThread()
-        self.MovementWorker = MovementActionWorker(self)
+        self.MovementWorker = MovementActionWorker(self.ROS)
         self.MovementWorker.moveToThread(self.worker_thread)
-
-        # Connect qtsignals
         
-
     def initializeVariables(self):
-        self.AnswerPauseService = False
+        self.isPaused = False
         # self.FIRST_TIME = True
         self.JogOn = False
         self.NumberExecMovements = 0
@@ -296,15 +288,7 @@ class MainProgram(Node, Ui_FMRRMainWindow, QtCore.QObject):
         self._update_TrainingTimer = QTimer()                                           # creo l'oggetto
         self._update_TrainingTimer.timeout.connect(lambda: self.update_TrainingParameters())
         self._update_TrainingTimer.start(self._update_TrainingTime)
-        self.get_logger().info("Update Training TImer Started (event loop in the main thread)")
-
-    def rosTimer(self):
-        self._ros_timer = QTimer()
-        self._ros_timer.timeout.connect(self.spin_ros_once)
-        self._ros_timer.start(self._ros_period)
-
-    def spin_ros_once(self):
-        rclpy.spin_once(self, timeout_sec=0)
+        self.ROS.get_logger().info("Update Training TImer Started (event loop in the main thread)")
 
     def updateFMRRWindow(self):
         self.lcdNumber_MovementCOUNT.display( self.NumberExecMovements ) 
@@ -385,7 +369,6 @@ class MainProgram(Node, Ui_FMRRMainWindow, QtCore.QObject):
         self.movement_completed = False
         self.iPhase = 0
         self._home_goal_sent = False
-        # self.AnswerPauseService = self.pauseService(False)
         self.sendTrajectoryFCT()
         self.updateTrainingTimer()
         self.ModalityActualValue = self.Modalities[0]
@@ -399,14 +382,14 @@ class MainProgram(Node, Ui_FMRRMainWindow, QtCore.QObject):
         if self.pushButton_PAUSEtrainig.State:
             self.pushButton_PAUSEtrainig.State = 0    
             self.pushButton_PAUSEtrainig.setText( _translate("FMRRMainWindow", "RESUME training") )
-            self.AnswerPauseService = self.pauseService(True) # type: ignore
-            print( 'The robot movement was successfully stopped: %s' % self.AnswerPauseService )
+            self.isPaused = True
+            print( 'The robot movement was successfully stopped: %s' % self.isPaused )
             
         else:
             self.pushButton_PAUSEtrainig.State = 1    
             self.pushButton_PAUSEtrainig.setText( _translate("FMRRMainWindow", "PAUSE training") )
-            self.AnswerPauseService = self.pauseService(False) # type: ignore
-            print( 'The robot movement was successfully resumed: %s' % self.AnswerPauseService )
+            self.isPaused = False
+            print( 'The robot movement was successfully resumed: %s' % self.isPaused )
 
     def clbk_STOPtrainig(self):   
         self.MovementWorker.stopFCT() 
@@ -417,19 +400,23 @@ class MainProgram(Node, Ui_FMRRMainWindow, QtCore.QObject):
         self._update_TrainingTimer.stop()
               
     def update_TrainingParameters(self):
-        if self.iPhase <= 19:
-            self.progressBarPhases[self.iPhase].setValue(self.execution_time_percentage)
-            if self.iPhase > 0:
-                self.progressBarPhases[self.iPhase - 1].setValue(100) # type: ignore
-            if self.movement_completed:                
-                self.ModalityActualValue = self.Modalities[self.iPhase] # change here the modality 
-                self.NumberExecMovements += 1
-                print(f'Number of movements: {self.NumberExecMovements} - Ovr: {self.spinBoxSpeedOvr[self.iPhase].value()}')
-                self.startMovementFCT(self.spinBoxSpeedOvr[self.iPhase].value())
-                self.spinBoxSpeedOvr[self.iPhase].enabled = False
-        else:            
-            self.progressBarPhases[19].setValue(100)
-            self.clbk_STOPtrainig()
+        if not self.isPaused:
+            if self.iPhase <= 19:
+                self.progressBarPhases[self.iPhase].setValue(self.execution_time_percentage)
+                if self.iPhase > 0:
+                    self.progressBarPhases[self.iPhase - 1].setValue(100) # type: ignore
+                if self.movement_completed:                
+                    self.ModalityActualValue = self.Modalities[self.iPhase] # change here the modality 
+                    self.NumberExecMovements += 1
+                    print(f'Number of movements: {self.NumberExecMovements} - Ovr: {self.spinBoxSpeedOvr[self.iPhase].value()}')
+                    self.startMovementFCT(self.spinBoxSpeedOvr[self.iPhase].value())
+                    self.spinBoxSpeedOvr[self.iPhase].enabled = False
+            else:            
+                self.progressBarPhases[19].setValue(100)
+                self.clbk_STOPtrainig()
+        else:
+            self.ROS.get_logger().info("Training is paused, skipping update.")
+            return
         
     def on_worker_finished(self):
         self.iPhase += 1
@@ -437,24 +424,12 @@ class MainProgram(Node, Ui_FMRRMainWindow, QtCore.QObject):
     
     def on_worker_progress(self,value):
         self.execution_time_percentage = int(value)  # Get the progress percentage from the worker
-    
-    # def home_cancel_callback(self, future):
-    #     try:
-    #         result = future.result()
-    #         if result == GoalStatus.STATUS_CANCELED:
-    #             self.get_logger().info('Home goal successfully canceled.')
-    #             self._home_goal_sent = False
-    #         else:
-    #             self.get_logger().error('Failed to cancel home goal, status: %s' % result)
-    #     except Exception as e:
-    #         self.get_logger().error(f'Exception while canceling home goal: {e}')
 
-  
     def clbk_spinBox_MaxVel(self):
         speed_ovr_Value = self.spinBox_MaxVel.value()
         speed_ovr_msg = Int16()
         speed_ovr_msg.data = speed_ovr_Value
-        self.pub_speed_ovr.publish(speed_ovr_msg)
+        self.ROS.pub_speed_ovr.publish(speed_ovr_msg)
 
     def start_homing_procedure(self):
         self.homing_done = False
@@ -464,13 +439,13 @@ class MainProgram(Node, Ui_FMRRMainWindow, QtCore.QObject):
             switch_req.activate_controllers = []
             switch_req.deactivate_controllers = [self.MovementWorker.controller_name]
             switch_req.strictness = SwitchController.Request.STRICT
-            self.get_logger().info(f'Deactivating controller {self.MovementWorker.controller_name}...')
+            self.ROS.get_logger().info(f'Deactivating controller {self.MovementWorker.controller_name}...')
             future = switch_client.call_async(switch_req)
             rclpy.spin_until_future_complete(self, future)
             # time.sleep(0.3)
             self.set_homing_mode_all_dofs()
         else:
-            self.get_logger().error('Failed to deactivate controller before homing.')
+            self.ROS.get_logger().error('Failed to deactivate controller before homing.')
 
     def set_homing_mode_all_dofs(self):
         self.remaining_homing_dofs = set(JOINT_NAMES)
@@ -484,12 +459,12 @@ class MainProgram(Node, Ui_FMRRMainWindow, QtCore.QObject):
             switch_req.activate_controllers = [self.MovementWorker.controller_name]
             switch_req.deactivate_controllers = []
             switch_req.strictness = SwitchController.Request.STRICT
-            self.get_logger().info(f'Activating controller {self.MovementWorker.controller_name}...')
+            self.ROS.get_logger().info(f'Activating controller {self.MovementWorker.controller_name}...')
             future = switch_client.call_async(switch_req)
             rclpy.spin_until_future_complete(self, future)
             self.set_cyclic_mode_all_dofs()
         else:
-            self.get_logger().error('Failed to activate controller after configure.')
+            self.ROS.get_logger().error('Failed to activate controller after configure.')
 
     def set_cyclic_mode_all_dofs(self):
         self.remaining_cyclic_dofs = set(JOINT_NAMES)
@@ -506,17 +481,17 @@ class MainProgram(Node, Ui_FMRRMainWindow, QtCore.QObject):
             req = SwitchDriveModeOfOperation.Request()
             req.dof_name = dof
             req.mode_of_operation = mode_value
-            self.get_logger().info(f"Setting mode {mode_value} for {dof}...")
+            self.ROS.get_logger().info(f"Setting mode {mode_value} for {dof}...")
             future = client.call_async(req)
             rclpy.spin_until_future_complete(self, future)
             # time.sleep(0.2)
             self._set_mode_for_next_dof(mode_value, after_all_done)
         else:
-            self.get_logger().error(f"Service unavailable to set mode {mode_value} for {dof}")
+            self.ROS.get_logger().error(f"Service unavailable to set mode {mode_value} for {dof}")
             self._set_mode_for_next_dof(mode_value, after_all_done)
 
     def confirm_homing_completed(self):
-        self.get_logger().info('✅ Homing procedure completed successfully.')
+        self.ROS.get_logger().info('✅ Homing procedure completed successfully.')
         self.homing_done = True
            
 ######################## MAIN FUNCTIONS ###########################
@@ -528,27 +503,7 @@ class MainProgram(Node, Ui_FMRRMainWindow, QtCore.QObject):
 ###################################################################
     def setupUi_MainWindow(self):
         Ui_FMRRMainWindow.setupUi(self, self.FMRRMainWindow)
-        self._ros_timer = QTimer()
-        self._ros_timer.timeout.connect(lambda: rclpy.spin_once(ui, timeout_sec=0))
-        self._ros_timer.start(self._ros_period)
-        self.cm_param_client = AsyncParameterClient(self, 'controller_manager')
-        param_client_success= self.cm_param_client.wait_for_services(5.0)
         self.homing_done = False
-        if not param_client_success:
-            self.get_logger().error("Parameter client services are not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
-        self.update_rate = -1 
-        future =  self.cm_param_client.get_parameters(['update_rate'])
-        rclpy.spin_until_future_complete(self,future)
-        result = future.result()   #rcl_interfaces.srv.GetParameters_Response
-        if result:
-            self.get_logger().info(f"Read: update rate = {result.values[0].integer_value}")
-            self.update_rate = result.values[0].integer_value
-        else:
-            self.get_logger().error("Failed to read update rate parameter.")
-            rclpy.shutdown()
-            sys.exit(1)
     
     def retranslateUi_MainWindow(self, app): 
         #   GENERAL
@@ -603,59 +558,25 @@ class MainProgram(Node, Ui_FMRRMainWindow, QtCore.QObject):
 #        self.lcdNumberExerciseTotalTime.setDigitCount(3)
         self.lcdNumberExerciseTotalTime.setSegmentStyle(QtWidgets.QLCDNumber.Flat)
         self.lcdNumber_MovementCOUNT.setSegmentStyle(QtWidgets.QLCDNumber.Flat)
-         
-#                
-##############################      ROS     ###################################
-
-    def start_ROS_functions(self):    
-    #   subscribers        
-        self.joint_subscriber = self.create_subscription(JointState, 'joint_states', self.getJointState, 1)
-        self.tool_subscriber = self.create_subscription(JointState, 'joint_states', self.getToolPosition, 1)
-        # rospy.Subscriber( 'speed_ovr', Int16, self.getSpeedOveride )
-    #   publishers        
-        self.pub_speed_ovr = self.create_publisher(Int16, '/speed_ovr', 10)
-        
+    
      
     def startPauseService(self):
-        self.get_logger().info("Pause service is not implemented yet.")
-
-    def read_speed_ovr(self, speed_ovr):
-        self.current_speed_ovr = speed_ovr
-        speed_ovr_msg = Int16()
-        speed_ovr_msg.data = speed_ovr
-        self.pub_speed_ovr.publish(speed_ovr_msg)
-        print('Speed PCT: %d' %speed_ovr_msg.data)
+        self.ROS.get_logger().info("Pause service is not implemented yet.")
 
     def startMovementFCT(self, default_speed_override=100):
         self.movement_completed = False
         self._home_status = GoalStatus.STATUS_UNKNOWN
         self._home_goal_sent = False
         self.trigger_worker.emit(default_speed_override)  # Trigger the worker to start the movement
-
-    
-
-    def home_goal_response_callback(self, future):
-        self._home_goal_handle = future.result()
-        if not self._home_goal_handle.accepted:
-            self.get_logger().info(f"Homing n. {self._counter_request_homing_procedure} - Goal rejected :(")
-            return
-        self.get_logger().info(f"Homing n. {self._counter_request_homing_procedure} - Goal accepted :)")
-        self._get_result_future = self._home_goal_handle.get_result_async()
-        self._get_result_future.add_done_callback(self.get_result_callback)
         
-    def get_result_callback(self, future):
-        self._home_result = future.result().result
-        self._home_status = future.result().status
-        self.get_logger().info(f"Homing n. {self._counter_request_homing_procedure} - Goal result: {self._home_result}")
-        self.get_logger().info(f"Homing n. {self._counter_request_homing_procedure} - Goal status: {self._home_status}")
         
     def clbk_BtnGOtoZero(self):
-        self.get_logger().info("Going to zero position...")
+        self.ROS.get_logger().info("Going to zero position...")
         home_goal = FollowJointTrajectory.Goal()
         home_goal.trajectory.joint_names = JOINT_NAMES
 
         home_init_point = JointTrajectoryPoint()
-        home_init_point.positions = self.RobotJointPosition
+        home_init_point.positions = self.ROS.RobotJointPosition
         home_init_point.velocities = [0.0] * len(JOINT_NAMES)
         home_init_point.accelerations = [0.0] * len(JOINT_NAMES)
         home_init_point.effort = []
@@ -673,7 +594,6 @@ class MainProgram(Node, Ui_FMRRMainWindow, QtCore.QObject):
         home_goal.trajectory.header.stamp = self.get_clock().now().to_msg()
         home_future = self.MovementWorker._clientFollowCartTraj.send_goal_async(home_goal)
         #home_future.add_done_callback(self.home_cancel_callback)
-
         return True
 
 
@@ -684,17 +604,8 @@ class MainProgram(Node, Ui_FMRRMainWindow, QtCore.QObject):
         self.MovementWorker.setFCT(self.CartesianPositions, self.TimeFromStart)  # type: ignore    
 
 
-    def getJointState(self, data):
-        self._joint_state = data
-        self.RobotJointPosition = list(self._joint_state.position)
+    
 
-
-    def getToolPosition(self, data):
-        ToolPosition = data
-        self.HandlePosition = [0,0,0]
-        self.HandlePosition[0] = ToolPosition.position[0]
-        self.HandlePosition[1] = ToolPosition.position[1]
-        self.HandlePosition[2] = ToolPosition.position[2]
         
 
 def main(args=None):
@@ -707,8 +618,6 @@ def main(args=None):
     ui.definePaths()
     ui.startRobotWindow()
     ui.startMovementWindow()
-    ui.start_ROS_functions()
-    ui.rosTimer()
     ui.updateWindowTimerCallback()
     ui.initializeVariables()
     ui.FMRRMainWindow.show()

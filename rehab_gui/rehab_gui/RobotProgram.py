@@ -42,7 +42,6 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
 #####                                                 callbacks                                          #####
 #####                                                                                                    #####
 ##############################################################################################################
-    
     ###### Callback of buttons to MOVE (TRANSLATIONS and ROTATIONS)      
     def clbk_BtnPlusMinusCoordinate(self, SignIncrement, CoordinateNr): # NCoordinate = 0,1,2 --> x,y,z or 0,1,2,3,4,5 -->J1,J2,J3 ..,J6.
         if self.ui_FMRRMainWindow.AnswerPauseService:
@@ -53,17 +52,14 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
         
         if CoordinateNr < 3:
             Increment = self.spinBox_MoveRobotPosition.value()
-            NewHandlePosition = self.ui_FMRRMainWindow.RobotJointPosition #[0.0, 0.0, 0.0]  # initialization of  position = [x,y,z,q1,q2,q3,q4] coorinates are RELATIVE!!!
-            print('The current handle postions are: %s' % NewHandlePosition)
+            print('The current handle postions are: %s' % self.ui_FMRRMainWindow.ROS.RobotJointPosition)
 
             self.ui_FMRRMainWindow.MovementWorker.clearFCT()
-            _TimeFromStart = Duration(sec=0, nanosec=0)    
-            self.ui_FMRRMainWindow.MovementWorker.setFCT([NewHandlePosition],[_TimeFromStart])
-
-            NewHandlePosition [CoordinateNr] = self.ui_FMRRMainWindow.RobotJointPosition[CoordinateNr] + SignIncrement * float(Increment) /100.0 # conversion from meters to cm
+            NewHandlePosition = self.ui_FMRRMainWindow.ROS.RobotJointPosition
+            NewHandlePosition [CoordinateNr] = self.ui_FMRRMainWindow.ROS.RobotJointPosition[CoordinateNr] + SignIncrement * float(Increment) /100.0 # conversion from meters to cm
             print('The new handle postions are: %s' % NewHandlePosition)
             _TimeFromStart = Duration(sec=3, nanosec=0)          
-            self.ui_FMRRMainWindow.MovementWorker.setFCT([NewHandlePosition],[_TimeFromStart])
+            self.ui_FMRRMainWindow.MovementWorker.setFCT([self.ui_FMRRMainWindow.ROS.RobotJointPosition, NewHandlePosition],[Duration(sec=0, nanosec=0) , _TimeFromStart])
             self.ui_FMRRMainWindow.startMovementFCT()
         else:
             print("coordinate number must be between 1 and 3 for this platform")
@@ -72,7 +68,7 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
    
            
     def clbk_JointApproach(self, JointNr):
-        ActualRobotConfiguration  = self.ui_FMRRMainWindow.RobotJointPosition
+        ActualRobotConfiguration  = self.ui_FMRRMainWindow.ROS.RobotJointPosition
         print('The current joint configuration is: %s' % ActualRobotConfiguration)
         NewRobotConfiguration = ActualRobotConfiguration
         JointTargetPosition = (self.doubleSpin_Joint1_Value, self.doubleSpin_Joint2_Value, self.doubleSpin_Joint3_Value) #, self.doubleSpin_Joint4_Value, self.doubleSpin_Joint5_Value, self.doubleSpin_Joint6_Value)
@@ -193,7 +189,7 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
 #       Joints lcd 
         _jointPosConvFact = self.ui_FMRRMainWindow._jointPosConvFact #
         try:
-            RobotJointPosition = self.ui_FMRRMainWindow.RobotJointPosition
+            RobotJointPosition = self.ui_FMRRMainWindow.ROS.RobotJointPosition
         except:
             return
 #        print('ActualRobotJointPositon:')
@@ -203,7 +199,7 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
         ##       Handle lcd 
         _toolPosCovFact = self.ui_FMRRMainWindow._toolPosCovFact
         try:
-            HandlePosition = self.ui_FMRRMainWindow.HandlePosition
+            HandlePosition = self.ui_FMRRMainWindow.ROS.HandlePosition
         except:
             return
         # print('HandlePosition:')
