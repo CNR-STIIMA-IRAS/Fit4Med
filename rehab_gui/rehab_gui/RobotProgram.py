@@ -34,8 +34,14 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 class FMRR_Ui_RobotWindow(Ui_RobotWindow):
     def __init__(self) -> None:
         super().__init__()
+        self.jog_freq = 20
+        self.jog_timer = QtCore.QTimer()
+        self.jog_timer.setInterval(int(1000.0/self.jog_freq))  # ogni 50 ms ≈ 20 Hz
+        self.jog_timer.timeout.connect(lambda : self.ui_FMRRMainWindow.ROS.jog_command(self.jog_freq, self.jog_sign,self.jog_axis))
+        self.jog_sign = 0
+        self.jog_axis = 0
 
- 
+
 ##############################################################################################################
 #####                                                                                                    #####  
 #####                                        MOVE THE ROBOT TO DEFINED POSITION                          ##### 
@@ -43,31 +49,17 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
 #####                                                                                                    #####
 ##############################################################################################################
     ###### Callback of buttons to MOVE (TRANSLATIONS and ROTATIONS)      
-    def clbk_BtnPlusMinusCoordinate(self, SignIncrement, CoordinateNr): # NCoordinate = 0,1,2 --> x,y,z or 0,1,2,3,4,5 -->J1,J2,J3 ..,J6.
-        if self.ui_FMRRMainWindow.AnswerPauseService:
-            self.ui_FMRRMainWindow.AnswerPauseService = self.ui_FMRRMainWindow.pauseService(False)
-            print( 'The robot movement was resumed: %s' % self.ui_FMRRMainWindow.AnswerPauseService )        
-
-        self.ui_FMRRMainWindow.JogOn = True
+    def clbk_BtnPlusMinusCoordinate(self, SignIncrement, CoordinateNr): # NCoordinate = 0,1,2 --> x,y,z 
         
-        if CoordinateNr < 3:
-            Increment = self.spinBox_MoveRobotPosition.value()
-            print('The current handle postions are: %s' % self.ui_FMRRMainWindow.ROS.RobotJointPosition)
+        self.jog_sign = SignIncrement
+        self.jog_axis = CoordinateNr
+        self.jog_timer.start()
+        
+    def clbk_StopJog(self):
+        self.jog_timer.stop()
 
-            self.ui_FMRRMainWindow.MovementWorker.clearFCT()
-            NewHandlePosition = self.ui_FMRRMainWindow.ROS.RobotJointPosition
-            NewHandlePosition [CoordinateNr] = self.ui_FMRRMainWindow.ROS.RobotJointPosition[CoordinateNr] + SignIncrement * float(Increment) /100.0 # conversion from meters to cm
-            print('The new handle postions are: %s' % NewHandlePosition)
-            _TimeFromStart = Duration(sec=3, nanosec=0)          
-            self.ui_FMRRMainWindow.MovementWorker.setFCT([self.ui_FMRRMainWindow.ROS.RobotJointPosition, NewHandlePosition],[Duration(sec=0, nanosec=0) , _TimeFromStart])
-            self.ui_FMRRMainWindow.startMovementFCT()
-        else:
-            print("coordinate number must be between 1 and 3 for this platform")
-
-        self.ui_FMRRMainWindow.JogOn = False
-   
-           
     def clbk_JointApproach(self, JointNr):
+        self.ui_FMRRMainWindow.ROS.change_current_controller(self.ui_FMRRMainWindow.ROS.trajectory_controller_name)
         ActualRobotConfiguration  = self.ui_FMRRMainWindow.ROS.RobotJointPosition
         print('The current joint configuration is: %s' % ActualRobotConfiguration)
         NewRobotConfiguration = ActualRobotConfiguration
@@ -145,7 +137,7 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
                 print(f"Failed to remove {file_path}: {e}")
         print(f"Files removed {not os.path.exists(file_path)}")
         # Call homing service
-        self.ui_FMRRMainWindow.start_homing_procedure()
+        self.ui_FMRRMainWindow.ROS.start_homing_procedure()
         # Create an empty file under /tmp
         with open('/tmp/relative_homing_performed', 'w') as f:
             f.write("homing performed")
@@ -172,11 +164,13 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
 
         
     def clbk_BtnGOtoTraining(self):
+        self.ui_FMRRMainWindow.ROS.change_current_controller(self.ui_FMRRMainWindow.ROS.trajectory_controller_name)
         self.DialogFMRRMainWindow.show()
         self.DialogRobotWindow.hide()
         
         
     def clbk_BtnGotoMovement(self):
+        self.ui_FMRRMainWindow.ROS.change_current_controller(self.ui_FMRRMainWindow.ROS.trajectory_controller_name)
         self.ui_FMRRMainWindow.DialogMovementWindow.show()
         self.DialogRobotWindow.hide()
         
@@ -315,13 +309,21 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
 
         self.pushButton_LoadJointPosition.clicked.connect(lambda: self.clbk_BtnLoadJointPosition())
 
-        self.pushButton_Xminus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(-1 ,0) )
-        self.pushButton_Yminus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(-1, 1) )
-        self.pushButton_Zminus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(-1, 2) )
+        self.pushButton_Xminus.pressed.connect(lambda: self.clbk_BtnPlusMinusCoordinate(-1, 0))
+        self.pushButton_Xplus.pressed.connect(lambda: self.clbk_BtnPlusMinusCoordinate(1, 0))
+        self.pushButton_Yminus.pressed.connect(lambda: self.clbk_BtnPlusMinusCoordinate(-1, 1))
+        self.pushButton_Yplus.pressed.connect(lambda: self.clbk_BtnPlusMinusCoordinate(1, 1))
+        self.pushButton_Zminus.pressed.connect(lambda: self.clbk_BtnPlusMinusCoordinate(-1, 2))
+        self.pushButton_Zplus.pressed.connect(lambda: self.clbk_BtnPlusMinusCoordinate(1, 2))
 
-        self.pushButton_Xplus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(1 ,0) ) 
-        self.pushButton_Yplus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(1, 1) )
-        self.pushButton_Zplus.clicked.connect(lambda: self.clbk_BtnPlusMinusCoordinate(1, 2) )
+        # Quando rilasci il bottone, interrompi il timer
+        self.pushButton_Xminus.released.connect(self.clbk_StopJog)
+        self.pushButton_Xplus.released.connect(self.clbk_StopJog)
+        self.pushButton_Yminus.released.connect(self.clbk_StopJog)
+        self.pushButton_Yplus.released.connect(self.clbk_StopJog)
+        self.pushButton_Zminus.released.connect(self.clbk_StopJog)
+        self.pushButton_Zplus.released.connect(self.clbk_StopJog)
+
         
         self.pushButton_Approach_Joint1.clicked.connect( lambda: self.clbk_JointApproach(0) )
         self.pushButton_Approach_Joint2.clicked.connect( lambda: self.clbk_JointApproach(1) )

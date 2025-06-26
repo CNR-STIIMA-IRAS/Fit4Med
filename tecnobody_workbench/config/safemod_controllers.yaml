@@ -26,6 +26,12 @@ controller_manager:
     PLC_controller:
       type: plc_controller/PLCController
 
+    forward_position_controller:
+      type: position_controllers/JointGroupPositionController
+
+    forward_velocity_controller:
+      type: velocity_controllers/JointGroupVelocityController
+
 
 PLC_controller:
   ros__parameters:
@@ -77,6 +83,20 @@ ft_sensor_command_broadcaster:
     #     y: -0.7
     #     z: 2.12  
 
+forward_position_controller:
+  ros__parameters:
+    joints:
+      - joint_1
+      - joint_2
+      - joint_3
+
+forward_velocity_controller:
+  ros__parameters:
+    joints:
+      - joint_1
+      - joint_2
+      - joint_3
+
 joint_trajectory_controller:
   ros__parameters:
     joints:
@@ -105,6 +125,7 @@ scaled_trajectory_controller:
     open_loop_control: true
     constraints:
       goal_time: 0.0
+    spline_order: 2
 
 state_controller:
   ros__parameters:

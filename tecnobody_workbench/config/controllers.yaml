@@ -94,6 +94,7 @@ scaled_trajectory_controller:
     open_loop_control: true
     constraints:
       goal_time: 0.0
+    spline_order: 3 #Manuel ha detto di fare un prova aggiungendo il parametro spline_order: 3
   # action_monitor_rate: 20.0
   # allow_partial_joints_goal: true
   # open_loop_control: false

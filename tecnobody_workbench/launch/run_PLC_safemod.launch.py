@@ -162,6 +162,13 @@ def generate_launch_description():
         output='screen',
     )
 
+    forward_controller_node = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['forward_velocity_controller', '--inactive'],
+        output='screen',
+    )
+
     admittance_controller_node = Node(
         package='controller_manager',
         executable='spawner',
@@ -179,7 +186,7 @@ def generate_launch_description():
     controllers_launcher = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=homing,
-            on_exit=[joint_controller_node, homing_done_publisher, eth_checker, ft_offset_updater],
+            on_exit=[joint_controller_node, forward_controller_node, homing_done_publisher, eth_checker, ft_offset_updater],
         )
     )
     
