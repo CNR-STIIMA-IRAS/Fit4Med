@@ -549,7 +549,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         _toolPosCovFact = self.ui_FMRRMainWindow._toolPosCovFact        
         HandlePosition = self.ui_FMRRMainWindow.ROS.HandlePosition
         RobotJointPosition = self.ui_FMRRMainWindow.ROS.RobotJointPosition#       Put doublespin values in list to allow for iteration 
-            
+
         end_msg = Point()
 
         # save data to create movement
@@ -606,6 +606,12 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         else:
             self.radioButton_VelocityProfileConstant.setChecked(False)
             self.radioButton_VelocityProfileBellshaped.setChecked(False)
+        
+        # check that position is zero before going to training
+        if any(abs(self.ui_FMRRMainWindow.ROS.HandlePosition[idx]) > 1e-3 for idx in range(3)):
+            QMessageBox.warning(self.DialogMovementWindow, "Warning", "Handle position is not zero, please set it to zero before going to training")
+            return
+
         self.DialogFMRRMainWindow.show()
         self.DialogMovementWindow.hide()
 
@@ -674,7 +680,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         self.pushButton_CREATEMovement.clicked.connect(lambda: self.clbk_BtnCreateMovementData())
         self.pushButton_SetCurrentPos_2.clicked.connect(lambda: self.clbk_pushButton_SetCurrentPos() )
         self.pushButton_SAVEMovement.clicked.connect(lambda: self.clbk_BtnSAVEMovement())
-        self.pushButton_GOtoZERO.clicked.connect(lambda: self.ui_FMRRMainWindow.clbk_BtnGOtoZero())
+        self.pushButton_GOtoZERO.clicked.connect(lambda: self.ui_FMRRMainWindow.clbk_ApproachPoint([0.0, 0.0, 0.0]))
 
         ##############################################################################################
         #####                                                                                    #####  

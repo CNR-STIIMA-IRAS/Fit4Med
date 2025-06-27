@@ -34,13 +34,6 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 class FMRR_Ui_RobotWindow(Ui_RobotWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.jog_freq = 20
-        self.jog_timer = QtCore.QTimer()
-        self.jog_timer.setInterval(int(1000.0/self.jog_freq))  # ogni 50 ms ≈ 20 Hz
-        self.jog_timer.timeout.connect(lambda : self.ui_FMRRMainWindow.ROS.jog_command(self.jog_freq, self.jog_sign,self.jog_axis))
-        self.jog_sign = 0
-        self.jog_axis = 0
-
 
 ##############################################################################################################
 #####                                                                                                    #####  
@@ -48,31 +41,24 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
 #####                                                 callbacks                                          #####
 #####                                                                                                    #####
 ##############################################################################################################
-    ###### Callback of buttons to MOVE (TRANSLATIONS and ROTATIONS)      
-    def clbk_BtnPlusMinusCoordinate(self, SignIncrement, CoordinateNr): # NCoordinate = 0,1,2 --> x,y,z 
-        
-        self.jog_sign = SignIncrement
-        self.jog_axis = CoordinateNr
-        self.jog_timer.start()
-        
-    def clbk_StopJog(self):
-        self.jog_timer.stop()
-
+    ###### Callback of buttons to Joint Approach with trajectory controller (TODO)
     def clbk_JointApproach(self, JointNr):
-        self.ui_FMRRMainWindow.ROS.change_current_controller(self.ui_FMRRMainWindow.ROS.trajectory_controller_name)
+        if self.ui_FMRRMainWindow.ROS.current_controller != self.ui_FMRRMainWindow.ROS.trajectory_controller_name:
+            self.ui_FMRRMainWindow.ROS.get_logger().info(f"Switching to position mode of operation and loading {self.ui_FMRRMainWindow.ROS.trajectory_controller_name}")
+            if not self.ui_FMRRMainWindow.ROS.trajectory_to_forward_switch(8, self.ui_FMRRMainWindow.ROS.trajectory_controller_name):
+                QMessageBox.warning(self.DialogRobotWindow, "Warning", "Failed to switch to trajectory controller. Please check the controller configuration.")
+                return
         ActualRobotConfiguration  = self.ui_FMRRMainWindow.ROS.RobotJointPosition
         print('The current joint configuration is: %s' % ActualRobotConfiguration)
         NewRobotConfiguration = ActualRobotConfiguration
-        JointTargetPosition = (self.doubleSpin_Joint1_Value, self.doubleSpin_Joint2_Value, self.doubleSpin_Joint3_Value) #, self.doubleSpin_Joint4_Value, self.doubleSpin_Joint5_Value, self.doubleSpin_Joint6_Value)
+        JointTargetPosition = (self.doubleSpin_Joint1_Value.value(), self.doubleSpin_Joint2_Value.value(), self.doubleSpin_Joint3_Value.value())
         if JointNr == 3:
             NewRobotConfiguration = JointTargetPosition
         else:
             NewRobotConfiguration[JointNr] = JointTargetPosition[JointNr]
         print('The new RobotConfiguration is: %s' % NewRobotConfiguration)
-        _TimeFromStart = Duration(sec=5, nanosec=0) # duration in s            
-        _TimeTolerance = Duration(sec= 5, nanosec=int(1e-9))       
-        self.ui_FMRRMainWindow.MovementWorker.clearFCT()
-        self.ui_FMRRMainWindow.MovementWorker.setFCT([NewRobotConfiguration], [_TimeFromStart], _TimeTolerance )
+        # _TimeTolerance = Duration(sec= 5, nanosec=int(1e-9))
+        self.ui_FMRRMainWindow.clbk_ApproachPoint(NewRobotConfiguration)
         #self.ui_FMRRMainWindow.MovementWorker.add_pointFCT(NewRobotConfiguration, _TimeFromStart, _TimeTolerance)
         self.ui_FMRRMainWindow.startMovementFCT()
         
@@ -164,13 +150,21 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
 
         
     def clbk_BtnGOtoTraining(self):
-        self.ui_FMRRMainWindow.ROS.change_current_controller(self.ui_FMRRMainWindow.ROS.trajectory_controller_name)
+        if self.ui_FMRRMainWindow.ROS.current_controller != self.ui_FMRRMainWindow.ROS.trajectory_controller_name:
+            self.ui_FMRRMainWindow.ROS.get_logger().info(f"Switching to position mode of operation and loading {self.ui_FMRRMainWindow.ROS.trajectory_controller_name}")
+            if not self.ui_FMRRMainWindow.ROS.trajectory_to_forward_switch(8, self.ui_FMRRMainWindow.ROS.trajectory_controller_name):
+                QMessageBox.warning(self.DialogRobotWindow, "Warning", "Failed to switch to trajectory controller. Please check the controller configuration.")
+                return
         self.DialogFMRRMainWindow.show()
         self.DialogRobotWindow.hide()
         
         
     def clbk_BtnGotoMovement(self):
-        self.ui_FMRRMainWindow.ROS.change_current_controller(self.ui_FMRRMainWindow.ROS.trajectory_controller_name)
+        if self.ui_FMRRMainWindow.ROS.current_controller != self.ui_FMRRMainWindow.ROS.trajectory_controller_name:
+            self.ui_FMRRMainWindow.ROS.get_logger().info(f"Switching to position mode of operation and loading {self.ui_FMRRMainWindow.ROS.trajectory_controller_name}")
+            if not self.ui_FMRRMainWindow.ROS.trajectory_to_forward_switch(8, self.ui_FMRRMainWindow.ROS.trajectory_controller_name):
+                QMessageBox.warning(self.DialogRobotWindow, "Warning", "Failed to switch to trajectory controller. Please check the controller configuration.")
+                return
         self.ui_FMRRMainWindow.DialogMovementWindow.show()
         self.DialogRobotWindow.hide()
         
@@ -309,29 +303,25 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
 
         self.pushButton_LoadJointPosition.clicked.connect(lambda: self.clbk_BtnLoadJointPosition())
 
-        self.pushButton_Xminus.pressed.connect(lambda: self.clbk_BtnPlusMinusCoordinate(-1, 0))
-        self.pushButton_Xplus.pressed.connect(lambda: self.clbk_BtnPlusMinusCoordinate(1, 0))
-        self.pushButton_Yminus.pressed.connect(lambda: self.clbk_BtnPlusMinusCoordinate(-1, 1))
-        self.pushButton_Yplus.pressed.connect(lambda: self.clbk_BtnPlusMinusCoordinate(1, 1))
-        self.pushButton_Zminus.pressed.connect(lambda: self.clbk_BtnPlusMinusCoordinate(-1, 2))
-        self.pushButton_Zplus.pressed.connect(lambda: self.clbk_BtnPlusMinusCoordinate(1, 2))
-
-        # Quando rilasci il bottone, interrompi il timer
-        self.pushButton_Xminus.released.connect(self.clbk_StopJog)
-        self.pushButton_Xplus.released.connect(self.clbk_StopJog)
-        self.pushButton_Yminus.released.connect(self.clbk_StopJog)
-        self.pushButton_Yplus.released.connect(self.clbk_StopJog)
-        self.pushButton_Zminus.released.connect(self.clbk_StopJog)
-        self.pushButton_Zplus.released.connect(self.clbk_StopJog)
+        self.pushButton_Xminus.pressed.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(-1, 0))
+        self.pushButton_Xplus.pressed.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(1, 0))
+        self.pushButton_Yminus.pressed.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(-1, 1))
+        self.pushButton_Yplus.pressed.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(1, 1))
+        self.pushButton_Zminus.pressed.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(-1, 2))
+        self.pushButton_Zplus.pressed.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(1, 2))
+        # Quando rilasci il bottone, interrompi il movimento
+        self.pushButton_Xminus.released.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(0, 0))
+        self.pushButton_Xplus.released.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(0, 0))
+        self.pushButton_Yminus.released.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(0, 1))
+        self.pushButton_Yplus.released.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(0, 1))
+        self.pushButton_Zminus.released.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(0, 2))
+        self.pushButton_Zplus.released.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(0, 2))
 
         
         self.pushButton_Approach_Joint1.clicked.connect( lambda: self.clbk_JointApproach(0) )
         self.pushButton_Approach_Joint2.clicked.connect( lambda: self.clbk_JointApproach(1) )
         self.pushButton_Approach_Joint3.clicked.connect( lambda: self.clbk_JointApproach(2) )
-        # self.pushButton_Approach_Joint4.clicked.connect( lambda: self.clbk_JointApproach(3) )
-        # self.pushButton_Approach_Joint5.clicked.connect( lambda: self.clbk_JointApproach(4) )
-        # self.pushButton_Approach_Joint6.clicked.connect( lambda: self.clbk_JointApproach(5) )
-        self.pushButton_ApproachAllJoint.clicked.connect( lambda: self.clbk_JointApproach(6) )
+        self.pushButton_ApproachAllJoint.clicked.connect( lambda: self.clbk_JointApproach(3) )
         
         ##############################################################################################
         #####                                                                                    #####  

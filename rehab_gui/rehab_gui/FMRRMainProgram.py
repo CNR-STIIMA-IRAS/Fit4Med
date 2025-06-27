@@ -29,7 +29,7 @@ from trajectory_msgs.msg import JointTrajectoryPoint
 from sensor_msgs.msg import JointState # joints positions, velocities and efforts
 from std_msgs.msg import Int16, Float64MultiArray 
 from ethercat_controller_msgs.srv import SwitchDriveModeOfOperation
-from controller_manager_msgs.srv import SwitchController
+from controller_manager_msgs.srv import SwitchController, ListControllers
 # from geometry_msgs.msg import Point
 # import debugpy
 from rclpy.parameter_client import AsyncParameterClient
@@ -66,7 +66,7 @@ class MovementActionWorker(QObject):
         self._goalFCT.trajectory.joint_names = JOINT_NAMES
 
     def setFCT(self, cartesian_positions, time_from_start,**kwargs):
-        # Called only at the beginning of the training
+        # Called only at the beginning
         self.clearFCT()
         if type(time_from_start[0]) is not Duration: 
             self._total_time_s = (time_from_start[-1][0] - time_from_start[0][0])
@@ -193,8 +193,10 @@ class MovementActionWorker(QObject):
 
 class RosManager(Node):
     _ros_period = 1
+    _controller_list_period = 500 # milliseconds
     trajectory_controller_name = 'joint_trajectory_controller'
     forward_command_controller = 'forward_velocity_controller'
+    current_controller = None
     jog_cmd_pos = []
     
     def __init__(self):
@@ -202,8 +204,9 @@ class RosManager(Node):
         self._ros_timer = QTimer()
         self._ros_timer.timeout.connect(self.spin_ros_once)
         self._ros_timer.start(self._ros_period)
+        self._controller_timer = QTimer()
+        self._controller_timer.timeout.connect(self.update_current_controller)
         self._joint_state = None
-        self.current_controller = self.trajectory_controller_name
         #  subscribers        
         self.joint_subscriber = self.create_subscription(JointState, 'joint_states', self.getJointState, 1)
         self.tool_subscriber = self.create_subscription(JointState, 'joint_states', self.getToolPosition, 1)
@@ -211,6 +214,12 @@ class RosManager(Node):
         self.pub_speed_ovr = self.create_publisher(Int16, '/speed_ovr', 10)
         self.jog_cmd_publisher = self.create_publisher(Float64MultiArray, f'/{self.forward_command_controller}/commands', 10)
         #  service clients
+        self.current_controller_client = self.create_client(ListControllers, '/controller_manager/list_controllers')
+        client_success = self.current_controller_client.wait_for_service(timeout_sec=5.0)
+        if not client_success:
+            self.get_logger().error("List controllers service is not ready.")
+            rclpy.shutdown()
+            sys.exit(1)
         self.switch_controller_client = self.create_client(SwitchController, '/controller_manager/switch_controller')
         switch_controller_client_success = self.switch_controller_client.wait_for_service(timeout_sec=5.0)
         if not switch_controller_client_success:
@@ -241,6 +250,7 @@ class RosManager(Node):
             self.get_logger().error("Failed to read update rate parameter.")
             rclpy.shutdown()
             sys.exit(1)
+        self._controller_timer.start(self._controller_list_period)
 
     def getJointState(self, data):
         self._joint_state = data
@@ -256,6 +266,29 @@ class RosManager(Node):
     def spin_ros_once(self):
         rclpy.spin_once(self, timeout_sec=0)
 
+    def update_current_controller(self):
+        req = ListControllers.Request()
+        future = self.current_controller_client.call_async(req)
+        rclpy.spin_until_future_complete(self, future)
+        if not future.result():
+            self.get_logger().error("Failed to call list_controllers service")
+            return False
+        active_controller = None
+        for ctrl in future.result().controller:
+            if ctrl.name == self.forward_command_controller and ctrl.state == 'active':
+                active_controller = self.forward_command_controller
+                break
+            elif ctrl.name == self.trajectory_controller_name and ctrl.state == 'active':
+                active_controller = self.trajectory_controller_name
+                break
+        if active_controller:
+            self.current_controller = active_controller
+            # self.get_logger().info(f"✅ Detected active controller: {self.current_controller}")
+            return True
+        else:
+            self.get_logger().warn("⚠️ No known controller is currently active!")
+            return False
+
     def switch_controller(self, controller_to_activate, controller_to_deactivate):
         switch_req = SwitchController.Request()
         switch_req.activate_controllers = [] if controller_to_activate is None else [controller_to_activate]
@@ -268,14 +301,11 @@ class RosManager(Node):
         return future.result()  # type: ignore
 
     def start_homing_procedure(self):
-        self.homing_done = False
         res = self.switch_controller(None, self.current_controller)
         if not res.ok:
-            self.get_logger().error(f"Failed to deactivate controller before homing")
+            self.get_logger().error(f"⚠️ Failed to deactivate controller before homing")
             return
-        self.set_homing_mode_all_dofs()
-
-    def set_homing_mode_all_dofs(self):
+        time.sleep(0.3)
         self.remaining_homing_dofs = set(JOINT_NAMES)
         self._set_mode_for_next_dof(6, after_all_done=self.activate_controller_after_homing)
 
@@ -283,16 +313,13 @@ class RosManager(Node):
         time.sleep(0.5)
         res = self.switch_controller(self.current_controller, None)
         if not res.ok:
-            self.get_logger().error(f"Failed to activate controller after homing")
+            self.get_logger().error(f"⚠️ Failed to activate controller after homing")
             return
+        self.set_cyclic_mode_all_dofs(8) if self.current_controller == self.trajectory_controller_name else self.set_cyclic_mode_all_dofs(9)
     
-    def set_vel_cyclic_mode_all_dofs(self):
+    def set_cyclic_mode_all_dofs(self, mode_of_operation):
         self.remaining_cyclic_dofs = set(JOINT_NAMES)
-        self._set_mode_for_next_dof(9)
-
-    def set_cyclic_mode_all_dofs(self):
-        self.remaining_cyclic_dofs = set(JOINT_NAMES)
-        self._set_mode_for_next_dof(8, after_all_done=self.confirm_homing_completed)
+        self._set_mode_for_next_dof(mode_of_operation)
 
     def _set_mode_for_next_dof(self, mode_value, after_all_done =None):
         target_dofs = self.remaining_homing_dofs if mode_value == 6 else self.remaining_cyclic_dofs
@@ -309,40 +336,31 @@ class RosManager(Node):
         rclpy.spin_until_future_complete(self, future)
         self._set_mode_for_next_dof(mode_value, after_all_done)
 
-    def confirm_homing_completed(self):
-        self.get_logger().info('✅ Homing procedure completed successfully.')
-        self.homing_done = True
-
-    def change_current_controller(self, new_controller):
-        if new_controller == self.current_controller:
-            self.get_logger().info(f"Already using controller: {new_controller}")
-            return True
-        ret = self.switch_controller(new_controller, self.current_controller)
-        if not ret.ok:
-            self.get_logger().error(f"Failed to switch controller from {self.current_controller} to {new_controller}")
+    def trajectory_to_forward_switch(self, new_mode, new_controller):
+        res = self.switch_controller(new_controller, self.current_controller)
+        if not res.ok:
+            self.get_logger().error(f"⚠️ Failed to deactivate controller before switching mode")
             return False
-        self.current_controller = new_controller
-        self.get_logger().info(f"Switched to controller: {new_controller}")
+        self.set_cyclic_mode_all_dofs(new_mode)
+        self.get_logger().info(f"✅ Switched to mode of OP {new_mode} mode with controller {new_controller}")
         return True
 
-    def jog_command(self, frequency, direction, joint_to_move):  # direction = 1 for positive direction, -1 for negative direction
-        # if self.current_controller != self.forward_command_controller:
-        #     self.set_vel_cyclic_mode_all_dofs()
-        #     if not self.change_current_controller(self.forward_command_controller):
-        #         self.get_logger().error(f"Failed to switch from {self.current_controller} to {self.forward_command_controller}!")
-        #         return
-        #     self.jog_cmd_pos = self.RobotJointPosition
-        
-        if direction not in [-1, 1]:
-            self.get_logger().error("Direction must be -1 or 1.")
+    def jog_command(self, direction, joint_to_move):
+        if self.current_controller != self.forward_command_controller:
+            self.get_logger().info(f"Switching to forward command controller: {self.forward_command_controller}")
+            if not self.trajectory_to_forward_switch(9, self.forward_command_controller):
+                self.get_logger().error(f"⚠️ Failed to switch to {self.forward_command_controller}!")
+                return
+            self.jog_cmd_pos = self.RobotJointPosition
+
+        if direction not in [-1, 1, 0]:
+            self.get_logger().error("⚠️ Direction must be -1, 1 or 0.")
             return
-        target_velocity = 1 * direction  # Set a small velocity for jogging
-        t_sample = 1 / frequency  # Sample time based on the update rate
 
+        target_velocity = 0.1 * direction
         jog_cmd = [0.0]*len(JOINT_NAMES)
-        jog_cmd[joint_to_move] += target_velocity  # Update the joint position for jogging
+        jog_cmd[joint_to_move] = target_velocity
 
-        # publish the jog command
         jog_cmd_msg = Float64MultiArray()
         jog_cmd_msg.data = jog_cmd
         self.jog_cmd_publisher.publish(jog_cmd_msg)
@@ -419,7 +437,6 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         
     def startMovementWindow(self):
         self.uiMovementWindow = FMRR_Ui_MovementWindow()
-        self.ROS.change_current_controller(self.ROS.trajectory_controller_name) # Ensure the controller is set to the correct one
         self.uiMovementWindow.ui_FMRRMainWindow = self  # type: ignore #Needed to be able to chenge MainWindow Widgets from Movement Window
         self.uiMovementWindow.setupUi_MovementWindow(self.DialogMovementWindow)
         self.uiMovementWindow.retranslateUi_MovementWindow(self.DialogMovementWindow)
@@ -476,7 +493,10 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.movement_completed = False
         self.iPhase = 0
         self._home_goal_sent = False
-        self.ROS.change_current_controller(self.ROS.trajectory_controller_name) # Ensure the controller is set to the correct one
+        if self.ROS.current_controller != self.ROS.trajectory_controller_name:
+                if not self.ROS.trajectory_to_forward_switch(8, self.ROS.trajectory_controller_name):
+                    self.ROS.get_logger().error(f"Failed to set position mode and switch from {self.ROS.current_controller} to {self.ROS.trajectory_controller_name}!")
+                    return
         self.sendTrajectoryFCT()
         self.updateTrainingTimer()
         self.ModalityActualValue = self.Modalities[0]
@@ -547,7 +567,6 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
 
     def setupUi_MainWindow(self):
         Ui_FMRRMainWindow.setupUi(self, self.FMRRMainWindow)
-        self.homing_done = False
     
     def retranslateUi_MainWindow(self, app): 
         #   GENERAL
@@ -606,29 +625,29 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self._home_goal_sent = False
         self.trigger_worker.emit(default_speed_override)  # Trigger the worker to start the movement
         
-    def clbk_BtnGOtoZero(self):
-        self.ROS.get_logger().info("Going to zero position...")
-        home_goal = FollowJointTrajectory.Goal()
-        home_goal.trajectory.joint_names = JOINT_NAMES
+    def clbk_ApproachPoint(self, point):
+        self.ROS.get_logger().info("Approaching desired position...")
+        approach_point_goal = FollowJointTrajectory.Goal()
+        approach_point_goal.trajectory.joint_names = JOINT_NAMES
 
-        home_init_point = JointTrajectoryPoint()
-        home_init_point.positions = self.ROS.RobotJointPosition
-        home_init_point.velocities = [0.0] * len(JOINT_NAMES)
-        home_init_point.accelerations = [0.0] * len(JOINT_NAMES)
-        home_init_point.effort = []
-        home_init_point.time_from_start = Duration(sec=0, nanosec=0)
-        home_goal.trajectory.points.append(home_init_point)  # type: ignore
+        init_point = JointTrajectoryPoint()
+        init_point.positions = self.ROS.RobotJointPosition
+        init_point.velocities = [0.0] * len(JOINT_NAMES)
+        init_point.accelerations = [0.0] * len(JOINT_NAMES)
+        init_point.effort = []
+        init_point.time_from_start = Duration(sec=0, nanosec=0)
+        approach_point_goal.trajectory.points.append(init_point)  # type: ignore
 
-        home_point = JointTrajectoryPoint()
-        home_point.positions = [0.0] * len(JOINT_NAMES)
-        home_point.velocities = [0.0] * len(JOINT_NAMES)
-        home_point.accelerations = [0.0] * len(JOINT_NAMES)
-        home_point.effort = []
-        home_point.time_from_start = Duration(sec=3, nanosec=0)
-        home_goal.trajectory.points.append(home_point) # type: ignore
+        final_point = JointTrajectoryPoint()
+        final_point.positions = point
+        final_point.velocities = [0.0] * len(JOINT_NAMES)
+        final_point.accelerations = [0.0] * len(JOINT_NAMES)
+        final_point.effort = []
+        final_point.time_from_start = Duration(sec=3, nanosec=0)
+        approach_point_goal.trajectory.points.append(final_point) # type: ignore
         
-        home_goal.trajectory.header.stamp = self.get_clock().now().to_msg()
-        home_future = self.MovementWorker._clientFollowCartTraj.send_goal_async(home_goal)
+        approach_point_goal.trajectory.header.stamp = self.ROS.get_clock().now().to_msg()
+        home_future = self.MovementWorker._clientFollowCartTraj.send_goal_async(approach_point_goal)
         #home_future.add_done_callback(self.home_cancel_callback)
         return True
 

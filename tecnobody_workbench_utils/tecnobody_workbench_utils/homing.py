@@ -222,7 +222,8 @@ class HomingNode(Node):
             return False
 
     def all_in_command_mode(self):
-        if all(mode == 'MODE_CYCLIC_SYNC_POSITION' for mode in self.mode.values()):
+        acceptable_modes = ['MODE_CYCLIC_SYNC_POSITION', 'MODE_CYCLIC_SYNC_VELOCITY']
+        if all(mode in acceptable_modes for mode in self.mode.values()):
             if all(state in ['STATE_SWITCH_ON_ENABLED', 'STATE_SWITCH_ON', 'STATE_OPERATION_ENABLED'] for state in self.state.values()):
                 return True
             else:
