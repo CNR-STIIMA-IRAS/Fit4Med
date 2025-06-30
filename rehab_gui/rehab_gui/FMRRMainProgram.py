@@ -89,7 +89,9 @@ class MovementActionWorker(QObject):
 
         # Interpolate trajectory and calculate velocities and accelerations
         P = np.array(cartesian_positions)
-        splines = [CubicSpline(t_spl, P[:, i], bc_type='clamped') for i in range(3)]
+        # Set bc_type so that velocity is zero at start and end
+        bc_type = ((1, 0.0), (1, 0.0))  # Only first derivative (velocity) = 0 at both ends
+        splines = [CubicSpline(t_spl, P[:, i], bc_type=bc_type) for i in range(3)]
 
         for iPoint in range(_numSample):
             t_iPoint = t_spl[iPoint]
@@ -98,12 +100,13 @@ class MovementActionWorker(QObject):
             acc = np.array([s.derivative(2)(t_iPoint) for s in splines])
             self._time_from_start_duration[iPoint] = Duration(sec=int(t_iPoint),nanosec=int((t_iPoint - int(t_iPoint)) * 1e9))
             self._point_velocities[iPoint] = vel
-
+            
             self.add_pointFCT(pos, vel, acc, t_iPoint, **kwargs)
 
     def setSpeedOverrideFCT(self, speed_ovr):
         self.speed_scale = speed_ovr / 100.0
         vel_scaled = [v * self.speed_scale for v in self._point_velocities]
+        acc_scaled = [a * self.speed_scale*self.speed_scale for a in self._point_velocities]
 
         for iPoint in range(len(self._goalFCT.trajectory.points)):
             _d = self._time_from_start_duration[iPoint]
@@ -114,13 +117,21 @@ class MovementActionWorker(QObject):
                 nanosec=int((_time_from_start_s - int(_time_from_start_s)) * 1e9)
             )
             self._goalFCT.trajectory.points[iPoint].velocities = vel_scaled[iPoint]
+            self._goalFCT.trajectory.points[iPoint].accelerations = acc_scaled[iPoint]
             if iPoint==0 or iPoint==len(self._goalFCT.trajectory.points):
                 if vel_scaled[iPoint].any() != 0:
-                    print(f"Warning: Velocity at point {iPoint} is not zero, but it should be. Vel: {vel_scaled[iPoint]}")
-            with open("trajectory_log.txt", "a") as log_file:
-                log_file.write(
-                    f'SET SPEED OVR {speed_ovr}:\t TIME {self._goalFCT.trajectory.points[iPoint].time_from_start}\t POS:{self._goalFCT.trajectory.points[iPoint].positions}\t VEL:{self._goalFCT.trajectory.points[iPoint].velocities}\t ACC:{self._goalFCT.trajectory.points[iPoint].accelerations}\n'
-                )
+                    for dof in range(len(vel_scaled[iPoint])):
+                        if abs(vel_scaled[iPoint][dof]) < 1e-3:
+                            vel_scaled[iPoint][dof] = 0.0
+                        else: 
+                            print(f"Warning: Velocity at point {iPoint} is not zero, but it should be. Vel: {vel_scaled[iPoint]}")
+                if acc_scaled[iPoint].any() != 0:
+                    for dof in range(len(acc_scaled[iPoint])):
+                        if abs(vel_scaled[iPoint][dof]) < 1e-3:
+                            acc_scaled[iPoint][dof] = 0.0
+                        else: 
+                            print(f"Warning: Acceleration at point {iPoint} is not zero, but it should be. Acc: {vel_scaled[iPoint]}")
+            print(f'SET SPEED OVR {speed_ovr}:\t TIME {self._goalFCT.trajectory.points[iPoint].time_from_start}\t POS:{self._goalFCT.trajectory.points[iPoint].positions}\t VEL:{self._goalFCT.trajectory.points[iPoint].velocities}\t ACC:{self._goalFCT.trajectory.points[iPoint].accelerations}\n')
 
     def add_pointFCT(self, positions, velocities, accelerations, time, **kwargs):
         point=JointTrajectoryPoint()

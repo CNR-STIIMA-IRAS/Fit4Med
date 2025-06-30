@@ -48,10 +48,10 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
             if not self.ui_FMRRMainWindow.ROS.trajectory_to_forward_switch(8, self.ui_FMRRMainWindow.ROS.trajectory_controller_name):
                 QMessageBox.warning(self.DialogRobotWindow, "Warning", "Failed to switch to trajectory controller. Please check the controller configuration.")
                 return
-        ActualRobotConfiguration  = self.ui_FMRRMainWindow.ROS.RobotJointPosition
+        ActualRobotConfiguration  = deepcopy( self.ui_FMRRMainWindow.ROS.HandlePosition )
         print('The current joint configuration is: %s' % ActualRobotConfiguration)
         NewRobotConfiguration = ActualRobotConfiguration
-        JointTargetPosition = (self.doubleSpin_Joint1_Value.value(), self.doubleSpin_Joint2_Value.value(), self.doubleSpin_Joint3_Value.value())
+        JointTargetPosition = (float(self.doubleSpin_Joint1_Value.value()), float(self.doubleSpin_Joint2_Value.value()), float(self.doubleSpin_Joint3_Value.value()))
         if JointNr == 3:
             NewRobotConfiguration = JointTargetPosition
         else:
@@ -59,8 +59,6 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
         print(f'The new RobotConfiguration is: {NewRobotConfiguration}')
         # _TimeTolerance = Duration(sec= 5, nanosec=int(1e-9))
         self.ui_FMRRMainWindow.clbk_ApproachPoint(NewRobotConfiguration)
-        #self.ui_FMRRMainWindow.MovementWorker.add_pointFCT(NewRobotConfiguration, _TimeFromStart, _TimeTolerance)
-        # self.ui_FMRRMainWindow.startMovementFCT()
         
     def clbk_StartMoveRobotManually(self):
         self.pushButton_StartMoveRobotManually.enablePushButton(0)
