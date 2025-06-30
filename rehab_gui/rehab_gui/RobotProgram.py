@@ -56,11 +56,11 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
             NewRobotConfiguration = JointTargetPosition
         else:
             NewRobotConfiguration[JointNr] = JointTargetPosition[JointNr]
-        print('The new RobotConfiguration is: %s' % NewRobotConfiguration)
+        print(f'The new RobotConfiguration is: {NewRobotConfiguration}')
         # _TimeTolerance = Duration(sec= 5, nanosec=int(1e-9))
         self.ui_FMRRMainWindow.clbk_ApproachPoint(NewRobotConfiguration)
         #self.ui_FMRRMainWindow.MovementWorker.add_pointFCT(NewRobotConfiguration, _TimeFromStart, _TimeTolerance)
-        self.ui_FMRRMainWindow.startMovementFCT()
+        # self.ui_FMRRMainWindow.startMovementFCT()
         
     def clbk_StartMoveRobotManually(self):
         self.pushButton_StartMoveRobotManually.enablePushButton(0)
