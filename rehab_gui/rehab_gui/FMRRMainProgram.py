@@ -21,6 +21,7 @@ from yaml.loader import SafeLoader
 
 #ROS
 import rclpy
+from ros2node.api import get_node_names
 from rclpy.node import Node
 from builtin_interfaces.msg import Duration
 from rclpy.action import ActionClient
@@ -211,13 +212,15 @@ class RosManager(Node):
     jog_cmd_pos = []
     
     def __init__(self):
-        Node.__init__(self, 'FMRR_cell_node') # type: ignore
+        super().__init__('FMRR_cell_node') # type: ignore
         self._ros_timer = QTimer()
         self._ros_timer.timeout.connect(self.spin_ros_once)
         self._ros_timer.start(self._ros_period)
+        
         self._controller_timer = QTimer()
         self._controller_timer.timeout.connect(self.update_current_controller)
         self._joint_state = None
+
         #  subscribers        
         self.joint_subscriber = self.create_subscription(JointState, 'joint_states', self.getJointState, 1)
         self.tool_subscriber = self.create_subscription(JointState, 'joint_states', self.getToolPosition, 1)
@@ -261,6 +264,12 @@ class RosManager(Node):
             self.get_logger().error("Failed to read update rate parameter.")
             rclpy.shutdown()
             sys.exit(1)
+
+        # catch the controller names
+        available_nodes = [ full_name for _, _, full_name in get_node_names(node=self, include_hidden_nodes=False) ]
+        self.trajectory_controller_name = list(filter(lambda x: x.endswith("_trajectory_controller"), available_nodes))[0].lstrip('/')
+        self.get_logger().error(f"Trajectory Controller Name: {self.trajectory_controller_name}")
+
         self._controller_timer.start(self._controller_list_period)
 
     def getJointState(self, data):

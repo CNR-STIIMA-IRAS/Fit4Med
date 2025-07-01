@@ -119,6 +119,7 @@ scaled_trajectory_controller:
     - joint_3
     command_interfaces:
     - position
+    - acceleration
     state_interfaces:
     - position
     - velocity

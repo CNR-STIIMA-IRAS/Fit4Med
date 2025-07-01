@@ -15,6 +15,7 @@
             <state_interface name="mode_of_operation"/>
             <state_interface name="status_word"/>
             <command_interface name="velocity"/>
+            <command_interface name="acceleration"/>
             <command_interface name="reset_fault"/>
             <command_interface name="position"/>
             <command_interface name="control_word"/>
@@ -37,6 +38,7 @@
             <command_interface name="velocity"/>
             <command_interface name="reset_fault"/>
             <command_interface name="position"/>
+            <command_interface name="acceleration"/>
             <command_interface name="control_word"/>
             <command_interface name="mode_of_operation"/>
             <ec_module name="delta2">
@@ -55,6 +57,7 @@
             <state_interface name="mode_of_operation" />
             <state_interface name="status_word" />
             <command_interface name="velocity" />
+            <command_interface name="acceleration"/>
             <command_interface name="reset_fault" />
             <command_interface name="position" />
             <command_interface name="control_word" />
