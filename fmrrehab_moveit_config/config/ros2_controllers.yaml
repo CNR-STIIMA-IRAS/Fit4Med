@@ -23,16 +23,16 @@ controller_manager:
 state_controller:
   ros__parameters:
     dofs:
-    - joint_1
-    - joint_2
-    - joint_3
+    - joint_x
+    - joint_y
+    - joint_z
 
 fmrrehab_controller:
   ros__parameters:
     joints:
-    - joint_1
-    - joint_2
-    - joint_3
+    - joint_x
+    - joint_y
+    - joint_z
     command_interfaces:
     - position
     state_interfaces:
@@ -42,19 +42,19 @@ fmrrehab_controller:
     constraints:
       goal_time: 0.0
     # gains:  # PID gains
-    #   joint_1:
+    #   joint_x:
     #     p: 50.0
     #     i: 0.5
     #     d: 0.0
     #     i_clamp_max: 1.0
     #     i_clamp_min: -1.0
-    #   joint_2:
+    #   joint_y:
     #     p: 50.0
     #     i: 0.5
     #     d: 0.0
     #     i_clamp_max: 1.0
     #     i_clamp_min: -1.0
-    #   joint_3:
+    #   joint_z:
     #     p: 50.0
     #     i: 0.5
     #     d: 0.0
@@ -77,9 +77,9 @@ ft_sensor_broadcaster:
 fmrrehab_admittance_controller:
   ros__parameters:
     joints:
-    - joint_1
-    - joint_2
-    - joint_3
+    - joint_x
+    - joint_y
+    - joint_z
     command_interfaces:
     - position
     state_interfaces:
