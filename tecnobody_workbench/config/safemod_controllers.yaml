@@ -86,23 +86,23 @@ ft_sensor_command_broadcaster:
 forward_position_controller:
   ros__parameters:
     joints:
-      - joint_1
-      - joint_2
-      - joint_3
+      - joint_x
+      - joint_y
+      - joint_z
 
 forward_velocity_controller:
   ros__parameters:
     joints:
-      - joint_1
-      - joint_2
-      - joint_3
+      - joint_x
+      - joint_y
+      - joint_z
 
 joint_trajectory_controller:
   ros__parameters:
     joints:
-      - joint_3
-      - joint_2
-      - joint_1
+      - joint_z
+      - joint_y
+      - joint_x
 
     command_interfaces:
       - position
@@ -114,9 +114,9 @@ joint_trajectory_controller:
 scaled_trajectory_controller:
   ros__parameters:
     joints:
-    - joint_1
-    - joint_2
-    - joint_3
+    - joint_x
+    - joint_y
+    - joint_z
     command_interfaces:
     - position
     - acceleration
@@ -131,9 +131,9 @@ scaled_trajectory_controller:
 state_controller:
   ros__parameters:
     dofs:
-      - joint_1
-      - joint_2
-      - joint_3
+      - joint_x
+      - joint_y
+      - joint_z
 
 gpio_command_controller:
   ros__parameters:
@@ -152,9 +152,9 @@ gpio_command_controller:
 admittance_controller:
   ros__parameters:
     joints:
-    - joint_1
-    - joint_2
-    - joint_3
+    - joint_x
+    - joint_y
+    - joint_z
 
     command_interfaces:
     - position

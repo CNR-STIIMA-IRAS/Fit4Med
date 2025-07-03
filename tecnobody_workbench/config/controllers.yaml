@@ -31,47 +31,47 @@ tecnobody_controller_manager:
 
 controller_logger:
   ros__parameters:
-    interfaces: ["joint_1/position", "joint_2/position", "joint_3/position"]
+    interfaces: ["joint_x/position", "joint_y/position", "joint_z/position"]
 
 forward_velocity_controller:
   ros__parameters:
     joints:
-      - joint_1
-      - joint_2
-      - joint_3
+      - joint_x
+      - joint_y
+      - joint_z
     command_interface:
       - velocity
 
 forward_position_controller:
   ros__parameters:
     joints:
-      - joint_1
-      - joint_2
-      - joint_3
+      - joint_x
+      - joint_y
+      - joint_z
     command_interface:
       - position
 
 forward_command_controller:
   ros__parameters:
     joints:
-      - joint_1
-      - joint_2
-      - joint_3
+      - joint_x
+      - joint_y
+      - joint_z
     interface_name: position
 
 state_controller:
   ros__parameters:
     dofs:
-      - joint_1
-      - joint_2
-      - joint_3
+      - joint_x
+      - joint_y
+      - joint_z
 
 joint_trajectory_controller:
   ros__parameters:
     joints:
-      - joint_1
-      - joint_2
-      - joint_3
+      - joint_x
+      - joint_y
+      - joint_z
 
     command_interfaces:
       - position
@@ -83,9 +83,9 @@ joint_trajectory_controller:
 scaled_trajectory_controller:
   ros__parameters:
     joints:
-      - joint_1
-      - joint_2
-      - joint_3
+      - joint_x
+      - joint_y
+      - joint_z
     command_interfaces:
       - position
     state_interfaces:
@@ -104,23 +104,23 @@ scaled_trajectory_controller:
   #   joint_0:
   #     trajectory: 0.05
   #     goal: 0.03
-  #   joint_1:
+  #   joint_x:
   #     trajectory: 0.05
   #     goal: 0.03
   # gains:
-  #   joint_1:
+  #   joint_x:
   #     p: 2.0
   #     i: 0.0
   #     d: 0.0
   #     i_clamp: 30000.0
   #     ff_velocity_scale: 0.1
-  #   joint_2:
+  #   joint_y:
   #     p: 2.0
   #     i: 0.0
   #     d: 0.0
   #     i_clamp: 30000.0
   #     ff_velocity_scale: 0.1
-  #   joint_3:
+  #   joint_z:
   #     p: 2.0
   #     i: 0.0
   #     d: 0.0
@@ -130,9 +130,9 @@ scaled_trajectory_controller:
 admittance_controller:
   ros__parameters:
     joints:
-      - joint_1
-      - joint_2
-      - joint_3
+      - joint_x
+      - joint_y
+      - joint_z
     command_interfaces:
       - position
 

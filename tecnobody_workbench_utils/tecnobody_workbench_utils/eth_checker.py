@@ -28,7 +28,7 @@ class EthercatCheckerNode(Node):
         # Create the no-error publisher
         self.publisher_ = self.create_publisher(Bool, '/ethercat_error_check', 10)
 
-        self.dof_names = ['joint_3']
+        self.dof_names = ['joint_x', 'joint_y', 'joint_z']
         self.state = {dof: 'STATE_UNDEFINED' for dof in self.dof_names}
         self.mode = {dof: 'MODE_NO_MODE' for dof in self.dof_names}
         self.mode_target = 8  # MODE_CYCLIC_SYNC_POSITION

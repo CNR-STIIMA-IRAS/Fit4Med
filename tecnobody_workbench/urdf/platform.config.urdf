@@ -6,6 +6,6 @@
     <xacro:include filename="$(find tecnobody_workbench)/urdf/platform_complete.urdf" />
 
     <!-- Import ros2_control description -->
-    <xacro:include filename="$(find tecnobody_workbench)/urdf/ros2_control/platform.ros2_control.urdf" />
+    <xacro:include filename="$(find tecnobody_workbench)/urdf/ros2_control/platform_complete.ros2_control.urdf" />
 
 </robot>

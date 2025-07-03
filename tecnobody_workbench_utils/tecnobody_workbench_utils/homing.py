@@ -24,7 +24,7 @@ class HomingNode(Node):
         
         # Subscription to drive status updates
         self.subscription = self.create_subscription(Cia402DriveStates, '/state_controller/drive_states', self.handle_drive_status, qos_profile=10, callback_group=topic_group)
-        self.dof_names = ['joint_1', 'joint_2', 'joint_3']
+        self.dof_names = ['joint_x', 'joint_y', 'joint_z']
         self.state = {dof: 'STATE_UNDEFINED' for dof in self.dof_names}
         self.mode = {dof: 'MODE_NO_MODE' for dof in self.dof_names}
         self.shutdown_initiated = False  # To track if shutdown is already requested

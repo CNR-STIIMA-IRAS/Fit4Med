@@ -4,7 +4,6 @@ from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtWidgets import QPushButton
 from PyQt5.QtCore import QTimer, QThread, pyqtSignal, QObject
-from enum import Enum
 import time
 
 # mathematics
@@ -31,19 +30,16 @@ from sensor_msgs.msg import JointState # joints positions, velocities and effort
 from std_msgs.msg import Int16, Float64MultiArray 
 from ethercat_controller_msgs.srv import SwitchDriveModeOfOperation
 from controller_manager_msgs.srv import SwitchController, ListControllers
-# from geometry_msgs.msg import Point
-# import debugpy
 from rclpy.parameter_client import AsyncParameterClient
 from action_msgs.msg import GoalStatus
 
 DEBUG = False
 
 JOINT_NAMES = [
-    'joint_1',
-    'joint_2',
-    'joint_3'
+    'joint_x',
+    'joint_y',
+    'joint_z'
 ]
-
 
 class MovementActionWorker(QObject):
     finished = pyqtSignal()
@@ -53,6 +49,9 @@ class MovementActionWorker(QObject):
         super(MovementActionWorker, self).__init__()
         self._node = ros_node
         self._init_time_s = 0
+        self._is_paused = False
+        self._pause_start_time = None
+        self._paused_duration = 0.0
         #   action client
         self.controller_name = controller_name
         self._clientFollowCartTraj = ActionClient(self._node, FollowJointTrajectory, f'/{self.controller_name}/follow_joint_trajectory')
@@ -75,7 +74,6 @@ class MovementActionWorker(QObject):
             self._total_time_s = time_from_start[-1].sec - time_from_start[0].sec + (time_from_start[-1].nanosec - time_from_start[0].nanosec) * 1e-9
         if self._total_time_s <= 0:
             self._total_time_s = 1.0
-        
         _numSample = len(time_from_start)
         t_spl = np.zeros(_numSample)
         self._time_from_start_duration = [0] * _numSample
@@ -87,13 +85,11 @@ class MovementActionWorker(QObject):
             else:
                 _time_from_start_s = time_from_start[iPoint].sec + time_from_start[iPoint].nanosec * 1e-9
             t_spl[iPoint] = float(_time_from_start_s)
-
         # Interpolate trajectory and calculate velocities and accelerations
         P = np.array(cartesian_positions)
         # Set bc_type so that velocity is zero at start and end
         bc_type = ((1, 0.0), (1, 0.0))  # Only first derivative (velocity) = 0 at both ends
         splines = [CubicSpline(t_spl, P[:, i], bc_type=bc_type) for i in range(3)]
-
         for iPoint in range(_numSample):
             t_iPoint = t_spl[iPoint]
             pos = np.array([s(t_iPoint) for s in splines])
@@ -101,14 +97,12 @@ class MovementActionWorker(QObject):
             acc = np.array([s.derivative(2)(t_iPoint) for s in splines])
             self._time_from_start_duration[iPoint] = Duration(sec=int(t_iPoint),nanosec=int((t_iPoint - int(t_iPoint)) * 1e9))
             self._point_velocities[iPoint] = vel
-            
             self.add_pointFCT(pos, vel, acc, t_iPoint, **kwargs)
 
     def setSpeedOverrideFCT(self, speed_ovr):
         self.speed_scale = speed_ovr / 100.0
         vel_scaled = [v * self.speed_scale for v in self._point_velocities]
         acc_scaled = [a * self.speed_scale*self.speed_scale for a in self._point_velocities]
-
         for iPoint in range(len(self._goalFCT.trajectory.points)):
             _d = self._time_from_start_duration[iPoint]
             _time_from_start_s = (_d.sec + (_d.nanosec / 1e9)) / self.speed_scale
@@ -132,7 +126,8 @@ class MovementActionWorker(QObject):
                             acc_scaled[iPoint][dof] = 0.0
                         else: 
                             print(f"Warning: Acceleration at point {iPoint} is not zero, but it should be. Acc: {vel_scaled[iPoint]}")
-            print(f'SET SPEED OVR {speed_ovr}:\t TIME {self._goalFCT.trajectory.points[iPoint].time_from_start}\t POS:{self._goalFCT.trajectory.points[iPoint].positions}\t VEL:{self._goalFCT.trajectory.points[iPoint].velocities}\t ACC:{self._goalFCT.trajectory.points[iPoint].accelerations}\n')
+            if DEBUG:
+                print(f'SET SPEED OVR {speed_ovr}:\t TIME {self._goalFCT.trajectory.points[iPoint].time_from_start}\t POS:{self._goalFCT.trajectory.points[iPoint].positions}\t VEL:{self._goalFCT.trajectory.points[iPoint].velocities}\t ACC:{self._goalFCT.trajectory.points[iPoint].accelerations}\n')
 
     def add_pointFCT(self, positions, velocities, accelerations, time, **kwargs):
         point=JointTrajectoryPoint()
@@ -147,9 +142,27 @@ class MovementActionWorker(QObject):
         # Called at the beginning of each movement
         self.setSpeedOverrideFCT(default_speed_ovr)
         self._init_time_s = time.time()
+        self._paused_duration = 0.0
+        self._last_actual_time_pct = 0.0
+        self._pause_start_time = None
         self._goalFCT.trajectory.header.stamp = self._node.get_clock().now().to_msg()
         self._send_goal_future = self._clientFollowCartTraj.send_goal_async(self._goalFCT)
         self._send_goal_future.add_done_callback(self.goal_response_callback)
+
+    def is_paused(self, trigger_pause):
+        if trigger_pause:
+            if not self._is_paused:
+                self._pause_start_time = time.time()
+            self._is_paused = True
+            self._node.get_logger().info("⏸️ Paused movement")
+        else:
+            if self._is_paused and self._pause_start_time is not None:
+                pause_duration = time.time() - self._pause_start_time
+                self._paused_duration += pause_duration
+                self._node.get_logger().info(f"▶️ Resumed movement after {pause_duration:.2f}s pause")
+                self._pause_start_time = None
+            self._is_paused = False
+
 
     def goal_response_callback(self, future):
         self._goal_handle = future.result()
@@ -170,17 +183,26 @@ class MovementActionWorker(QObject):
             self._node.get_logger().error(f'Exception in _done_callback: {e}')
 
     def check_status(self):
+        if self._is_paused:
+            self.progress.emit(self._last_actual_time_pct)
+            return
+
         old_status = self._goal_status
         self._goal_status = self._goal_handle.status
-        
         if old_status != self._goal_status:
             old_status_string = self.get_status_string(old_status)
             status_string = self.get_status_string(self._goal_status)
             self._node.get_logger().info(f'Action transition from {old_status_string} to {status_string}')
 
         actual_time = time.time()
-        actual_time_from_start_percentage = float(actual_time - self._init_time_s)/float(self._total_time_s/self.speed_scale) * 100
+        effective_time = actual_time - self._init_time_s - self._paused_duration
+        total_scaled_time = self._total_time_s / self.speed_scale
+        actual_time_from_start_percentage = (effective_time / total_scaled_time) * 100
+        actual_time_from_start_percentage = min(actual_time_from_start_percentage, 100.0)
+
         self.progress.emit(int(actual_time_from_start_percentage))
+        self._last_actual_time_pct = int(actual_time_from_start_percentage)
+
             
     @staticmethod
     def get_status_string(status):
@@ -216,11 +238,9 @@ class RosManager(Node):
         self._ros_timer = QTimer()
         self._ros_timer.timeout.connect(self.spin_ros_once)
         self._ros_timer.start(self._ros_period)
-        
         self._controller_timer = QTimer()
         self._controller_timer.timeout.connect(self.update_current_controller)
         self._joint_state = None
-
         #  subscribers        
         self.joint_subscriber = self.create_subscription(JointState, 'joint_states', self.getJointState, 1)
         self.tool_subscriber = self.create_subscription(JointState, 'joint_states', self.getToolPosition, 1)
@@ -264,17 +284,74 @@ class RosManager(Node):
             self.get_logger().error("Failed to read update rate parameter.")
             rclpy.shutdown()
             sys.exit(1)
-
         # catch the controller names
         available_nodes = [ full_name for _, _, full_name in get_node_names(node=self, include_hidden_nodes=False) ]
         self.trajectory_controller_name = list(filter(lambda x: x.endswith("_trajectory_controller"), available_nodes))[0].lstrip('/')
         self.get_logger().error(f"Trajectory Controller Name: {self.trajectory_controller_name}")
-
         self._controller_timer.start(self._controller_list_period)
+        # soft stop variables
+        self._soft_stop_values = []
+        self._soft_transition_timer = QTimer()
+        self._soft_transition_timer.timeout.connect(self._soft_transition_step)
+        self._soft_stop_target = None  # "speed_ovr" or "jog"
+        self._soft_stop_joint = None   # only for jog, indicates dof number
+        self._prev_jog_direction = None
 
     def getJointState(self, data):
         self._joint_state = data
         self.RobotJointPosition = list(self._joint_state.position)
+
+    def trigger_soft_stop(self, start_value: float, steps: int = 10, target='speed_ovr', jog_joint_idx=None):
+        if self._soft_transition_timer.isActive():
+            self.get_logger().warn("Already performing a soft motion. Ignoring new stop request.")
+            return
+        self._soft_stop_target = target
+        self._soft_stop_joint = jog_joint_idx
+
+        sign = np.sign(start_value) if start_value != 0 else 1.0
+        amplitude = abs(start_value)
+        times = np.linspace(0, 1, steps)
+        profile = amplitude * np.cos(0.5 * np.pi * times)
+        self._soft_stop_values = (sign * profile).tolist()
+
+        self._soft_transition_timer.start(50)  # ms
+
+    def trigger_soft_start(self, target_value: float, steps: int = 10, target='speed_ovr', jog_joint_idx=None):
+        if self._soft_transition_timer.isActive():
+            self.get_logger().warn("Already performing a soft motion. Ignoring new start request.")
+            return
+        self._soft_stop_target = target
+        self._soft_stop_joint = jog_joint_idx
+
+        sign = np.sign(target_value) if target_value != 0 else 1.0
+        amplitude = abs(target_value)
+        times = np.linspace(0, 1, steps)
+        profile = amplitude * np.sin(0.5 * np.pi * times)
+        self._soft_stop_values = (sign * profile).tolist()
+
+        self._soft_transition_timer.start(50)  # ms
+
+    def _soft_transition_step(self):
+        if not self._soft_stop_values:
+            self._soft_transition_timer.stop()
+            return
+        value = self._soft_stop_values.pop(0)
+        if self._soft_stop_target == 'speed_ovr':
+            msg = Int16()
+            msg.data = int(value)
+            self.pub_speed_ovr.publish(msg)
+            self.get_logger().info(f"[SoftTransition] speed_ovr: {msg.data}")
+        elif self._soft_stop_target == 'jog':
+            jog_cmd = [0.0] * len(JOINT_NAMES)
+            if self._soft_stop_joint is not None:
+                jog_cmd[self._soft_stop_joint] = value
+            msg = Float64MultiArray()
+            msg.data = jog_cmd
+            self.jog_cmd_publisher.publish(msg)
+            self.get_logger().info(f"[SoftTransition] jog velocity: {jog_cmd}")
+        else:
+            self.get_logger().warn("Unknown soft transition target, stopping timer.")
+            self._soft_transition_timer.stop()
 
     def getToolPosition(self, data):
         ToolPosition = data
@@ -303,7 +380,6 @@ class RosManager(Node):
                 break
         if active_controller:
             self.current_controller = active_controller
-            # self.get_logger().info(f"✅ Detected active controller: {self.current_controller}")
             return True
         else:
             self.get_logger().warn("⚠️ No known controller is currently active!")
@@ -372,18 +448,20 @@ class RosManager(Node):
                 self.get_logger().error(f"⚠️ Failed to switch to {self.forward_command_controller}!")
                 return
             self.jog_cmd_pos = self.RobotJointPosition
-
         if direction not in [-1, 1, 0]:
             self.get_logger().error("⚠️ Direction must be -1, 1 or 0.")
             return
+        if direction == 0:
+            self.trigger_soft_stop(start_value=0.1*self._prev_jog_direction, steps=15, target='jog', jog_joint_idx=joint_to_move)
+        else:
+            target_velocity = 0.1 * direction
+            jog_cmd = [0.0]*len(JOINT_NAMES)
+            jog_cmd[joint_to_move] = target_velocity
 
-        target_velocity = 0.1 * direction
-        jog_cmd = [0.0]*len(JOINT_NAMES)
-        jog_cmd[joint_to_move] = target_velocity
-
-        jog_cmd_msg = Float64MultiArray()
-        jog_cmd_msg.data = jog_cmd
-        self.jog_cmd_publisher.publish(jog_cmd_msg)
+            jog_cmd_msg = Float64MultiArray()
+            jog_cmd_msg.data = jog_cmd
+            self.jog_cmd_publisher.publish(jog_cmd_msg)
+            self._prev_jog_direction = direction
 
 
 class MainProgram(Ui_FMRRMainWindow, QtCore.QObject): 
@@ -392,6 +470,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
     _toolPosCovFact = 100 # to display coordinatates in centimeters (are given in meters in the yaml files) (used in MovementWindow to display data)
     _jointPosConvFact = 180/np.pi # conversion from radiants to degrees (used in MovementWindow to display data)
     trigger_worker = pyqtSignal(int) 
+    trigger_pause = pyqtSignal(bool) # signal to pause the worker thread
 
     def __init__(self):
         QtCore.QObject.__init__(self)
@@ -407,9 +486,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.MovementWorker.moveToThread(self.worker_thread)
         
     def initializeVariables(self):
-        self.isPaused = False
         # self.FIRST_TIME = True
-        self.JogOn = False
         self.NumberExecMovements = 0
         self.TotalTrainingTime = 0
         self.ActualTrainingTime = 0
@@ -417,6 +494,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.iPhase = 0
         self._counter_request_homing_procedure = 0 # counter to avoid multiple request of homing procedure
         self.trigger_worker.connect(self.MovementWorker.start_movementFCT)# type: ignore
+        self.trigger_pause.connect(self.MovementWorker.is_paused) # type: ignore
         self.MovementWorker.finished.connect(self.on_worker_finished)
         self.MovementWorker.progress.connect(self.on_worker_progress)
         self.worker_thread.start()
@@ -527,17 +605,19 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
     
     def clbk_PAUSEtrainig(self):
         _translate = QtCore.QCoreApplication.translate
+        current_speed_ovr = self.spinBoxSpeedOvr[self.iPhase].value()
         if self.pushButton_PAUSEtrainig.State:
             self.pushButton_PAUSEtrainig.State = 0    
             self.pushButton_PAUSEtrainig.setText( _translate("FMRRMainWindow", "RESUME training") )
-            self.isPaused = True
-            print( 'The robot movement was successfully stopped: %s' % self.isPaused )
-            
+            self.trigger_pause.emit(True)
+            self.ROS.trigger_soft_stop(start_value=current_speed_ovr, steps=10, target='speed_ovr')
+            print('The robot movement was successfully stopped')
         else:
             self.pushButton_PAUSEtrainig.State = 1    
             self.pushButton_PAUSEtrainig.setText( _translate("FMRRMainWindow", "PAUSE training") )
-            self.isPaused = False
-            print( 'The robot movement was successfully resumed: %s' % self.isPaused )
+            self.ROS.trigger_soft_start(target_value=current_speed_ovr, steps=10, target='speed_ovr')
+            self.trigger_pause.emit(False)
+            print('The robot movement was successfully resumed')
 
     def clbk_STOPtrainig(self):   
         self.MovementWorker.stopFCT() 
@@ -548,23 +628,19 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self._update_TrainingTimer.stop()
               
     def update_TrainingParameters(self):
-        if not self.isPaused:
-            if self.iPhase <= 19:
-                self.progressBarPhases[self.iPhase].setValue(self.execution_time_percentage)
-                if self.iPhase > 0:
-                    self.progressBarPhases[self.iPhase - 1].setValue(100) # type: ignore
-                if self.movement_completed:                
-                    self.ModalityActualValue = self.Modalities[self.iPhase] # change here the modality 
-                    self.NumberExecMovements += 1
-                    print(f'Number of movements: {self.NumberExecMovements} - Ovr: {self.spinBoxSpeedOvr[self.iPhase].value()}')
-                    self.startMovementFCT(self.spinBoxSpeedOvr[self.iPhase].value())
-                    self.spinBoxSpeedOvr[self.iPhase].enabled = False
-            else:            
-                self.progressBarPhases[19].setValue(100)
-                self.clbk_STOPtrainig()
-        else:
-            self.ROS.get_logger().info("Training is paused, skipping update.")
-            return
+        if self.iPhase <= 19:
+            self.progressBarPhases[self.iPhase].setValue(self.execution_time_percentage)
+            if self.iPhase > 0:
+                self.progressBarPhases[self.iPhase - 1].setValue(100) # type: ignore
+            if self.movement_completed:                
+                self.ModalityActualValue = self.Modalities[self.iPhase] # change here the modality 
+                self.NumberExecMovements += 1
+                print(f'Number of movements: {self.NumberExecMovements} - Ovr: {self.spinBoxSpeedOvr[self.iPhase].value()}')
+                self.startMovementFCT(self.spinBoxSpeedOvr[self.iPhase].value())
+                self.spinBoxSpeedOvr[self.iPhase].enabled = False
+        else:            
+            self.progressBarPhases[19].setValue(100)
+            self.clbk_STOPtrainig()
         
     def on_worker_finished(self):
         self.iPhase += 1
@@ -635,9 +711,6 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         #    CAHNGES
         self.lcdNumberExerciseTotalTime.setSegmentStyle(QtWidgets.QLCDNumber.Flat)
         self.lcdNumber_MovementCOUNT.setSegmentStyle(QtWidgets.QLCDNumber.Flat)
-    
-    def startPauseService(self):
-        self.ROS.get_logger().info("Pause service is not implemented yet.")
 
     def startMovementFCT(self, default_speed_override=100):
         self.movement_completed = False

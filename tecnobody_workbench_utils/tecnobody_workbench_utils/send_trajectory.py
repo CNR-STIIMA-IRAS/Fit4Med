@@ -9,9 +9,9 @@ from trajectory_msgs.msg import JointTrajectoryPoint
 from builtin_interfaces.msg import Duration
 
 JOINTS = [
-    'joint_1',
-    'joint_2',
-    'joint_3'
+    'joint_x',
+    'joint_y',
+    'joint_z'
 ]
 
 class TrajectoryActionClient(Node):

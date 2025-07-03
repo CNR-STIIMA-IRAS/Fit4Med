@@ -12,5 +12,5 @@ V_max:
   - [50] # cm/s
 #  - [0.0, -1.5708, 0.0, 0.0, 0.0, 0.0]
 PhaseDuration:  #single phase duration
-  - [10] #  seconds
+  - [3.0] #  seconds
 #  - [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
