@@ -96,7 +96,7 @@
             <state_interface name="Status_Code" />
             <state_interface name="Sample_Counter" />
             <command_interface name="Control_1" />
-            <param name="frame_id">ee_link</param>
+            <param name="frame_id">ft_link</param>
             <ec_module name="AtiAxia90">
                 <plugin>ethercat_generic_plugins/GenericEcSlave</plugin>
                 <param name="alias">0</param>
@@ -130,6 +130,19 @@
                 <param name="slave_config">$(find tecnobody_workbench)/config/sick_getc100.yaml</param>
             </ec_module>
         </gpio>
+    </ros2_control>
 
+    <ros2_control name="tecnobody_end_effector" type="system">
+        <hardware>
+            <plugin>fit4med_ee_joint_hw/EEJointPositionSystem</plugin>
+            <param name="control_frequency">500</param>
+        </hardware>
+
+        <joint name="joint_yaw">
+            <state_interface name="position" />
+            <state_interface name="velocity" />
+            <command_interface name="position" />
+            <command_interface name="velocity" />
+        </joint>
     </ros2_control>
 </robot>

@@ -1,0 +1,7 @@
+<library path="fit4med_ee_joint_hw">
+  <class  name="fit4med_ee_joint_hw/EEJointPositionSystem"
+          type="fit4med_ee_joint_hw::EEJointPositionSystem"
+          base_class_type="hardware_interface::SystemInterface">
+    <description> The CiA402 controller controls EtherCAT CiA402 Drives using the ethercat_generic_plugins/EcCiA402Drive plugin.</description>
+  </class>
+</library>

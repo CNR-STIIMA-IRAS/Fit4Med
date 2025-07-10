@@ -21,7 +21,7 @@ controller_manager:
       type: "gpio_controllers/GpioCommandController"
 
     admittance_controller:
-        type: "admittance_controller/AdmittanceController"
+        type: "cnr_admittance_controller/AdmittanceController"
 
     PLC_controller:
       type: plc_controller/PLCController
@@ -31,7 +31,6 @@ controller_manager:
 
     forward_velocity_controller:
       type: velocity_controllers/JointGroupVelocityController
-
 
 PLC_controller:
   ros__parameters:
@@ -60,10 +59,9 @@ PLC_controller:
           - s_input.7
           - s_input.8
 
-
 ft_sensor_command_broadcaster:
   ros__parameters:
-    frame_id: "fts_sensor_frames"
+    frame_id: "ee_link"
     interface_names:
       force:
         x: "ft_sensor/force.x"
@@ -86,9 +84,7 @@ ft_sensor_command_broadcaster:
 forward_position_controller:
   ros__parameters:
     joints:
-      - joint_x
-      - joint_y
-      - joint_z
+      - joint_yaw
 
 forward_velocity_controller:
   ros__parameters:
@@ -152,34 +148,34 @@ gpio_command_controller:
 admittance_controller:
   ros__parameters:
     joints:
-    - joint_x
     - joint_y
+    - joint_x
     - joint_z
+    - joint_yaw
     command_interfaces:
     - velocity
     state_interfaces:
-    - position
-    - velocity
-    chainable_command_interfaces:
     - position
     - velocity
     kinematics:
       plugin_name: kinematics_interface_kdl/KinematicsInterfaceKDL
       plugin_package: kinematics_interface
       base: base_link # Assumed to be stationary
-      tip: ee_link
+      tip: ft_link
       group_name: fmrrehab
       alpha: 0.0005
     admittance:
-      mass: [ 1.0, 1.0, 1.0, 0.1, 0.1, 0.1 ]
-      stiffness: [ 100.0, 100.0, 100.0, 10.0, 10.0, 10.0 ]
-      damping_ratio: [ 1.0, 1.0, 1.0, 0.01, 0.01, 0.01 ]
+      mass: [ 10.0, 10.0, 10.0, 0.1, 0.1, 0.1 ]
+      stiffness: [ 0.0, 0.0, 0.0, 500.0, 500.0, 500.0 ] #N/m
+      damping_ratio: [ 2.828427, 2.828427, 2.828427, 2.828427, 2.828427, 2.828427 ]
       selected_axes: [ true, true, true, false, false, false ]
     ft_sensor:
       name: "ft_sensor"
       frame:
-        id: "ee_link"
-      filter_coefficient: 0.05
+        id: "ft_link"
+      low_pass_filter_frequency: 20.0
+      force_deadband: 5.0
+      torque_deadband: 2.0
     control:
       frame:
         id: "base_link"
@@ -190,8 +186,8 @@ admittance_controller:
         external: false
     gravity_compensation:
       frame:
-        id: "ee_link"
+        id: "ft_link"
         external: false
       CoG:
-        pos: [ -0.3, 0.0, 0.2 ]
-        force: 30.0
+        pos: [ 0.01, 0.01, 0.01 ]
+        force: 0.01

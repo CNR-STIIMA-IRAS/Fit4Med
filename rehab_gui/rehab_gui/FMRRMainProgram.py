@@ -452,9 +452,9 @@ class RosManager(Node):
             self.get_logger().error("⚠️ Direction must be -1, 1 or 0.")
             return
         if direction == 0:
-            self.trigger_soft_stop(start_value=0.1*self._prev_jog_direction, steps=15, target='jog', jog_joint_idx=joint_to_move)
+            self.trigger_soft_stop(start_value=0.05*self._prev_jog_direction, steps=15, target='jog', jog_joint_idx=joint_to_move)
         else:
-            target_velocity = 0.1 * direction
+            target_velocity = 0.05 * direction
             jog_cmd = [0.0]*len(JOINT_NAMES)
             jog_cmd[joint_to_move] = target_velocity
 

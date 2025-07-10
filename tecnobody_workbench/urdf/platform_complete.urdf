@@ -1,6 +1,9 @@
 <?xacro version = "1.0"?>
 <robot name = "tecnobody" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
+    <!-- Define PI constant -->
+  <xacro:property name="PI" value="3.141592653589793"/>
+  
   <!-- Define materials -->
   <material name="white">
     <color rgba="1 1 1 1"/>
@@ -8,6 +11,10 @@
 
   <material name="black">
     <color rgba="0.1 0.1 0.1 1"/>
+  </material>
+
+  <material name= "red">
+    <color rgba="1 0 0 0"/>
   </material>
 
   <material name="grey_transparent">
@@ -23,6 +30,8 @@
   <!-- Define world and ee_link -->
   <link name="world"/>
   <link name="ee_link"/>
+  <link name="ft_link"/>
+  <link name="flange_link"/>
 
   <!--Define fixed structure links-->
   <link name="col1">
@@ -141,64 +150,64 @@
   <joint name="col1_joint" type="fixed">
     <parent link="world"/>
     <child link="col1"/>
-    <origin xyz="${-beam_lenght} 0 0" rpy="0 0 1.57"/>
+    <origin xyz="${-beam_lenght} 0 0" rpy="0 0 ${PI/2.0}"/>
   </joint>
 
   <joint name="col2_joint" type="fixed">
     <parent link="world"/>
     <child link="col2"/>
-    <origin xyz="${-beam_lenght} ${-beam_lenght} 0" rpy="0 0 1.57"/>
+    <origin xyz="${-beam_lenght} ${-beam_lenght} 0" rpy="0 0 ${PI/2.0}"/>
   </joint>
 
   <joint name="col3_joint" type="fixed">
     <parent link="world"/>
     <child link="col3"/>
-    <origin xyz="0 ${-beam_lenght} 0" rpy="0 0 1.57"/>
+    <origin xyz="0 ${-beam_lenght} 0" rpy="0 0 ${PI/2.0}"/>
   </joint>
 
   <joint name="beam0_joint" type="fixed">
     <parent link="base_link"/>
     <child link="beam0"/>
-    <origin xyz="0 ${-beam_lenght/2} ${col_height/2}" rpy="1.57 0 0"/>
+    <origin xyz="0 ${-beam_lenght/2} ${col_height/2}" rpy="${PI/2.0} 0 0"/>
   </joint>
 
   <joint name="beam1_joint" type="fixed">
     <parent link="col1"/>
     <child link="beam1"/>
-    <origin xyz="${-beam_lenght/2} 0 ${col_height/2}" rpy="0 1.57 0"/>
+    <origin xyz="${-beam_lenght/2} 0 ${col_height/2}" rpy="0 ${PI/2.0} 0"/>
   </joint>
 
   <joint name="beam2_joint" type="fixed">
     <parent link="col2"/>
     <child link="beam2"/>
-    <origin xyz="0 ${-beam_lenght/2} ${col_height/2}" rpy="1.57 0 0"/>
+    <origin xyz="0 ${-beam_lenght/2} ${col_height/2}" rpy="${PI/2.0} 0 0"/>
   </joint>
 
   <joint name="beam3_joint" type="fixed">
     <parent link="col3"/>
     <child link="beam3"/>
-    <origin xyz="${beam_lenght/2} 0 ${col_height/2}" rpy="0 1.57 0"/>
+    <origin xyz="${beam_lenght/2} 0 ${col_height/2}" rpy="0 ${PI/2.0} 0"/>
   </joint>
 
   <!-- Define active joints -->
   <joint name="base2world" type="fixed">
     <parent link="world"/>
     <child link="base_link"/>
-    <origin xyz="0 0 0" rpy="0 0 -1.57"/>
+    <origin xyz="0 0 0" rpy="0 0 ${-PI/2.0}"/>
   </joint>
 
   <joint name="joint_y" type="prismatic">
     <parent link="base_link"/>
     <child link="link1"/>
-    <origin xyz="0 ${-beam_lenght/2} ${col_height/2}" rpy="-1.57 0 0"/>
-    <axis xyz="0 0 1"/>
+    <origin xyz="0 ${-beam_lenght/2} ${col_height/2}" rpy="${-PI/2.0} 0 ${PI}"/>
+    <axis xyz="0 0 -1"/>
     <limit lower="${-beam_lenght/2+2*radius}" upper="${beam_lenght/2-2*radius}" effort="1000" velocity="1"/>
   </joint>
 
   <joint name="joint_y_fixed" type="fixed">
     <parent link="link1"/>
     <child link="link1_beam"/>
-    <origin xyz="${beam_lenght/2} 0 0" rpy="0 1.57 0"/>
+    <origin xyz="-${beam_lenght/2} 0 0" rpy="0 ${PI/2.0} ${PI}"/>
   </joint>
 
   <joint name="joint_x" type="prismatic">
@@ -212,15 +221,29 @@
   <joint name="joint_z" type="prismatic">
     <parent link="link2"/>
     <child link="link3"/>
-    <origin xyz="0 0 0" rpy="1.57 0 0"/>
+    <origin xyz="0 0 0" rpy="-${PI/2.0} 0 0"/>
     <axis xyz="0 0 1"/>
     <limit lower="${-z_height/2}" upper="${z_height/2}" effort="1000" velocity="1"/>
   </joint>
 
-  <joint name="ee_joint" type="fixed">
+  <joint name="flange_joint" type="fixed">
     <parent link="link3"/>
+    <child link="flange_link"/>
+    <origin xyz="0 0 ${-z_height/2}" rpy="0 ${PI} ${-PI/2.0}"/>
+  </joint>
+
+  <joint name="joint_yaw" type="revolute">
+    <parent link="flange_link"/>
+    <child link="ft_link"/>
+    <origin xyz="0 0 0.04" rpy="0 0 ${PI}"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-${PI}" upper="${PI}" effort="1000" velocity="1"/>
+  </joint>
+
+  <joint name="ee_joint" type="fixed">
+    <parent link="ft_link"/>
     <child link="ee_link"/>
-    <origin xyz="0 0 ${-z_height/2}" rpy="0 3.14 -1.57"/>
+    <origin xyz="0 0 0.07" rpy="0 0 0"/>
   </joint>
 
 </robot>

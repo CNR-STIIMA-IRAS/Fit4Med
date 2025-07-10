@@ -33,6 +33,9 @@ class HomingNode(Node):
         # Flag to set true when homing process has completed
         self.homing_finished = False
 
+        # Target cyclic mode
+        self.target_cyclic_mode = 'MODE_CYCLIC_SYNC_VELOCITY'
+
     def check_ethercat_slaves(self):
         eth_states = self.get_ethercat_slaves_status()
         if eth_states and all(info['state'] == 'OP' for info in eth_states.values()):
@@ -93,22 +96,40 @@ class HomingNode(Node):
             elif 'MODE_NO_MODE' in self.mode.values():
                 self.get_logger().info('Drives turned on. Setting homing mode.')
                 for dof in self.dof_names:
-                    self.switch_mode(dof, 6)
+                    self.switch_mode(dof, self.get_op_mode_number('MODE_HOMING'))
             elif self.all_in_homing_mode() and not self.homing_finished:
                 self.get_logger().info('Homing mode set, performing homing.')
                 self.perform_homing()
             elif self.all_in_homing_mode() and self.homing_finished:
-                self.get_logger().info('Homing performed, setting MODE_CYCLIC_SYNC_POSITION.')
+                self.get_logger().info(f'Homing performed, setting {self.target_cyclic_mode} mode.')
                 for dof in self.dof_names:
-                    self.switch_mode(dof, 8)
-            elif self.all_in_command_mode():
-                self.get_logger().info('All drives are in MODE_CYCLIC_SYNC_POSITION. Shutting down...')
+                    self.switch_mode(dof, self.get_op_mode_number(self.target_cyclic_mode))
+            elif self.homing_finished and not self.all_in_target_mode(self.target_cyclic_mode):
+                self.get_logger().info(f'Homing performed but still not all dofs are in {self.target_cyclic_mode}, setting again.')
+                for dof in self.dof_names:
+                    self.switch_mode(dof, self.get_op_mode_number(self.target_cyclic_mode))
+            elif self.all_in_target_mode(self.target_cyclic_mode):
+                self.get_logger().info('All drives are in cyclic mode. Shutting down...')
                 if not self.shutdown_initiated:
                     self.shutdown_initiated = True
                     self.shutdown_node()
             else:
                 self.get_logger().error('Mode/State combination not managed!')
                 self.log_mode_state()
+
+    def get_op_mode_number(self, mode):
+        op_mode_dict={
+            'MODE_NO_MODE': 0,
+            'MODE_PROFILED_POSITION': 1,
+            'MODE_PROFILED_VELOCITY': 3,
+            'MODE_PROFILED_TORQUE': 4,
+            'MODE_HOMING': 6,
+            'MODE_INTERPOLATED_POSITION': 7,
+            'MODE_CYCLIC_SYNC_POSITION': 8,
+            'MODE_CYCLIC_SYNC_VELOCITY': 9,
+            'MODE_CYCLIC_SYNC_TORQUE': 10
+        }
+        return op_mode_dict.get(mode, 0)
 
     def reset_fault(self):
         self.get_logger().info('Resetting faults...')
@@ -221,15 +242,14 @@ class HomingNode(Node):
         else:
             return False
 
-    def all_in_command_mode(self):
-        acceptable_modes = ['MODE_CYCLIC_SYNC_POSITION', 'MODE_CYCLIC_SYNC_VELOCITY']
-        if all(mode in acceptable_modes for mode in self.mode.values()):
+    def all_in_target_mode(self, target_mode):
+        if all(mode == target_mode for mode in self.mode.values()):
             if all(state in ['STATE_SWITCH_ON_ENABLED', 'STATE_SWITCH_ON', 'STATE_OPERATION_ENABLED'] for state in self.state.values()):
                 return True
             else:
                 for dof, state in self.state.items():
                     if state not in ['STATE_SWITCH_ON_ENABLED', 'STATE_SWITCH_ON', 'STATE_OPERATION_ENABLED']:
-                        self.get_logger().info(f'{dof} is in MODE_CYCLIC_SYNC_POSITION but has unexpected state: {state}')
+                        self.get_logger().info(f'{dof} is in {target_mode} but has unexpected state: {state}')
         else:
             return False
 
