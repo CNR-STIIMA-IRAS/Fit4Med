@@ -45,7 +45,7 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
     def clbk_JointApproach(self, JointNr):
         if self.ui_FMRRMainWindow.ROS.current_controller != self.ui_FMRRMainWindow.ROS.trajectory_controller_name:
             self.ui_FMRRMainWindow.ROS.get_logger().info(f"Switching to position mode of operation and loading {self.ui_FMRRMainWindow.ROS.trajectory_controller_name}")
-            if not self.ui_FMRRMainWindow.ROS.trajectory_to_forward_switch(8, self.ui_FMRRMainWindow.ROS.trajectory_controller_name):
+            if not self.ui_FMRRMainWindow.ROS.controller_and_op_mode_switch(8, self.ui_FMRRMainWindow.ROS.trajectory_controller_name):
                 QMessageBox.warning(self.DialogRobotWindow, "Warning", "Failed to switch to trajectory controller. Please check the controller configuration.")
                 return
         ActualRobotConfiguration  = deepcopy( self.ui_FMRRMainWindow.ROS.HandlePosition )
@@ -63,13 +63,13 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
     def clbk_StartMoveRobotManually(self):
         self.pushButton_StartMoveRobotManually.enablePushButton(0)
         self.pushButton_StopMoveRobotManually.enablePushButton(1)
-        #attiva manual guidance
-        pass
+        self.ui_FMRRMainWindow.ROS.controller_and_op_mode_switch(9, self.ui_FMRRMainWindow.ROS.admittance_controller)
+        
     
     def clbk_StopMoveRobotManually(self):
         self.pushButton_StartMoveRobotManually.enablePushButton(1)
         self.pushButton_StopMoveRobotManually.enablePushButton(0)
-        #attiva position control
+        self.ui_FMRRMainWindow.ROS.controller_and_op_mode_switch(8, self.ui_FMRRMainWindow.ROS.trajectory_controller_name)
         pass
 
     def clbk_BtnAbsoluteHoming(self):
@@ -150,7 +150,7 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
     def clbk_BtnGOtoTraining(self):
         if self.ui_FMRRMainWindow.ROS.current_controller != self.ui_FMRRMainWindow.ROS.trajectory_controller_name:
             self.ui_FMRRMainWindow.ROS.get_logger().info(f"Switching to position mode of operation and loading {self.ui_FMRRMainWindow.ROS.trajectory_controller_name}")
-            if not self.ui_FMRRMainWindow.ROS.trajectory_to_forward_switch(8, self.ui_FMRRMainWindow.ROS.trajectory_controller_name):
+            if not self.ui_FMRRMainWindow.ROS.controller_and_op_mode_switch(8, self.ui_FMRRMainWindow.ROS.trajectory_controller_name):
                 QMessageBox.warning(self.DialogRobotWindow, "Warning", "Failed to switch to trajectory controller. Please check the controller configuration.")
                 return
         self.DialogFMRRMainWindow.show()
@@ -160,7 +160,7 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
     def clbk_BtnGotoMovement(self):
         if self.ui_FMRRMainWindow.ROS.current_controller != self.ui_FMRRMainWindow.ROS.trajectory_controller_name:
             self.ui_FMRRMainWindow.ROS.get_logger().info(f"Switching to position mode of operation and loading {self.ui_FMRRMainWindow.ROS.trajectory_controller_name}")
-            if not self.ui_FMRRMainWindow.ROS.trajectory_to_forward_switch(8, self.ui_FMRRMainWindow.ROS.trajectory_controller_name):
+            if not self.ui_FMRRMainWindow.ROS.controller_and_op_mode_switch(8, self.ui_FMRRMainWindow.ROS.trajectory_controller_name):
                 QMessageBox.warning(self.DialogRobotWindow, "Warning", "Failed to switch to trajectory controller. Please check the controller configuration.")
                 return
         self.ui_FMRRMainWindow.DialogMovementWindow.show()

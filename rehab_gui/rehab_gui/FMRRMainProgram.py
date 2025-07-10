@@ -230,6 +230,7 @@ class RosManager(Node):
     _controller_list_period = 500 # milliseconds
     trajectory_controller_name = 'joint_trajectory_controller'
     forward_command_controller = 'forward_velocity_controller'
+    admittance_controller = 'admittance_controller'
     current_controller = None
     jog_cmd_pos = []
     
@@ -378,7 +379,11 @@ class RosManager(Node):
             elif ctrl.name == self.trajectory_controller_name and ctrl.state == 'active':
                 active_controller = self.trajectory_controller_name
                 break
+            elif ctrl.name == self.admittance_controller and ctrl.state == 'active':
+                active_controller = self.admittance_controller
+                break
         if active_controller:
+            self.get_logger().info(f'active controller: {active_controller}')
             self.current_controller = active_controller
             return True
         else:
@@ -401,12 +406,11 @@ class RosManager(Node):
         if not res.ok:
             self.get_logger().error(f"⚠️ Failed to deactivate controller before homing")
             return
-        time.sleep(0.3)
-        self.remaining_homing_dofs = set(JOINT_NAMES)
+        self.remaining_dofs = set(JOINT_NAMES)
         self._set_mode_for_next_dof(6, after_all_done=self.activate_controller_after_homing)
 
     def activate_controller_after_homing(self):
-        time.sleep(0.5)
+        time.sleep(1.0)
         res = self.switch_controller(self.current_controller, None)
         if not res.ok:
             self.get_logger().error(f"⚠️ Failed to activate controller after homing")
@@ -414,11 +418,11 @@ class RosManager(Node):
         self.set_cyclic_mode_all_dofs(8) if self.current_controller == self.trajectory_controller_name else self.set_cyclic_mode_all_dofs(9)
     
     def set_cyclic_mode_all_dofs(self, mode_of_operation):
-        self.remaining_cyclic_dofs = set(JOINT_NAMES)
+        self.remaining_dofs = set(JOINT_NAMES)
         self._set_mode_for_next_dof(mode_of_operation)
 
     def _set_mode_for_next_dof(self, mode_value, after_all_done =None):
-        target_dofs = self.remaining_homing_dofs if mode_value == 6 else self.remaining_cyclic_dofs
+        target_dofs = self.remaining_dofs
         if not target_dofs:
             if after_all_done != None: 
                 after_all_done()
@@ -430,9 +434,10 @@ class RosManager(Node):
         self.get_logger().info(f"Setting mode {mode_value} for {dof}...")
         future = self.mode_of_op_client.call_async(req)
         rclpy.spin_until_future_complete(self, future)
+        time.sleep(0.5)
         self._set_mode_for_next_dof(mode_value, after_all_done)
 
-    def trajectory_to_forward_switch(self, new_mode, new_controller):
+    def controller_and_op_mode_switch(self, new_mode, new_controller):
         res = self.switch_controller(new_controller, self.current_controller)
         if not res.ok:
             self.get_logger().error(f"⚠️ Failed to deactivate controller before switching mode")
@@ -444,7 +449,7 @@ class RosManager(Node):
     def jog_command(self, direction, joint_to_move):
         if self.current_controller != self.forward_command_controller:
             self.get_logger().info(f"Switching to forward command controller: {self.forward_command_controller}")
-            if not self.trajectory_to_forward_switch(9, self.forward_command_controller):
+            if not self.controller_and_op_mode_switch(9, self.forward_command_controller):
                 self.get_logger().error(f"⚠️ Failed to switch to {self.forward_command_controller}!")
                 return
             self.jog_cmd_pos = self.RobotJointPosition
@@ -592,7 +597,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.iPhase = 0
         self._home_goal_sent = False
         if self.ROS.current_controller != self.ROS.trajectory_controller_name:
-                if not self.ROS.trajectory_to_forward_switch(8, self.ROS.trajectory_controller_name):
+                if not self.ROS.controller_and_op_mode_switch(8, self.ROS.trajectory_controller_name):
                     self.ROS.get_logger().error(f"Failed to set position mode and switch from {self.ROS.current_controller} to {self.ROS.trajectory_controller_name}!")
                     return
         self.sendTrajectoryFCT()
