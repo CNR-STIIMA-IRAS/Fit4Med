@@ -5,7 +5,7 @@
         <hardware>
             <plugin>ethercat_driver/EthercatDriver</plugin>
             <param name="master_id">0</param>
-            <param name="control_frequency">100</param>
+            <param name="control_frequency">1000</param>
         </hardware>
 
         <gpio name="PLC_node">
@@ -29,7 +29,7 @@
             <ec_module name="sickPLC">
                 <plugin>ethercat_generic_plugins/GenericEcSlave</plugin>
                 <param name="alias">0</param>
-                <param name="position">3</param>
+                <param name="position">5</param>
                 <param name="slave_config">$(find tecnobody_workbench)/config/sick_getc100.yaml</param>
             </ec_module>
         </gpio>

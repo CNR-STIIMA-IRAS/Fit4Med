@@ -21,7 +21,6 @@ class bcolors:
     UNDERLINE = '\033[4m'
 
 
-
 class PLCControllerInterface(Node):
     def __init__(self):
         super().__init__('plc_manager')
@@ -33,7 +32,7 @@ class PLCControllerInterface(Node):
         self.state_subscriber_callback_running = False
         self.state_subscriber = self.create_subscription(
             PlcController,
-            '/PLC_controller/plc_states',
+            '/safety_plc/PLC_controller/plc_states',
             self.state_callback,
             10,
             callback_group=plc_group
@@ -42,14 +41,14 @@ class PLCControllerInterface(Node):
         # Publisher to the PLC controller command interface
         self.command_publisher = self.create_publisher(
             PlcController,
-            '/PLC_controller/plc_commands',
+            '/safety_plc/PLC_controller/plc_commands',
             10
         )
         
         # Subscriber to the /launch_status topic
         self.launch_status_subscriber = self.create_subscription(
             String,
-            '/launch_status',
+            '/tecnobody_fake_hardware/launch_status',
             self.launch_status_callback,
             10,
             callback_group=launch_group
@@ -80,8 +79,7 @@ class PLCControllerInterface(Node):
             if self.interface_names[int_idx] == "estop":
                 if self.state_values[int_idx] == 1 and self.ESTOP == 0:
                     # self.get_logger().info(bcolors.OKBLUE + "************************ INPUT 1 and ESTOP 0 => ACTIVATE" + bcolors.ENDC)
-                    subprocess.Popen(["/home/tartaglia/ros2_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"], shell=True, executable="/bin/bash")
-                    
+                    subprocess.Popen([" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"], shell=True, executable="/bin/bash")
                 elif self.state_values[int_idx] == 0 and self.ESTOP  == 1:
                     # self.get_logger().info(bcolors.OKCYAN + "************************ INPUT 0 and ESTOP 1 => KILL " + bcolors.ENDC)
                     if len(self.launch_status) > 1:                       
@@ -91,9 +89,10 @@ class PLCControllerInterface(Node):
                                 
                                 # Kill the process using SIGINT
                                 self.get_logger().info("Killing ROS2 node with pid: {}".format(pid))
-                                os.kill(int(pid), signal.SIGINT)  
-                                         
+                                os.kill(int(pid), signal.SIGINT)               
                         self.get_logger().info("All targeted processes signaled.")
+                    else:
+                        self.get_logger().info("no nodes in launch status topic.")
                 elif self.state_values[int_idx] == 0 and self.ESTOP  == 0:
                     # self.get_logger().info(bcolors.OKGREEN + "************************ INPUT 0 and ESTOP 0 => PASS " + bcolors.ENDC)
                     pass

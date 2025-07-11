@@ -10,7 +10,7 @@ class LaunchStatusPublisher(Node):
         qos = QoSProfile(depth=1)
         qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
 
-        self.pub = self.create_publisher(String, '/launch_status', qos)
+        self.pub = self.create_publisher(String, '/tecnobody_fake_hardware/launch_status', qos)
         self.status = ''
         self.timer = self.create_timer(0.5, self.publish_status)
 

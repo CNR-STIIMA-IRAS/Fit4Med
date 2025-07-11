@@ -131,6 +131,7 @@ def generate_launch_description():
     homing = Node(
         package='tecnobody_workbench_utils',
         executable='homing_node',
+        arguments=['MODE_CYCLIC_SYNC_POSITION'],
         output='screen',
     )
     nodes_names.append('homing_node')
@@ -158,7 +159,7 @@ def generate_launch_description():
     joint_controller_node = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['joint_trajectory_controller', '--inactive'],
+        arguments=['joint_trajectory_controller'],
         output='screen',
     )
 
@@ -179,7 +180,7 @@ def generate_launch_description():
     admittance_controller_node = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['admittance_controller'],
+        arguments=['admittance_controller', '--inactive'],
         output='screen',
     )
 
@@ -202,13 +203,6 @@ def generate_launch_description():
         )
     )
 
-    chained_controller_launcher = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=admittance_controller_node,
-            on_exit=[forward_pos_controller_node],
-        )
-    )
-    
     node_names_launcher = RegisterEventHandler(
         OnProcessExit(
             target_action=joint_controller_node,
