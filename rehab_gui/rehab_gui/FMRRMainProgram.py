@@ -29,9 +29,11 @@ from trajectory_msgs.msg import JointTrajectoryPoint
 from sensor_msgs.msg import JointState # joints positions, velocities and efforts
 from std_msgs.msg import Int16, Float64MultiArray 
 from ethercat_controller_msgs.srv import SwitchDriveModeOfOperation
+from std_srvs.srv import Trigger
 from controller_manager_msgs.srv import SwitchController, ListControllers
 from rclpy.parameter_client import AsyncParameterClient
 from action_msgs.msg import GoalStatus
+
 
 DEBUG = False
 
@@ -299,8 +301,10 @@ class RosManager(Node):
         self._prev_jog_direction = None
 
     def getJointState(self, data):
-        self._joint_state = data
-        self.RobotJointPosition = list(self._joint_state.position)
+        name_to_position = dict(zip(data.name, data.position))
+        self.RobotJointPosition = [
+            name_to_position[joint] for joint in JOINT_NAMES if joint in name_to_position
+        ]
 
     def trigger_soft_stop(self, start_value: float, steps: int = 10, target='speed_ovr', jog_joint_idx=None):
         if self._soft_transition_timer.isActive():
@@ -357,9 +361,10 @@ class RosManager(Node):
     def getToolPosition(self, data):
         ToolPosition = data
         self.HandlePosition = [0,0,0]
-        self.HandlePosition[0] = ToolPosition.position[0]
-        self.HandlePosition[1] = ToolPosition.position[1]
-        self.HandlePosition[2] = ToolPosition.position[2]
+        name_to_position = dict(zip(data.name, data.position))
+        self.HandlePosition = [
+            name_to_position[joint] for joint in JOINT_NAMES if joint in name_to_position
+        ]
         
     def spin_ros_once(self):
         rclpy.spin_once(self, timeout_sec=0)
@@ -383,7 +388,7 @@ class RosManager(Node):
                 active_controller = self.admittance_controller
                 break
         if active_controller:
-            self.get_logger().info(f'active controller: {active_controller}')
+            # self.get_logger().info(f'active controller: {active_controller}')
             self.current_controller = active_controller
             return True
         else:
@@ -407,10 +412,33 @@ class RosManager(Node):
             self.get_logger().error(f"⚠️ Failed to deactivate controller before homing")
             return
         self.remaining_dofs = set(JOINT_NAMES)
-        self._set_mode_for_next_dof(6, after_all_done=self.activate_controller_after_homing)
+        self._set_mode_for_next_dof(6, after_all_done=self.perform_homing)
+
+    def perform_homing(self):
+        self.homing_process_started = True
+        self.get_logger().info('--------------->Performing Homing for all three joints')
+        client = self.create_client(Trigger, '/state_controller/perform_homing')
+        if client.wait_for_service(timeout_sec=5.0):
+            request = Trigger.Request()
+            future = client.call_async(request)
+            future.add_done_callback(self.perform_homing_callback)
+        else:
+            self.get_logger().error('Service /state_controller/perform_homing not available')
+
+    def perform_homing_callback(self, future):
+        try:
+            result = future.result()
+            if result.success:
+                self.get_logger().info('Homing performed successfully')
+                self.homing_process_started = False
+                self.activate_controller_after_homing()
+            else:
+                self.get_logger().error('Failed perform homing')
+        except Exception as e:
+            self.get_logger().error(f'Service call failed with exception: {e}')
+
 
     def activate_controller_after_homing(self):
-        time.sleep(1.0)
         res = self.switch_controller(self.current_controller, None)
         if not res.ok:
             self.get_logger().error(f"⚠️ Failed to activate controller after homing")
@@ -434,7 +462,7 @@ class RosManager(Node):
         self.get_logger().info(f"Setting mode {mode_value} for {dof}...")
         future = self.mode_of_op_client.call_async(req)
         rclpy.spin_until_future_complete(self, future)
-        time.sleep(0.5)
+        time.sleep(0.3)
         self._set_mode_for_next_dof(mode_value, after_all_done)
 
     def controller_and_op_mode_switch(self, new_mode, new_controller):

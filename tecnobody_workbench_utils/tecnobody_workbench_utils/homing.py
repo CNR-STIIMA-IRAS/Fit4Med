@@ -7,21 +7,19 @@ from ethercat_controller_msgs.srv import SwitchDriveModeOfOperation
 from ethercat_controller_msgs.msg import Cia402DriveStates
 import time
 import subprocess
-from std_msgs.msg import UInt32
+import sys
 
 
 class HomingNode(Node):
-    def __init__(self):
+
+    def __init__(self, target_op_mode):
         super().__init__('homing_node')
         self.get_logger().info('Homing node started')
         self.ethercat_ready = False
-
         # Timer to check EtherCAT slaves' status
         self.ethercat_timer = self.create_timer(5.0, self.check_ethercat_slaves)
-
         # Define topic callback group
         topic_group = MutuallyExclusiveCallbackGroup()
-        
         # Subscription to drive status updates
         self.subscription = self.create_subscription(Cia402DriveStates, '/state_controller/drive_states', self.handle_drive_status, qos_profile=10, callback_group=topic_group)
         self.dof_names = ['joint_x', 'joint_y', 'joint_z']
@@ -29,12 +27,11 @@ class HomingNode(Node):
         self.mode = {dof: 'MODE_NO_MODE' for dof in self.dof_names}
         self.shutdown_initiated = False  # To track if shutdown is already requested
         self.slave_indices = [0, 1, 2]  # Positions of the drives in the slaves list, check in ros2_control file
-
         # Flag to set true when homing process has completed
-        self.homing_finished = False
-
+        self.cyclic_modes = {'MODE_CYCLIC_SYNC_POSITION', 'MODE_CYCLIC_SYNC_VELOCITY', 'MODE_CYCLIC_SYNC_TORQUE'}
+        self.homing_process_started = False
         # Target cyclic mode
-        self.target_cyclic_mode = 'MODE_CYCLIC_SYNC_VELOCITY'
+        self.target_cyclic_mode = target_op_mode
 
     def check_ethercat_slaves(self):
         eth_states = self.get_ethercat_slaves_status()
@@ -53,7 +50,6 @@ class HomingNode(Node):
                                     text=True,
                                     check=True)
             lines = result.stdout.strip().splitlines()
-
             eth_states = {}
             for idx in self.slave_indices:
                 if idx < len(lines):
@@ -65,20 +61,16 @@ class HomingNode(Node):
                         self.get_logger().warn(f"Formato non valido per la linea dello slave {idx}: {lines[idx]}")
                 else:
                     self.get_logger().warn(f"Nessuno slave trovato all'indice {idx}.")
-
             return eth_states
 
         except FileNotFoundError:
-            self.get_logger().error("Il comando 'ethercat' non è stato trovato. Verifica la configurazione dell'EtherCAT master.")
+            self.get_logger().error("'ethercat' command not found. Verify that EtherCAT master is active.")
             return {}
 
     def handle_drive_status(self, msg):
-        # self.get_logger().info('Received drive status message')
         if not self.ethercat_ready:
-            # self.get_logger().info('EtherCAT not ready, waiting for slaves to be in OP state...')
             return
-        if self.ethercat_ready:
-            # self.get_logger().info('EtherCAT is ready, processing drive states...')
+        else:
             for dof in self.dof_names:
                 try:
                     index = msg.dof_names.index(dof)
@@ -87,35 +79,35 @@ class HomingNode(Node):
                 except ValueError:
                     self.get_logger().error(f'DoF {dof} not found in received message')
                     continue
-            if 'STATE_FAULT' in self.state.values():
-                self.get_logger().info("Detected FAULT state")
-                self.reset_fault()
-            elif 'STATE_SWITCH_ON_DISABLED' in self.state.values():
-                self.get_logger().info("Detected DISABLED state")
-                self.try_turn_on()
-            elif 'MODE_NO_MODE' in self.mode.values():
-                self.get_logger().info('Drives turned on. Setting homing mode.')
-                for dof in self.dof_names:
-                    self.switch_mode(dof, self.get_op_mode_number('MODE_HOMING'))
-            elif self.all_in_homing_mode() and not self.homing_finished:
-                self.get_logger().info('Homing mode set, performing homing.')
+                if self.state[dof] == 'STATE_FAULT':
+                    self.get_logger().info("Detected FAULT state")
+                    self.reset_fault()
+                elif self.state[dof] == 'STATE_NOT_READY_TO_SWITCH_ON':
+                    self.get_logger().info("Detected NOT_READY_TO_SWITCH_ON state")
+                    pass
+                elif self.state[dof] in ['STATE_SWITCH_ON_DISABLED', 'STATE_READY_TO_SWITCH_ON']:
+                    self.get_logger().info("Detected DISABLED state")
+                    self.try_turn_on()
+                else:
+                    if self.mode[dof] == 'MODE_NO_MODE':
+                        self.get_logger().info('Drives turned on. Setting homing mode.')
+                        self.switch_mode(dof, self.get_op_mode_number('MODE_HOMING'))
+                    elif self.mode[dof] == 'MODE_HOMING':
+                        pass
+                    elif self.mode[dof] in (self.cyclic_modes - {self.target_cyclic_mode}):
+                        self.get_logger().info(f'Setting dof{dof} from {self.mode[dof]} to {self.target_cyclic_mode}')
+                        self.switch_mode(dof, self.get_op_mode_number(self.target_cyclic_mode))
+                    elif self.mode[dof] == self.target_cyclic_mode:
+                        pass
+                    else:
+                        self.get_logger().info(f'Mode/State combination not managed! dof {dof} is in {self.state[dof]} and {self.mode[dof]}')
+            if self.all_in_homing_mode() and not self.homing_process_started:
                 self.perform_homing()
-            elif self.all_in_homing_mode() and self.homing_finished:
-                self.get_logger().info(f'Homing performed, setting {self.target_cyclic_mode} mode.')
-                for dof in self.dof_names:
-                    self.switch_mode(dof, self.get_op_mode_number(self.target_cyclic_mode))
-            elif self.homing_finished and not self.all_in_target_mode(self.target_cyclic_mode):
-                self.get_logger().info(f'Homing performed but still not all dofs are in {self.target_cyclic_mode}, setting again.')
-                for dof in self.dof_names:
-                    self.switch_mode(dof, self.get_op_mode_number(self.target_cyclic_mode))
-            elif self.all_in_target_mode(self.target_cyclic_mode):
-                self.get_logger().info('All drives are in cyclic mode. Shutting down...')
-                if not self.shutdown_initiated:
-                    self.shutdown_initiated = True
-                    self.shutdown_node()
-            else:
-                self.get_logger().error('Mode/State combination not managed!')
-                self.log_mode_state()
+            if self.all_in_target_state_mode(self.target_cyclic_mode):
+                            self.get_logger().info(f'All drives are in STATE_OPERATION_ENABLED and {self.target_cyclic_mode}. Shutting down...')
+                            if not self.shutdown_initiated:
+                                self.shutdown_initiated = True
+                                self.shutdown_node()
 
     def get_op_mode_number(self, mode):
         op_mode_dict={
@@ -174,7 +166,8 @@ class HomingNode(Node):
             self.get_logger().error(f'Service call failed with exception: {e}')
 
     def perform_homing(self):
-        self.get_logger().info('Turning on drives...')
+        self.homing_process_started = True
+        self.get_logger().info('--------------->Performing Homing for all three joints')
         try_on_service_group = MutuallyExclusiveCallbackGroup()
         client = self.create_client(Trigger, '/state_controller/perform_homing', callback_group=try_on_service_group)
         if client.wait_for_service(timeout_sec=5.0):
@@ -189,7 +182,10 @@ class HomingNode(Node):
             result = future.result()
             if result.success:
                 self.get_logger().info('Homing performed successfully')
-                self.homing_finished = True
+                self.homing_process_started = False
+                for curr_dof in self.dof_names:
+                    self.get_logger().info(f'Setting dof {curr_dof} to {self.target_cyclic_mode}.')
+                    self.switch_mode(curr_dof, self.get_op_mode_number(self.target_cyclic_mode))
             else:
                 self.get_logger().error('Failed perform homing')
         except Exception as e:
@@ -230,21 +226,20 @@ class HomingNode(Node):
                         self.get_logger().info(f'{dof} is in MODE_NO_MODE but has unexpected state: {state}')
         else:
             return False
-
+        
     def all_in_homing_mode(self):
         if all(mode == 'MODE_HOMING' for mode in self.mode.values()):
-            if all(state in ['STATE_SWITCH_ON_ENABLED', 'STATE_SWITCH_ON', 'STATE_OPERATION_ENABLED'] for state in self.state.values()):
+            if all(state == 'STATE_OPERATION_ENABLED' for state in self.state.values()):
                 return True
             else:
                 for dof, state in self.state.items():
-                    if state not in ['STATE_SWITCH_ON_ENABLED', 'STATE_SWITCH_ON', 'STATE_OPERATION_ENABLED']:
-                        self.get_logger().info(f'{dof} is in MODE_HOMING but has unexpected state: {state}')
+                    self.get_logger().info(f'{dof} is in MODE_HOMING but has unexpected state: {state}')
         else:
             return False
 
-    def all_in_target_mode(self, target_mode):
+    def all_in_target_state_mode(self, target_mode):
         if all(mode == target_mode for mode in self.mode.values()):
-            if all(state in ['STATE_SWITCH_ON_ENABLED', 'STATE_SWITCH_ON', 'STATE_OPERATION_ENABLED'] for state in self.state.values()):
+            if all(state == 'STATE_OPERATION_ENABLED' for state in self.state.values()):
                 return True
             else:
                 for dof, state in self.state.items():
@@ -252,7 +247,7 @@ class HomingNode(Node):
                         self.get_logger().info(f'{dof} is in {target_mode} but has unexpected state: {state}')
         else:
             return False
-
+        
     def log_mode_state(self):
         for dof in self.dof_names:
             self.get_logger().info(f'Details of unexpected behavior: DOF {dof} is mode {self.mode[dof]} and state {self.state[dof]}')
@@ -270,7 +265,8 @@ class HomingNode(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-    node = HomingNode()
+    input_op_mode = sys.argv[1] if len(sys.argv) > 1 else "MODE_CYCLIC_SYNC_POSITION"
+    node = HomingNode(input_op_mode)
 
     executor = MultiThreadedExecutor()
     executor.add_node(node)
