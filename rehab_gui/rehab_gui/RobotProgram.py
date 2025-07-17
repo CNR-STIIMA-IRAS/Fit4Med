@@ -10,12 +10,11 @@ from json import load
 import os
 import sys
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtWidgets import QMessageBox, QWidget
+from PyQt5.QtWidgets import QMessageBox
 from .RobotWindow import Ui_RobotWindow
 import yaml
 from yaml.loader import SafeLoader
 import numpy as np
-from scipy import interpolate
 from copy import deepcopy
 #import FMRRMainProgram as FMRRMain
 
@@ -29,6 +28,7 @@ from geometry_msgs.msg import Point
 #from StringIO import StringIO
 from std_srvs.srv import Trigger
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+from ros2node.api import get_node_names
 
 
 class FMRR_Ui_RobotWindow(Ui_RobotWindow):
@@ -44,7 +44,7 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
     ###### Callback of buttons to Joint Approach with trajectory controller (TODO)
     def clbk_JointApproach(self, JointNr):
         if self.ui_FMRRMainWindow.ROS.current_controller != self.ui_FMRRMainWindow.ROS.trajectory_controller_name:
-            self.ui_FMRRMainWindow.ROS.get_logger().info(f"Switching to position mode of operation and loading {self.ui_FMRRMainWindow.ROS.trajectory_controller_name}")
+            self.ui_FMRRMainWindow._ros_node.get_logger().info(f"Switching to position mode of operation and loading {self.ui_FMRRMainWindow.ROS.trajectory_controller_name}")
             if not self.ui_FMRRMainWindow.ROS.controller_and_op_mode_switch(8, self.ui_FMRRMainWindow.ROS.trajectory_controller_name):
                 QMessageBox.warning(self.DialogRobotWindow, "Warning", "Failed to switch to trajectory controller. Please check the controller configuration.")
                 return
@@ -65,7 +65,6 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
         self.pushButton_StopMoveRobotManually.enablePushButton(1)
         self.ui_FMRRMainWindow.ROS.controller_and_op_mode_switch(9, self.ui_FMRRMainWindow.ROS.admittance_controller)
         
-    
     def clbk_StopMoveRobotManually(self):
         self.pushButton_StartMoveRobotManually.enablePushButton(1)
         self.pushButton_StopMoveRobotManually.enablePushButton(0)
@@ -146,20 +145,18 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
 #####                                                                                                    #####
 ##############################################################################################################            
 
-        
     def clbk_BtnGOtoTraining(self):
         if self.ui_FMRRMainWindow.ROS.current_controller != self.ui_FMRRMainWindow.ROS.trajectory_controller_name:
-            self.ui_FMRRMainWindow.ROS.get_logger().info(f"Switching to position mode of operation and loading {self.ui_FMRRMainWindow.ROS.trajectory_controller_name}")
+            self.ui_FMRRMainWindow._ros_node.get_logger().info(f"Switching to position mode of operation and loading {self.ui_FMRRMainWindow.ROS.trajectory_controller_name}")
             if not self.ui_FMRRMainWindow.ROS.controller_and_op_mode_switch(8, self.ui_FMRRMainWindow.ROS.trajectory_controller_name):
                 QMessageBox.warning(self.DialogRobotWindow, "Warning", "Failed to switch to trajectory controller. Please check the controller configuration.")
                 return
         self.DialogFMRRMainWindow.show()
         self.DialogRobotWindow.hide()
-        
-        
+             
     def clbk_BtnGotoMovement(self):
         if self.ui_FMRRMainWindow.ROS.current_controller != self.ui_FMRRMainWindow.ROS.trajectory_controller_name:
-            self.ui_FMRRMainWindow.ROS.get_logger().info(f"Switching to position mode of operation and loading {self.ui_FMRRMainWindow.ROS.trajectory_controller_name}")
+            self.ui_FMRRMainWindow._ros_node.get_logger().info(f"Switching to position mode of operation and loading {self.ui_FMRRMainWindow.ROS.trajectory_controller_name}")
             if not self.ui_FMRRMainWindow.ROS.controller_and_op_mode_switch(8, self.ui_FMRRMainWindow.ROS.trajectory_controller_name):
                 QMessageBox.warning(self.DialogRobotWindow, "Warning", "Failed to switch to trajectory controller. Please check the controller configuration.")
                 return
@@ -171,7 +168,6 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
     def updateRobotWindow(self, RobotWindow):
 #       Joint and tool postions are converted and displayed 
 #       conversion factors (fromm RAD to Degree and from meters tocentimeteres are declared at the beginning od the FMRRMainProgram class    
-
 #       Joints lcd 
         _jointPosConvFact = self.ui_FMRRMainWindow._jointPosConvFact #
         try:
@@ -220,8 +216,15 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
             else:
                 self.lineEdit_MoveRobotPosition_GoalPosition.setText( "Goal Position (!!! UNDEFINED FRAME!!!)" ) # type: ignore
                 self.frame_GoalPosition.setEnabled(False)
-             
-          
+
+        self.frame_JOG.setEnabled(self.ui_FMRRMainWindow.ROS.enable_jog_buttons)
+        self.frame_GoalPosition.setEnabled(self.ui_FMRRMainWindow.ROS.enable_ptp)
+        self.frame_GoalPosition.setEnabled(self.ui_FMRRMainWindow.ROS.enable_ptp)
+        self.pushButton_RelativeHoming.setEnabled(True)
+        self.pushButton_AbsHoming.setEnabled(self.ui_FMRRMainWindow.ROS.enable_absolute_homing)
+        self.pushButton_StartMoveRobotManually.setEnabled(self.ui_FMRRMainWindow.ROS.enable_manual_guidance)
+        self.pushButton_StopMoveRobotManually.setEnabled(self.ui_FMRRMainWindow.ROS.enable_manual_guidance)
+              
     def setupUi_RobotWindow(self, RobotWindow):
         Ui_RobotWindow.setupUi(self, RobotWindow)
                         
@@ -301,6 +304,9 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
 
         self.pushButton_LoadJointPosition.clicked.connect(lambda: self.clbk_BtnLoadJointPosition())
 
+        self.pushButton_JOG.setCheckable(True)
+        self.pushButton_JOG.toggled.connect(self.ui_FMRRMainWindow.ROS.jog_enable)
+        
         self.pushButton_Xminus.pressed.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(-1, 0))
         self.pushButton_Xplus.pressed.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(1, 0))
         self.pushButton_Yminus.pressed.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(-1, 1))
@@ -332,9 +338,8 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
         self.pushButton_GOtoMovement.clicked.connect(lambda: self.clbk_BtnGotoMovement())
         RobotWindow.adjustSize()
 
-
 def main():
-    QPushButton.enablePushButton = MC_Tools.enablePushButton #Adding a new method defined in MC_Tools file    
+    #QPushButton.enablePushButton = MC_Tools.enablePushButton #Adding a new method defined in MC_Tools file    
     app = QtWidgets.QApplication(sys.argv)
     RobotWindow = QtWidgets.QDialog()
     ui = FMRR_Ui_RobotWindow()
@@ -343,7 +348,6 @@ def main():
     ui.GetCurrentPositions(ui)
     RobotWindow.show()
     sys.exit(app.exec_())
-
 
 if __name__ == "__main__":
     main()

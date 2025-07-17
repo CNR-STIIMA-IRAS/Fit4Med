@@ -1,114 +1,119 @@
 import rclpy
+import time
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from std_srvs.srv import Trigger
 from ethercat_controller_msgs.msg import Cia402DriveStates
-from control_msgs.msg import DynamicInterfaceGroupValues
+from ethercat_controller_msgs.srv import GetModesOfOperation
 from std_msgs.msg import Bool
-import os
-import signal
-import subprocess
+from std_srvs.srv import SetBool, Trigger
 
+_shutdown_request = False
 
 class EthercatCheckerNode(Node):
     def __init__(self):
         super().__init__('ethercat_checker_node')
         self.get_logger().info('ethercat checker node started')
 
-        # Define topic callback group
+        # Define callback groups
         driver_group = MutuallyExclusiveCallbackGroup()
-        gpio_group = MutuallyExclusiveCallbackGroup()
+        service_group = MutuallyExclusiveCallbackGroup()
         
         # Subscription to drive status updates
         self.subscription = self.create_subscription(Cia402DriveStates, '/state_controller/drive_states', self.handle_drive_status, qos_profile=10, callback_group=driver_group)
-        self.gpio_subscription = self.create_subscription(DynamicInterfaceGroupValues, '/gpio_command_controller/gpio_states', self.handle_gpio_status, qos_profile=10, callback_group=gpio_group)
-        self.gpio_input = 'd_input.1'
 
         # Create the no-error publisher
         self.publisher_ = self.create_publisher(Bool, '/ethercat_error_check', 10)
 
+        # Create error checking enable service
+        self.enable_error_check_srv = self.create_service(
+            SetBool,
+            '/ethercat_checker/enable_error_checking',
+            self.enable_error_checking_callback
+        )
+
+        self.get_mode_of_op_srv = self.create_service(
+            GetModesOfOperation,
+            '/ethercat_checker/get_drive_mode_of_operation',
+            self.get_modes_callback,
+            callback_group=service_group
+        )
+
+        self.shutdown_service = self.create_service(
+            Trigger,
+            "/ethercat_checker/request_shutdown", self.shutdown_node
+        )
+
+        self.error_checking_enabled = True
         self.dof_names = ['joint_x', 'joint_y', 'joint_z']
         self.state = {dof: 'STATE_UNDEFINED' for dof in self.dof_names}
         self.mode = {dof: 'MODE_NO_MODE' for dof in self.dof_names}
-        self.mode_target = 8  # MODE_CYCLIC_SYNC_POSITION
-        self.shutdown_initiated = False  # To track if shutdown is already requested
+        self.status_words = {dof: 0 for dof in self.dof_names}
 
-    def handle_gpio_status(self, msg):
-        for interface_value in msg.interface_values:
-            if self.gpio_input in interface_value.interface_names:
-                value = interface_value.values[0]
-                if value == 0.0:
-                    self.get_logger().info('Received GPIO signal to shutdown')
-                    if not self.shutdown_initiated:
-                        self.shutdown_initiated = True
-                        self.get_logger().info('Shutting down...')
-                        self.send_sigint_to_ros2_processes()
-            
-    def send_sigint_to_ros2_processes(self):
-        try:
-            current_pid = os.getpid()
-            
-            # Trova tutti i processi che contengono 'ros2' o 'robot_state_publisher'
-            processes = ["ros2", "robot_state_publisher"]
-            pids = []
-
-            for proc in processes:
-                result = subprocess.run(["pgrep", "-f", proc], capture_output=True, text=True)
-                pids += result.stdout.strip().split('\n')
-
-            pids = [pid for pid in pids if pid and int(pid) != current_pid]
-
-            if not pids:
-                self.get_logger().info("No ROS2-related processes found.")
-                return
-
-            for pid in pids:
-                self.get_logger().info(f"Sending SIGINT to process PID: {pid}")
-                os.kill(int(pid), signal.SIGINT)
-
-            self.get_logger().info("All targeted processes signaled. Shutting down this node.")
-            rclpy.shutdown()
-
-        except Exception as e:
-            self.get_logger().error(f"Error sending SIGINT: {e}")
+    def enable_error_checking_callback(self, request, response):
+        self.error_checking_enabled = request.data
+        response.success = True
+        response.message = f"Error checking {'enabled' if request.data else 'disabled'}."
+        return response
 
     def handle_drive_status(self, msg):
-        if not self.shutdown_initiated:
-            for dof in self.dof_names:
-                try:
-                    index = msg.dof_names.index(dof)
-                    self.state[dof] = msg.drive_states[index]
-                    self.mode[dof] = msg.modes_of_operation[index]
-                except ValueError:
-                    self.get_logger().error(f'DoF {dof} not found in received message')
+        for dof in self.dof_names:
+            try:
+                index = msg.dof_names.index(dof)
+                self.state[dof] = msg.drive_states[index]
+                self.mode[dof] = msg.modes_of_operation[index]
+                self.status_words[dof] = msg.status_words[index]
+            except ValueError:
+                self.get_logger().error(f'DoF {dof} not found in received message')
+        if self.error_checking_enabled:
             self.check_faults()
 
+    def get_modes_callback(self, request, response):
+        if_names = request.dof_names
+
+        # Se lista vuota, restituisci tutte
+        if not if_names:
+            if_names = self.dof_names
+
+        response.dof_names = []
+        response.values = []
+        response.status_words = []
+
+        for name in if_names:
+            if name in self.dof_names:
+                response.dof_names.append(name)
+                response.values.append(self.get_op_mode_number(self.mode[name]))
+                response.status_words.append(self.status_words[name])
+            else:
+                self.get_logger().warn(f"DOF named '{name}' not found")
+
+        return response
+
     def check_faults(self):
-        if not self.shutdown_initiated:
-            msg_to_pub = Bool()
-            if 'STATE_FAULT' in self.state.values():
-                self.get_logger().info("Detected FAULT state")
-                self.reset_fault()
-                msg_to_pub.data = False
-                self.publisher_.publish(msg_to_pub)
-            elif 'STATE_SWITCH_ON_DISABLED' in self.state.values():
-                self.get_logger().info("Detected DISABLED state")
-                self.try_turn_on()
-                msg_to_pub.data = False
+        msg_to_pub = Bool()
+        if 'STATE_FAULT' in self.state.values():
+            self.get_logger().info("Detected FAULT state")
+            self.reset_fault()
+            msg_to_pub.data = False
+            self.publisher_.publish(msg_to_pub)
+        elif 'STATE_SWITCH_ON_DISABLED' in self.state.values():
+            self.get_logger().info("Detected DISABLED state")
+            self.try_turn_on()
+            msg_to_pub.data = False
+            self.publisher_.publish(msg_to_pub)
+        else:
+            counter = 0
+            for dof in self.dof_names:
+                if (self.state[dof] == 'STATE_SWITCH_ON') or (self.state[dof] == 'STATE_SWITCH_ON_ENABLED') or (self.state[dof] == 'STATE_OPERATION_ENABLED'):
+                    counter += 1
+            if counter == len(self.dof_names):
+                msg_to_pub.data = True
                 self.publisher_.publish(msg_to_pub)
             else:
-                counter = 0
-                for dof in self.dof_names:
-                    if (self.state[dof] == 'STATE_SWITCH_ON') or (self.state[dof] == 'STATE_SWITCH_ON_ENABLED') or (self.state[dof] == 'STATE_OPERATION_ENABLED'):
-                        counter += 1
-                if counter == len(self.dof_names):
-                    msg_to_pub.data = True
-                    self.publisher_.publish(msg_to_pub)
-                else:
-                    self.get_logger().info(f'Found ethercat slave in {self.state[dof]} state. Not managed.')
-                    msg_to_pub.data = False
-                    self.publisher_.publish(msg_to_pub)
+                self.get_logger().info(f'Found ethercat slave in {self.state[dof]} state. Not managed.')
+                msg_to_pub.data = False
+                self.publisher_.publish(msg_to_pub)
 
     def reset_fault(self):
         self.get_logger().info('Resetting faults...')
@@ -151,6 +156,33 @@ class EthercatCheckerNode(Node):
                 self.get_logger().error('Failed to turn on drives')
         except Exception as e:
             self.get_logger().error(f'Service call failed with exception: {e}')
+    
+    def get_op_mode_number(self, mode):
+        op_mode_dict={
+            'MODE_NO_MODE': 0,
+            'MODE_PROFILED_POSITION': 1,
+            'MODE_PROFILED_VELOCITY': 3,
+            'MODE_PROFILED_TORQUE': 4,
+            'MODE_HOMING': 6,
+            'MODE_INTERPOLATED_POSITION': 7,
+            'MODE_CYCLIC_SYNC_POSITION': 8,
+            'MODE_CYCLIC_SYNC_VELOCITY': 9,
+            'MODE_CYCLIC_SYNC_TORQUE': 10
+        }
+        return op_mode_dict.get(mode, 0)
+    
+    def shutdown_node(self, request, response):
+        global _shutdown_request
+        _shutdown_request = True
+        response.success = True
+        return response
+    #     self.get_logger().info('Shutting down...')
+    #     time.sleep(2)
+    #     self.destroy_node()
+
+    #     # Ensure context is valid before shutting down
+    #     if rclpy.ok():
+    #         rclpy.shutdown()
 
 
 def main(args=None):
@@ -162,9 +194,15 @@ def main(args=None):
     executor.add_node(node)
 
     try:
-        executor.spin()
+        while not _shutdown_request:
+            executor.spin_once()
+            
+        node.get_logger().info('^^^^^^^^^^^^^^^^^ Shutting down...')
     except KeyboardInterrupt:
         node.get_logger().info('Keyboard interrupt, shutting down.\n')
+        executor.shutdown()
+        node.destroy_node()
+
 
 if __name__ == '__main__':
     main()

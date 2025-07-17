@@ -23,7 +23,7 @@
             <ec_module name="delta1">
                 <plugin>ethercat_generic_plugins/EcCiA402Drive</plugin>
                 <param name="alias">0</param>
-                <param name="position">0</param>
+                <param name="position">1</param>
                 <param name="mode_of_operation">8</param>
                 <param name="slave_config">$(find tecnobody_workbench)/config/delta400x.yaml</param>
             </ec_module>
@@ -44,7 +44,7 @@
             <ec_module name="delta2">
                 <plugin>ethercat_generic_plugins/EcCiA402Drive</plugin>
                 <param name="alias">0</param>
-                <param name="position">1</param>
+                <param name="position">2</param>
                 <param name="mode_of_operation">8</param>
                 <param name="slave_config">$(find tecnobody_workbench)/config/delta400y.yaml</param>
             </ec_module>
@@ -65,7 +65,7 @@
             <ec_module name="delta1">
                 <plugin>ethercat_generic_plugins/EcCiA402Drive</plugin>
                 <param name="alias">0</param>
-                <param name="position">2</param>
+                <param name="position">3</param>
                 <param name="mode_of_operation">8</param>
                 <param name="slave_config">$(find tecnobody_workbench)/config/delta750.yaml</param>
             </ec_module>
@@ -81,7 +81,7 @@
             <ec_module name="AtiAxia90">
                 <plugin>ethercat_generic_plugins/GenericEcSlave</plugin>
                 <param name="alias">0</param>
-                <param name="position">3</param>
+                <param name="position">4</param>
                 <param name="slave_config">$(find tecnobody_workbench)/config/burster9251.yaml</param>
             </ec_module>
         </sensor>
@@ -100,7 +100,7 @@
             <ec_module name="AtiAxia90">
                 <plugin>ethercat_generic_plugins/GenericEcSlave</plugin>
                 <param name="alias">0</param>
-                <param name="position">4</param>
+                <param name="position">5</param>
                 <param name="slave_config">$(find tecnobody_workbench)/config/axia90.yaml</param>
             </ec_module>
         </sensor>
@@ -126,7 +126,7 @@
             <ec_module name="sickPLC">
                 <plugin>ethercat_generic_plugins/GenericEcSlave</plugin>
                 <param name="alias">0</param>
-                <param name="position">5</param>
+                <param name="position">0</param>
                 <param name="slave_config">$(find tecnobody_workbench)/config/sick_getc100.yaml</param>
             </ec_module>
         </gpio>

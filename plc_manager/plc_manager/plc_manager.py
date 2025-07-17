@@ -1,13 +1,17 @@
+import time
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
-from std_msgs.msg import String
 from plc_controller_msgs.msg import PlcController
-import time
+from controller_manager_msgs.srv import ListControllers, UnloadController, SwitchController
+from std_srvs.srv import Trigger
+import sys
 import subprocess
+import threading
 import os
 import signal
+
 
 class bcolors:
     HEADER = '\033[95m'
@@ -26,13 +30,14 @@ class PLCControllerInterface(Node):
         super().__init__('plc_manager')
         
         plc_group = MutuallyExclusiveCallbackGroup()
-        launch_group = MutuallyExclusiveCallbackGroup()
+        timer_group = MutuallyExclusiveCallbackGroup()
+        service_group = MutuallyExclusiveCallbackGroup()
 
         # Subscriber to the PLC controller state interface
         self.state_subscriber_callback_running = False
         self.state_subscriber = self.create_subscription(
             PlcController,
-            '/safety_plc/PLC_controller/plc_states',
+            '/PLC_controller/plc_states',
             self.state_callback,
             10,
             callback_group=plc_group
@@ -41,97 +46,204 @@ class PLCControllerInterface(Node):
         # Publisher to the PLC controller command interface
         self.command_publisher = self.create_publisher(
             PlcController,
-            '/safety_plc/PLC_controller/plc_commands',
+            '/PLC_controller/plc_commands',
             10
         )
-        
-        # Subscriber to the /launch_status topic
-        self.launch_status_subscriber = self.create_subscription(
-            String,
-            '/tecnobody_fake_hardware/launch_status',
-            self.launch_status_callback,
-            10,
-            callback_group=launch_group
-        )
+
+        # Controller Manager Services subscription
+        self.list_controllers_client = self.create_client(ListControllers, '/controller_manager/list_controllers', callback_group=service_group)
+        client_success = self.list_controllers_client.wait_for_service(timeout_sec=5.0)
+        if not client_success:
+            self.get_logger().error("List controllers service is not ready.")
+            rclpy.shutdown()
+            sys.exit(1)
+        self.switch_client = self.create_client(SwitchController, '/controller_manager/switch_controller')
+        client_success = self.switch_client.wait_for_service(timeout_sec=5.0)
+        if not client_success:
+            self.get_logger().error("Switch controller service is not ready.")
+            rclpy.shutdown()
+            sys.exit(1)
+        self.unload_client = self.create_client(UnloadController, '/controller_manager/unload_controller')
+        client_success = self.unload_client.wait_for_service(timeout_sec=5.0)
+        if not client_success:
+            self.get_logger().error("Unload controller service is not ready.")
+            rclpy.shutdown()
+            sys.exit(1)
+        self.eth_checker_shutdown_client = self.create_client(Trigger, '/ethercat_checker/request_shutdown')
+        eth_checker_shutdown_client_success = self.eth_checker_shutdown_client.wait_for_service(timeout_sec=5.0)
+        if not eth_checker_shutdown_client_success:
+            self.get_logger().error("Ethercat checker shutdown service is not ready.")
+            rclpy.shutdown()
+            sys.exit(1)
 
         # Internal storage for PLC interfaces names and values
         self.interface_names = []
         self.state_values = []
         self.command_values = []
         self.launch_status = []
+        self.ESTOP = 1
+        self.lock = threading.Lock()
+        self.command_msg = PlcController()
+        self.command_msg.values = [0] * 8
+        self.command_msg.interface_names = [ 'PLC_node/mode_of_operation', 
+                                            'PLC_node/power_cutoff', 
+                                            'PLC_node/sonar_teach', 
+                                            'PLC_node/s_output.4', 
+                                            'PLC_node/s_output.5', 
+                                            'PLC_node/s_output.6', 
+                                            'PLC_node/s_output.7', 
+                                            'PLC_node/s_output.8' ]    
+    
+    def get_controllers(self):
+        req = ListControllers.Request()
+        future = self.list_controllers_client.call_async(req)
+
+        while not future.done(): 
+            time.sleep(0.01)
+
+        response = future.result()
+        if response == None:
+            self.get_logger.info("controller not found")
+            return False
         
-        self.ESTOP = 0
+        active_controllers = []
+        loaded_controllers = []
+
+        for ctrl in response.controller:
+            if ctrl.name != 'PLC_controller':
+                if ctrl.state == 'active':
+                    active_controllers.append(ctrl.name)
+                elif ctrl.state in ['inactive', 'unconfigured']:
+                    loaded_controllers.append(ctrl.name)
+                else:
+                    self.get_logger().info(f'Controller {ctrl.name} is in state {ctrl.state}. Not managed.')
         
-    def launch_status_callback(self, msg):
-        """Callback to handle messages from /launch_status."""
-        self.launch_status = []
-        self.launch_status.extend(msg.data.split(";"))
+        if 'joint_state_broadcaster' in active_controllers:
+            active_controllers.pop(active_controllers.index('joint_state_broadcaster'))  # Remove the element by index
+            active_controllers.append('joint_state_broadcaster')
+        
+        if 'joint_state_broadcaster' in loaded_controllers:
+            loaded_controllers.pop(loaded_controllers.index('joint_state_broadcaster'))  # Remove the element by index
+            loaded_controllers.append('joint_state_broadcaster')
+        # DEBUG
+        # self.get_logger().info(f'✅ Active: {active_controllers}')
+        # self.get_logger().info(f'🕓 Loaded: {loaded_controllers}')
+        return active_controllers, loaded_controllers
+
+    def switch_controller(self, controller_to_activate, controller_to_deactivate):
+        if controller_to_activate is None and controller_to_deactivate is None:
+            return True
+        
+        switch_req = SwitchController.Request()
+        switch_req.activate_controllers = [] if controller_to_activate is None else controller_to_activate
+        switch_req.deactivate_controllers = [] if controller_to_deactivate is None else controller_to_deactivate
+        
+        switch_req.strictness = SwitchController.Request.BEST_EFFORT
+        self.get_logger().info(f'Activating controller {controller_to_activate}...') if controller_to_activate else self.get_logger().info('No controller to activate.')
+        self.get_logger().info(f'Deactivating controller {controller_to_deactivate}...') if controller_to_deactivate else self.get_logger().info('No controller to deactivate.')
+        future = self.switch_client.call_async(switch_req)
+        while not future.done(): 
+            time.sleep(0.01)
+        if future.result().ok:
+            _start_time = self.get_clock().now()
+            while True:
+                active, _ = self.get_controllers()
+                if controller_to_activate is None and controller_to_deactivate is not None and all(elem not in active for elem in controller_to_deactivate):
+                    return True
+                elif controller_to_activate is not None and controller_to_deactivate is None and all(elem in active for elem in controller_to_activate):
+                    return True
+                elif all(elem not in active for elem in controller_to_deactivate) and all(elem in active for elem in controller_to_activate):
+                    return True
+                _current_time = self.get_clock().now()
+                if _current_time - _start_time > 2.0:
+                    self.get_logger().warn("⚠️ The switch of controllers got a strange behavior: the result of the servie is OK, but the list of controller mismatch the request...")
+                    return False
+
+    def unload(self, controller_name):
+        unload_req = UnloadController.Request()
+        unload_req.name = controller_name
+        future = self.unload_client.call_async(unload_req)
+        while not future.done(): 
+            time.sleep(0.01)
+        if future.result().ok:
+            self.get_logger().info(f'✅ Controller {controller_name} unloaded)')
+        else:
+            self.get_logger().error(f'❌ Failed to unload controller: {controller_name}')
+
         
     def state_callback(self, msg):
         """Callback to handle incoming state messages."""
+        if not self.lock.acquire(blocking=False):
+            self.get_logger().warn("state callback already in execution, ignore.")
+            return
+        try:
+            # Store the interface names from the state message
+            self.interface_names = list(msg.interface_names)
+            # Store the uint8 values from the state message
+            self.state_values = list(msg.values)
+            # Check for loaded and active controllers
+            for int_idx in range(len(self.interface_names)):
+                if self.interface_names[int_idx] == "estop":
+                    if self.state_values[int_idx] == 1 and self.ESTOP == 0:
+                        self.get_logger().info(bcolors.OKBLUE + "************************ INPUT 1 and ESTOP 0 => ACTIVATE" + bcolors.ENDC)
+                        self.publish_command('PLC_node/power_cutoff', 0)
+                        time.sleep(2)
+                        subprocess.Popen([" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"], shell=True, executable="/bin/bash")
+                        self.ESTOP = self.state_values[int_idx]
+                    elif self.state_values[int_idx] == 0 and self.ESTOP  == 1:
+                        self.get_logger().info(bcolors.OKCYAN + f"************************ INPUT 0 and ESTOP 1 => KILL" + bcolors.ENDC)
+                        self.get_logger().info(bcolors.OKCYAN + "************************ KILL tecnobody_ethercat_checker_node" + bcolors.ENDC)
+                        
+                        shutdown_request = Trigger.Request()
+                        self.eth_checker_shutdown_client.call_async(shutdown_request)
 
-        # Store the interface names from the state message
-        self.interface_names = list(msg.interface_names)
-        # Store the uint8 values from the state message
-        self.state_values = list(msg.values)
+                        active, loaded = self.get_controllers()
+                        if len(active)>0:
+                            if not self.switch_controller(None, active):
+                                self.get_logger().info("Controller not succesfully, deactivated!!")
+                        elif len(active) == 0 and len(loaded) > 0:
+                            for controller in loaded:
+                                self.unload(controller)
+                        else:
+                            self.get_logger().info("All targeted processes signaled. Power cut-off")
+                            self.publish_command('PLC_node/power_cutoff', 1)
+                            self.ESTOP = self.state_values[int_idx]
+                    elif self.state_values[int_idx] == 0 and self.ESTOP  == 0:
+                        self.ESTOP = self.state_values[int_idx]
+                        pass
+
+                    elif self.state_values[int_idx] == 1 and self.ESTOP  == 1:
+                        self.ESTOP = self.state_values[int_idx]
+                        pass
+                    
+        finally:
+            self.lock.release()
         
-        for int_idx in range(len(self.interface_names)):
-            if self.interface_names[int_idx] == "estop":
-                if self.state_values[int_idx] == 1 and self.ESTOP == 0:
-                    # self.get_logger().info(bcolors.OKBLUE + "************************ INPUT 1 and ESTOP 0 => ACTIVATE" + bcolors.ENDC)
-                    subprocess.Popen([" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"], shell=True, executable="/bin/bash")
-                elif self.state_values[int_idx] == 0 and self.ESTOP  == 1:
-                    # self.get_logger().info(bcolors.OKCYAN + "************************ INPUT 0 and ESTOP 1 => KILL " + bcolors.ENDC)
-                    if len(self.launch_status) > 1:                       
-                        for node in self.launch_status:
-                                pid_str = subprocess.run(f"ps aux | grep {node} | grep -v grep | awk '{{print $2}}'", shell=True, capture_output=True, text=True)
-                                pid = pid_str.stdout.strip()
-                                
-                                # Kill the process using SIGINT
-                                self.get_logger().info("Killing ROS2 node with pid: {}".format(pid))
-                                os.kill(int(pid), signal.SIGINT)               
-                        self.get_logger().info("All targeted processes signaled.")
-                    else:
-                        self.get_logger().info("no nodes in launch status topic.")
-                elif self.state_values[int_idx] == 0 and self.ESTOP  == 0:
-                    # self.get_logger().info(bcolors.OKGREEN + "************************ INPUT 0 and ESTOP 0 => PASS " + bcolors.ENDC)
-                    pass
-                elif self.state_values[int_idx] == 1 and self.ESTOP  == 1:
-                    # self.get_logger().info(bcolors.FAIL + "************************ INPUT 1 and ESTOP 1 => PASS " + bcolors.ENDC)
-                    pass
-                self.ESTOP = self.state_values[int_idx]
+    def publish_command(self, n, v):
+        if n in self.command_msg.interface_names:
+            idx = self.command_msg.interface_names.index(n)
+            self.command_msg.values[idx] = v
+            self.command_publisher.publish(self.command_msg)
+            self.get_logger().info(f"Published command message: {self.command_msg.values}")
+        else:
+            self.get_logger().warn(f"FUNCTION publish_command Interface name '{n}' not found in command message.")
         
-    def publish_command(self, names, values):
-        # Create the command message
-        command_msg = PlcController()
-        command_msg.values = values 
-        command_msg.interface_names = names
-
-        # Publish
-        self.command_publisher.publish(command_msg)
-        self.get_logger().info(f"Published command message: {command_msg.values}")
-
 
 def main(args=None):
     rclpy.init(args=args)
     node = PLCControllerInterface()
     
-    executor = MultiThreadedExecutor()
-    executor.add_node(node)
+    mt_executor = MultiThreadedExecutor()
+    mt_executor.add_node(node)
 
     try:
-        executor.spin()
+        mt_executor.spin()
     except KeyboardInterrupt:
         node.get_logger().info("Shutting down PLC Controller Interface node.")
-        pid_str = subprocess.run(f"ps aux | grep {node} | grep -v grep | awk '{{print $2}}'", shell=True, capture_output=True, text=True)
-        pid = pid_str.stdout.strip()
-        # Kill the process using SIGINT
-        node.get_logger().info("Killing ROS2 node with pid: {}".format(pid))
-        os.kill(int(pid), signal.SIGINT)
     finally:
-            node.destroy_node()
-            executor.shutdown()
-            rclpy.shutdown()
+        node.destroy_node()
+        mt_executor.shutdown()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

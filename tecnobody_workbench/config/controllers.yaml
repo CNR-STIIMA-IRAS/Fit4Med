@@ -1,213 +1,180 @@
-tecnobody_fake_hardware: 
-  tecnobody_controller_manager:
-    ros__parameters:
-      update_rate: 1000 # Hz
+controller_manager:
+  ros__parameters:
+    update_rate: 500  # Hz
 
-      forward_velocity_controller:
-        type: velocity_controllers/JointGroupVelocityController
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
 
-      forward_position_controller:
-        type: position_controllers/JointGroupPositionController
+    joint_trajectory_controller:
+      type: "joint_trajectory_controller/JointTrajectoryController"
 
-      forward_command_controller:
-        type: forward_command_controller/ForwardCommandController
+    scaled_trajectory_controller:
+      type: "scaled_fjt_controller/ScaledFjtController"
 
-      joint_state_broadcaster:
-        type: joint_state_broadcaster/JointStateBroadcaster
+    state_controller:
+      type: ethercat_controllers/CiA402Controller
 
-      joint_trajectory_controller:
-        type: "joint_trajectory_controller/JointTrajectoryController"
+    ft_sensor_command_broadcaster:
+      type: force_torque_sensor_broadcaster/ForceTorqueSensorBroadcaster
 
-      scaled_trajectory_controller:
-        type: "scaled_fjt_controller/ScaledFjtController"
+    gpio_command_controller:
+      type: "gpio_controllers/GpioCommandController"
 
-      state_controller:
-        type: ethercat_controllers/CiA402Controller
+    admittance_controller:
+        type: "cnr_admittance_controller/AdmittanceController"
 
-      admittance_controller:
-        type: "admittance_controller/AdmittanceController"
+    PLC_controller:
+      type: plc_controller/PLCController
 
-  forward_velocity_controller:
-    ros__parameters:
-      joints:
-        - joint_1
-        - joint_2
-        - joint_3
-      command_interface:
-        - velocity
+    forward_position_controller:
+      type: position_controllers/JointGroupPositionController
 
-  forward_position_controller:
-    ros__parameters:
-      joints:
-        - joint_1
-        - joint_2
-        - joint_3
-      command_interface:
-        - position
+    forward_velocity_controller:
+      type: velocity_controllers/JointGroupVelocityController
 
-  forward_command_controller:
-    ros__parameters:
-      joints:
-        - joint_1
-        - joint_2
-        - joint_3
-      interface_name: position
 
-  state_controller:
-    ros__parameters:
-      dofs:
-        - joint_1
-        - joint_2
-        - joint_3
+PLC_controller:
+  ros__parameters:
+    gpios:
+      - PLC_node
+    command_interfaces:
+      PLC_node:
+        - interfaces:
+          - mode_of_operation
+          - power_cutoff
+          - sonar_teach
+          - s_output.4
+          - s_output.5
+          - s_output.6
+          - s_output.7
+          - s_output.8
+    state_interfaces:
+      PLC_node:
+        - interfaces:
+          - s_input.0        
+          - estop
+          - reset
+          - s_input.4
+          - s_input.5
+          - s_input.6
+          - s_input.7
+          - s_input.8
 
-  joint_trajectory_controller:
-    ros__parameters:
-      joints:
-        - joint_1
-        - joint_2
-        - joint_3
+ft_sensor_command_broadcaster:
+  ros__parameters:
+    frame_id: "ee_link"
+    interface_names:
+      force:
+        x: "ft_sensor/force.x"
+        y: "ft_sensor/force.y"
+        z: "ft_sensor/force.z"
+      torque:
+        x: "ft_sensor/torque.x"
+        y: "ft_sensor/torque.y"
+        z: "ft_sensor/torque.z"
+    # offset:
+    #   force:
+    #     x: 249.12
+    #     y: -15.15
+    #     z: 18.6
+    #   torque:
+    #     x: 0.12
+    #     y: -0.7
+    #     z: 2.12  
 
-      command_interfaces:
-        - position
+forward_position_controller:
+  ros__parameters:
+    joints:
+      - joint_yaw
 
-      state_interfaces:
-        - position
-        - velocity
+forward_velocity_controller:
+  ros__parameters:
+    joints:
+      - joint_x
+      - joint_y
+      - joint_z
 
-  scaled_trajectory_controller:
-    ros__parameters:
-      joints:
-        - joint_1
-        - joint_2
-        - joint_3
-      command_interfaces:
-        - position
-      state_interfaces:
-        - position
-        - velocity
-      open_loop_control: true
-      constraints:
-        goal_time: 0.0
-      spline_order: 3 #Manuel ha detto di fare un prova aggiungendo il parametro spline_order: 3
-    # action_monitor_rate: 20.0
-    # allow_partial_joints_goal: true
-    # open_loop_control: false
-    # constraints:
-    #   stopped_velocity_tolerance: 0.01
-    #   goal_time: 0.0
-    #   joint_0:
-    #     trajectory: 0.05
-    #     goal: 0.03
-    #   joint_x:
-    #     trajectory: 0.05
-    #     goal: 0.03
-    # gains:
-    #   joint_x:
-    #     p: 2.0
-    #     i: 0.0
-    #     d: 0.0
-    #     i_clamp: 30000.0
-    #     ff_velocity_scale: 0.1
-    #   joint_y:
-    #     p: 2.0
-    #     i: 0.0
-    #     d: 0.0
-    #     i_clamp: 30000.0
-    #     ff_velocity_scale: 0.1
-    #   joint_z:
-    #     p: 2.0
-    #     i: 0.0
-    #     d: 0.0
-    #     i_clamp: 30000.0
-    #     ff_velocity_scale: 0.1
+joint_trajectory_controller:
+  ros__parameters:
+    joints:
+      - joint_x
+      - joint_y
+      - joint_z
 
-  admittance_controller:
-    ros__parameters:
-      joints:
-        - joint_1
-        - joint_2
-        - joint_3
-      command_interfaces:
-        - position
+    command_interfaces:
+      - position
 
-      state_interfaces:
-        - position
-        - velocity
+    state_interfaces:
+      - position
+      - velocity
 
-      chainable_command_interfaces:
-        - position
-        - velocity
+scaled_trajectory_controller:
+  ros__parameters:
+    joints:
+    - joint_x
+    - joint_y
+    - joint_z
+    command_interfaces:
+    - position
+    - acceleration
+    state_interfaces:
+    - position
+    - velocity
+    open_loop_control: true
+    constraints:
+      goal_time: 0.0
+    spline_order: 2
 
-      kinematics:
-        plugin_name: kinematics_interface_kdl/KinematicsInterfaceKDL
-        plugin_package: kinematics_interface # Just install this package (if not working with debian add it to your workspace)
-        base: base_link # Assumed to be stationary
-        tip: ee_link
-        group_name: manipulator
-        alpha: 0.0005
+state_controller:
+  ros__parameters:
+    dofs:
+      - joint_x
+      - joint_y
+      - joint_z
 
-      ft_sensor:
-        name: ft_sensor # Sensor name
-        frame:
-          id: ee_link # Wrench measurements are in this frame
-          external: false # force torque frame exists within URDF kinematic chain
-        filter_coefficient: 0.005
-
-      control:
-        frame:
-          id: base_link # Admittance calcs (displacement etc) are done in this frame. Usually the tool or end-effector
-          external: false # control frame exists within URDF kinematic chain
-
-      fixed_world_frame:
-        # Gravity points down (neg. Z) in this frame (Usually: world or base_link)
-        frame:
-          id: base_link # Admittance calcs (displacement etc) are done in this frame. Usually the tool or end-effector
-          external: false # control frame exists within URDF kinematic chain
-
-      gravity_compensation:
-        frame:
-          id: ee_link
-          external: false
-
-        CoG:
-          # specifies the center of gravity of the end effector
-          pos:
-            - 0.001 # x
-            - 0.2 # y
-            - 0.142 # z
-          force: 10.0 #9.81 # mass * 9.81
-
-      admittance:
-        selected_axes:
-          - false # x
-          - false # y
-          - true # z
-          - false # rx
-          - false # ry
-          - false # rz
-        # Having ".0" at the end is MUST, otherwise there is a loading error
-        # F = M*a + D*v + S*(x - x_d)
-        mass:
-          - 5.5
-          - 6.6
-          - 2.0
-          - 8.8
-          - 9.9
-          - 10.10
-
-        damping_ratio:
-          # damping can be used instead: zeta = D / (2 * sqrt( M * S ))
-          - 2.828427 # x
-          - 2.828427 # y
-          - 2.828427 # z
-          - 2.828427 # rx
-          - 2.828427 # ry
-          - 2.828427 # rz
-
-        stiffness:
-          - 214.4
-          - 214.4
-          - 10.0
-          - 214.4
-          - 214.5
-          - 214.6
+admittance_controller:
+  ros__parameters:
+    joints:
+    - joint_y
+    - joint_x
+    - joint_z
+    - joint_yaw
+    command_interfaces:
+    - velocity
+    state_interfaces:
+    - position
+    - velocity
+    kinematics:
+      plugin_name: kinematics_interface_kdl/KinematicsInterfaceKDL
+      plugin_package: kinematics_interface
+      base: base_link # Assumed to be stationary
+      tip: ft_link
+      group_name: fmrrehab
+      alpha: 0.0005
+    admittance:
+      mass: [ 10.0, 10.0, 10.0, 0.1, 0.1, 0.1 ]
+      stiffness: [ 0.0, 0.0, 0.0, 500.0, 500.0, 500.0 ] #N/m
+      damping_ratio: [ 2.828427, 2.828427, 2.828427, 2.828427, 2.828427, 2.828427 ]
+      selected_axes: [ true, true, true, false, false, false ]
+    ft_sensor:
+      name: "ft_sensor"
+      frame:
+        id: "ft_link"
+      low_pass_filter_frequency: 20.0
+      force_deadband: 5.0
+      torque_deadband: 2.0
+    control:
+      frame:
+        id: "base_link"
+        external: false
+    fixed_world_frame:
+      frame:
+        id: "base_link"
+        external: false
+    gravity_compensation:
+      frame:
+        id: "ft_link"
+        external: false
+      CoG:
+        pos: [ 0.01, 0.01, 0.01 ]
+        force: 0.01

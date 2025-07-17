@@ -4,18 +4,18 @@ from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch.actions import RegisterEventHandler
 from launch.event_handlers import OnProcessExit
-import os
-os.environ['RCUTILS_CONSOLE_OUTPUT_FORMAT']="[{severity}] [{name}]: {message} ({function_name}() at {file_name}:{line_number})"
+# import os
+# os.environ['RCUTILS_CONSOLE_OUTPUT_FORMAT']="[{severity}] [{name}]: {message} ({function_name}() at {file_name}:{line_number})"
 
 def generate_launch_description():
-    controllers_file = 'plc_controller.yaml'
+    controllers_file = 'controllers.yaml'
     description_package = 'tecnobody_workbench'
     
     robot_description_content = Command(
         [
             PathJoinSubstitution([FindExecutable(name='xacro')]),
             ' ',
-            PathJoinSubstitution([FindPackageShare(description_package), "urdf", 'sickPLC.config.urdf']),
+            PathJoinSubstitution([FindPackageShare(description_package), "urdf", 'platform_complete_PLC.config.urdf']),
         ]
     )
     robot_description = {'robot_description': robot_description_content}
@@ -27,8 +27,6 @@ def generate_launch_description():
     ros2_control_node = Node(
         package='controller_manager',
         executable='ros2_control_node',
-        name='plc_controller_manager',
-        namespace="safety_plc",
         arguments=[],
         parameters=[initial_joint_controllers],
         output='screen',
@@ -37,7 +35,6 @@ def generate_launch_description():
     rsp = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
-        namespace="safety_plc",
         output='screen',
         parameters=[robot_description]
     )
@@ -45,14 +42,13 @@ def generate_launch_description():
     plc_controller_spawner = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['PLC_controller', '-c', '/safety_plc/plc_controller_manager'],
+        arguments=['PLC_controller'],
         output='screen',
     )
 
     plc_manager = Node(
         package='plc_manager',
         executable='plc_manager_node',
-        namespace="safety_plc",
         output = 'screen',
     )
 

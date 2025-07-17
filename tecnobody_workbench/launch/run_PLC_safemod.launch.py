@@ -1,12 +1,9 @@
 from launch import LaunchDescription
-from launch.conditions import IfCondition
-from launch.substitutions import Command, FindExecutable, PathJoinSubstitution, LaunchConfiguration
+from launch.substitutions import Command, FindExecutable, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
-from launch_ros.parameter_descriptions import ParameterValue
 from launch.event_handlers import OnProcessExit, OnShutdown
 from launch.actions import RegisterEventHandler, LogInfo, OpaqueFunction
-from moveit_configs_utils import MoveItConfigsBuilder
 import threading
 
 # Funzione per lanciare il nodo che pubblica il flag
@@ -48,20 +45,45 @@ def clean_shutdown():
         package='controller_manager',
         executable='unspawner',
         arguments=[
-            "ft_sensor_command_broadcaster",
+            "ft_sensor_command_broadcaster"
         ],
     )
     joint_controller_unspawner = Node(
         package='controller_manager',
         executable='unspawner',
         arguments=[
-            "joint_trajectory_controller",
+            "joint_trajectory_controller"
+        ],
+    )
+    forward_pos_controller_unspawner = Node(
+        package='controller_manager',
+        executable='unspawner',
+        arguments=[
+            "forward_position_controller"
+        ],
+    )
+    forward_vel_controller_unspawner = Node(
+        package='controller_manager',
+        executable='unspawner',
+        arguments=[
+            "forward_velocity_controller"
+        ],
+    )
+    admittance_controller_unspawner = Node(
+        package='controller_manager',
+        executable='unspawner',
+        arguments=[
+            "admittance_controller"
         ],
     )
     return [
         joint_state_broadcaster_unspawner,
         state_controller_unspawner,
-        joint_controller_unspawner
+        force_torque_sensor_broadcaster_unspawner,
+        joint_controller_unspawner,
+        forward_pos_controller_unspawner,
+        forward_vel_controller_unspawner,
+        admittance_controller_unspawner
     ]
 
 
@@ -90,7 +112,6 @@ def generate_launch_description():
         parameters=[initial_joint_controllers],
         output='screen',
     )
-    nodes_names.append('controller_manager')
 
     jsb = Node(
         package='controller_manager',
@@ -105,13 +126,18 @@ def generate_launch_description():
         output='screen',
         parameters=[robot_description]
     )
-    nodes_names.append('robot_state_publisher')
     
-    gpio_spawner = Node(
+    plc_spawner = Node(
         package='controller_manager',
         executable='spawner',
         arguments=['PLC_controller'],
         output='screen',
+    )
+
+    plc_manager = Node(
+        package='plc_manager',
+        executable='plc_manager_node',
+        output = 'screen',
     )
 
     ssb = Node(
@@ -134,7 +160,6 @@ def generate_launch_description():
         arguments=['MODE_CYCLIC_SYNC_POSITION'],
         output='screen',
     )
-    nodes_names.append('homing_node')
 
     homing_done_publisher = Node(
         package='tecnobody_workbench_utils',
@@ -148,7 +173,6 @@ def generate_launch_description():
         name='tecnobody_ethercat_checker_node',
         output='screen',
     )
-    nodes_names.append('tecnobody_ethercat_checker_node')
 
     ft_offset_updater = Node(
         package='tecnobody_workbench_utils',
@@ -198,8 +222,9 @@ def generate_launch_description():
                      forward_controller_node,
                      forward_pos_controller_node,
                      admittance_controller_node, 
-                     homing_done_publisher, 
-                     eth_checker],
+                     homing_done_publisher,
+                     eth_checker,
+                     plc_manager],
         )
     )
 
@@ -221,12 +246,10 @@ def generate_launch_description():
 
     ld = LaunchDescription()
     ld.add_action(ros2_control_node)
-    ld.add_action(gpio_spawner)
+    ld.add_action(plc_spawner)
     ld.add_action(ssb)
     ld.add_action(rsp)
     ld.add_action(homing_launcher)
     ld.add_action(controllers_launcher)
-    ld.add_action(node_names_launcher)
     ld.add_action(controller_unspawner)
-
     return ld

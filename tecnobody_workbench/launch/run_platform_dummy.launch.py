@@ -53,7 +53,6 @@ def generate_launch_description():
         package='controller_manager',
         executable='ros2_control_node',
         parameters=[robot_description, initial_joint_controllers],
-        namespace='tecnobody_fake_hardware',
         output='screen',
         name='tecnobody_controller_manager',
     )
@@ -62,16 +61,14 @@ def generate_launch_description():
     jsb = Node(
         package='controller_manager',
         executable='spawner',
-        namespace='tecnobody_fake_hardware',
-        arguments=['joint_state_broadcaster', '-c', '/tecnobody_fake_hardware/tecnobody_controller_manager'],
+        arguments=['joint_state_broadcaster', '-c', '/tecnobody_controller_manager'],
         output='screen',
     )
     
     fmrrehab_controller = Node(
         package='controller_manager',
         executable='spawner',
-        namespace='tecnobody_fake_hardware',
-        arguments=['joint_trajectory_controller', '-c', '/tecnobody_fake_hardware/tecnobody_controller_manager'],
+        arguments=['joint_trajectory_controller', '-c', '/tecnobody_controller_manager'],
         output='screen',
     )
 
@@ -79,7 +76,6 @@ def generate_launch_description():
         package='robot_state_publisher',
         executable='robot_state_publisher',
         output='screen',
-        namespace='tecnobody_fake_hardware',
         parameters=[robot_description],
         name='tecnobody_state_publisher',
     )
@@ -93,7 +89,6 @@ def generate_launch_description():
         arguments=["-d", PathJoinSubstitution([
             FindPackageShare(description_package), "config", "robot_model.rviz"
         ])],
-        namespace='tecnobody_fake_hardware',
         parameters=[robot_description],
     )
     nodes_names.append("rviz2_moveit")
