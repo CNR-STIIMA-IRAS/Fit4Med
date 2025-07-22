@@ -12,7 +12,6 @@ import threading
 import os
 import signal
 
-
 class bcolors:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
@@ -29,6 +28,7 @@ class PLCControllerInterface(Node):
     def __init__(self):
         super().__init__('plc_manager')
         
+        self.shutdown_all = False
         plc_group = MutuallyExclusiveCallbackGroup()
         timer_group = MutuallyExclusiveCallbackGroup()
         service_group = MutuallyExclusiveCallbackGroup()
@@ -55,26 +55,29 @@ class PLCControllerInterface(Node):
         client_success = self.list_controllers_client.wait_for_service(timeout_sec=5.0)
         if not client_success:
             self.get_logger().error("List controllers service is not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
+            self.shutdown_all = True
+            return
+
         self.switch_client = self.create_client(SwitchController, '/controller_manager/switch_controller')
         client_success = self.switch_client.wait_for_service(timeout_sec=5.0)
         if not client_success:
             self.get_logger().error("Switch controller service is not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
+            self.shutdown_all = True
+            return
+        
         self.unload_client = self.create_client(UnloadController, '/controller_manager/unload_controller')
         client_success = self.unload_client.wait_for_service(timeout_sec=5.0)
         if not client_success:
             self.get_logger().error("Unload controller service is not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
+            self.shutdown_all = True
+            return
+        
         self.eth_checker_shutdown_client = self.create_client(Trigger, '/ethercat_checker/request_shutdown')
         eth_checker_shutdown_client_success = self.eth_checker_shutdown_client.wait_for_service(timeout_sec=5.0)
         if not eth_checker_shutdown_client_success:
             self.get_logger().error("Ethercat checker shutdown service is not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
+            self.shutdown_all = True
+            return
 
         # Internal storage for PLC interfaces names and values
         self.interface_names = []
@@ -236,14 +239,17 @@ def main(args=None):
     mt_executor = MultiThreadedExecutor()
     mt_executor.add_node(node)
 
+
+    import os
+    os.sched_setaffinity(0, {2,6})
     try:
-        mt_executor.spin()
+        while rclpy.ok() and not node.shutdown_all:
+            mt_executor.spin_once()
     except KeyboardInterrupt:
         node.get_logger().info("Shutting down PLC Controller Interface node.")
     finally:
         node.destroy_node()
-        mt_executor.shutdown()
-        rclpy.shutdown()
+        #rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
