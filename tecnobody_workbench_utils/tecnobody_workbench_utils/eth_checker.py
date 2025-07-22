@@ -188,6 +188,9 @@ class EthercatCheckerNode(Node):
 def main(args=None):
     rclpy.init(args=args)
 
+    import os
+    os.sched_setaffinity(0, {2,6})
+
     node = EthercatCheckerNode()
 
     executor = MultiThreadedExecutor()
