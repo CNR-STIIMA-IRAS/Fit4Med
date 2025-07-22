@@ -32,6 +32,7 @@ class HomingNode(Node):
         self.homing_process_started = False
         # Target cyclic mode
         self.target_cyclic_mode = target_op_mode
+        self.shutdown_requested = False
 
     def check_ethercat_slaves(self):
         eth_states = self.get_ethercat_slaves_status()
@@ -264,12 +265,12 @@ class HomingNode(Node):
         
     def shutdown_node(self):
         self.get_logger().info('Shutting down...')
-        time.sleep(2)
-        self.destroy_node()
+        self.shutdown_requested = True
+        # self.destroy_node()
 
-        # Ensure context is valid before shutting down
-        if rclpy.ok():
-            rclpy.shutdown()
+        # # Ensure context is valid before shutting down
+        # if rclpy.ok():
+        #     rclpy.shutdown()
 
 
 def main(args=None):
@@ -282,9 +283,15 @@ def main(args=None):
     executor.add_node(node)
 
     try:
-        executor.spin()
+        while rclpy.ok():  # Main loop
+            executor.spin_once()
+            if node.shutdown_requested:  # Check if shutdown is requested
+                break
     except KeyboardInterrupt:
         node.get_logger().info('Keyboard interrupt, shutting down.\n')
+    finally:
+        node.destroy_node()  # Clean up the node
+        rclpy.shutdown()     # Shutdown the ROS 2 context
 
 if __name__ == '__main__':
     main()
