@@ -6,6 +6,9 @@ from launch.event_handlers import OnProcessExit, OnShutdown
 from launch.actions import RegisterEventHandler, LogInfo, OpaqueFunction
 import threading
 
+import os
+os.sched_setaffinity(0, {3,7})
+
 # Funzione per lanciare il nodo che pubblica il flag
 def launch_status_node(context, *args, **kwargs):
     import rclpy
@@ -76,7 +79,7 @@ def clean_shutdown():
             "admittance_controller"
         ],
     )
-    return [
+    return LaunchDescription([
         joint_state_broadcaster_unspawner,
         state_controller_unspawner,
         force_torque_sensor_broadcaster_unspawner,
@@ -84,7 +87,7 @@ def clean_shutdown():
         forward_pos_controller_unspawner,
         forward_vel_controller_unspawner,
         admittance_controller_unspawner
-    ]
+    ])
 
 
 def generate_launch_description():
