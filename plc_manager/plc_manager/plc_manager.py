@@ -241,7 +241,7 @@ def main(args=None):
 
 
     import os
-    os.sched_setaffinity(0, {2,6})
+    os.sched_setaffinity(0, {2})
     try:
         while rclpy.ok() and not node.shutdown_all:
             mt_executor.spin_once()
