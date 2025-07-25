@@ -9,7 +9,7 @@ controller_manager:
       type: "joint_trajectory_controller/JointTrajectoryController"
 
     scaled_trajectory_controller:
-      type: "scaled_fjt_controller/ScaledFjtController"
+      type: "scaled_joint_trajectory_controller/ScaledJointTrajectoryController"
 
     state_controller:
       type: ethercat_controllers/CiA402Controller
