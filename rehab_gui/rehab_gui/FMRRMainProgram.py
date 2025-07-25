@@ -87,13 +87,14 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.execution_time_percentage = 0
         self.iPhase = 0
         self._counter_request_homing_procedure = 0 # counter to avoid multiple request of homing procedure
-        self.trigger_worker.connect(self.MovementWorker.start_movementFCT)# type: ignore
-        self.trigger_pause.connect(self.MovementWorker.is_paused) # type: ignore
-        self.MovementWorker.finished.connect(self.on_worker_finished)
-        self.MovementWorker.moo_finished.connect(self.on_moo_worker_finished)
-        self.MovementWorker.progress.connect(self.on_worker_progress)
+        self.trigger_worker.connect(self.MovementWorker.fct().startMovement)# type: ignore
+        self.trigger_pause.connect(self.MovementWorker.fct().is_paused) # type: ignore
+        self.MovementWorker.fct().finished.connect(self.on_fct_worker_finished)
+        self.MovementWorker.fct().progress.connect(self.on_fct_worker_progress)
+        #self.MovementWorker.moo().finished.connect(self.on_moo_worker_finished)
+        
         self.worker_thread.start()
-        self.MovementWorker.clearFCT()
+        self.MovementWorker.fct().clear()
 
     # def updateROSNetworkStatus(self):
     #     available_nodes = [ full_name for _, _, full_name in self._ros_node.get_node_names(node=self, include_hidden_nodes=False) ]
@@ -221,7 +222,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
             print('The robot movement was successfully resumed')
 
     def clbk_STOPtrainig(self):   
-        self.MovementWorker.stopFCT() 
+        self.MovementWorker.fct().stop() 
         for iProgBar in self.progressBarPhases:
             iProgBar = 0
         self.pushButton_PAUSEtrainig.enablePushButton(0)
@@ -243,14 +244,14 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
             self.progressBarPhases[19].setValue(100)
             self.clbk_STOPtrainig()
         
-    def on_worker_finished(self):
+    def on_fct_worker_finished(self):
         self.iPhase += 1
         self.movement_completed = True
 
-    def on_moo_worker_finished(self):
-        self.ROS.moo_applied_success = True
+    # def on_moo_worker_finished(self):
+    #     self.ROS.moo_applied_success = True
     
-    def on_worker_progress(self,value):
+    def on_fct_worker_progress(self,value):
         self.execution_time_percentage = int(value)  # Get the progress percentage from the worker
 
     def clbk_spinBox_MaxVel(self):
@@ -344,7 +345,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         approach_point_goal.trajectory.points.append(final_point) # type: ignore
         
         approach_point_goal.trajectory.header.stamp = self._ros_node.get_clock().now().to_msg()
-        home_future = self.MovementWorker.clientFollowCartTraj.send_goal_async(approach_point_goal)
+        home_future = self.MovementWorker.fct().client.send_goal_async(approach_point_goal)
         #home_future.add_done_callback(self.home_cancel_callback)
         return True
 
@@ -352,7 +353,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         TrjYamlData = self.uiMovementWindow.TrjYamlData
         self.CartesianPositions = TrjYamlData.get("cart_trj3").get("cart_positions")
         self.TimeFromStart = TrjYamlData.get("cart_trj3").get("time_from_start")
-        self.MovementWorker.setFCT(self.CartesianPositions, self.TimeFromStart)  # type: ignore    
+        self.MovementWorker.fct().set(self.CartesianPositions, self.TimeFromStart)  # type: ignore    
 
         
 def main(args=None):
