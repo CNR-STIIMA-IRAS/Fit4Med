@@ -5,7 +5,7 @@
         <hardware>
             <plugin>ethercat_driver/EthercatDriver</plugin>
             <param name="master_id">0</param>
-            <param name="control_frequency">500</param>
+            <param name="control_frequency">250</param>
         </hardware>
 
          <joint name="joint_x">
@@ -109,7 +109,7 @@
     <ros2_control name="tecnobody_end_effector" type="system">
         <hardware>
             <plugin>fit4med_ee_joint_hw/EEJointPositionSystem</plugin>
-            <param name="control_frequency">500</param>
+            <param name="control_frequency">250</param>
         </hardware>
 
         <joint name="joint_yaw">
