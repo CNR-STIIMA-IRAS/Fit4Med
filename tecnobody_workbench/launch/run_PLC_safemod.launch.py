@@ -55,7 +55,8 @@ def clean_shutdown():
         package='controller_manager',
         executable='unspawner',
         arguments=[
-            "joint_trajectory_controller"
+            #"joint_trajectory_controller"
+            'scaled_joint_trajectory_controller'
         ],
     )
     forward_pos_controller_unspawner = Node(
@@ -186,7 +187,10 @@ def generate_launch_description():
     joint_controller_node = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['joint_trajectory_controller'],
+        arguments=[
+            #'joint_trajectory_controller'
+            'scaled_trajectory_controller'
+        ],
         output='screen',
     )
 
