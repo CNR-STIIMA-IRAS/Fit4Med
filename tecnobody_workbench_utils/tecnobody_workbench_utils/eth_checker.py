@@ -50,6 +50,9 @@ class EthercatCheckerNode(Node):
         self.state = {dof: 'STATE_UNDEFINED' for dof in self.dof_names}
         self.mode = {dof: 'MODE_NO_MODE' for dof in self.dof_names}
         self.status_words = {dof: 0 for dof in self.dof_names}
+        self.fault_reset_in_execution = False
+        self.try_turn_off_in_execution = False
+        self.try_turn_on_in_execution = False
 
     def enable_error_checking_callback(self, request, response):
         self.error_checking_enabled = request.data
@@ -66,8 +69,6 @@ class EthercatCheckerNode(Node):
                 self.status_words[dof] = msg.status_words[index]
             except ValueError:
                 self.get_logger().error(f'DoF {dof} not found in received message')
-        if self.error_checking_enabled:
-            self.check_faults()
 
     def get_modes_callback(self, request, response):
         if_names = request.dof_names
@@ -93,12 +94,12 @@ class EthercatCheckerNode(Node):
     def check_faults(self):
         msg_to_pub = Bool()
         if 'STATE_FAULT' in self.state.values():
-            self.get_logger().info("Detected FAULT state")
+            self.get_logger().error("Detected FAULT state - Trying to resetting faults...", throttle_duration_sec=1)
             self.reset_fault()
             msg_to_pub.data = False
             self.publisher_.publish(msg_to_pub)
         elif 'STATE_SWITCH_ON_DISABLED' in self.state.values():
-            self.get_logger().info("Detected DISABLED state")
+            self.get_logger().info("Detected DISABLED state - Trying to turn on", throttle_duration_sec=1)
             self.try_turn_on()
             msg_to_pub.data = False
             self.publisher_.publish(msg_to_pub)
@@ -111,12 +112,16 @@ class EthercatCheckerNode(Node):
                 msg_to_pub.data = True
                 self.publisher_.publish(msg_to_pub)
             else:
-                self.get_logger().info(f'Found ethercat slave in {self.state[dof]} state. Not managed.')
+                self.get_logger().info(f'Found ethercat slave in {self.state[dof]} state. Not managed.', throttle_duration_sec=1)
                 msg_to_pub.data = False
                 self.publisher_.publish(msg_to_pub)
 
     def reset_fault(self):
-        self.get_logger().info('Resetting faults...')
+        if self.fault_reset_in_execution:
+            self.get_logger().warn('Fault reset already in execution, skipping...', throttle_duration_sec=1)
+            return
+        
+        self.fault_reset_in_execution = True
         fault_service_group = MutuallyExclusiveCallbackGroup()
         client = self.create_client(Trigger, '/state_controller/reset_fault', callback_group=fault_service_group)
         if client.wait_for_service(timeout_sec=5.0):
@@ -125,6 +130,7 @@ class EthercatCheckerNode(Node):
             future.add_done_callback(self.reset_fault_callback)
         else:
             self.get_logger().error('Service /state_controller/reset_fault not available')
+            self.fault_reset_in_execution = False
 
     def reset_fault_callback(self, future):
         try:
@@ -132,12 +138,17 @@ class EthercatCheckerNode(Node):
             if result.success:
                 self.get_logger().info('Fault reset successfully')
             else:
-                self.get_logger().error('Failed to reset fault')
+                self.get_logger().error('Failed to reset fault - Try to switch off the drives')
+                self.try_turn_off()
         except Exception as e:
             self.get_logger().error(f'Service call failed with exception: {e}')
+        self.fault_reset_in_execution = False
 
     def try_turn_on(self):
-        self.get_logger().info('Turning on drives...')
+        if self.try_turn_on_in_execution:
+            self.get_logger().warn('Try turn on already in execution, skipping...')
+            return
+        self.try_turn_on_in_execution = True
         try_on_service_group = MutuallyExclusiveCallbackGroup()
         client = self.create_client(Trigger, '/state_controller/try_turn_on', callback_group=try_on_service_group)
         if client.wait_for_service(timeout_sec=5.0):
@@ -146,6 +157,7 @@ class EthercatCheckerNode(Node):
             future.add_done_callback(self.try_turn_on_callback)
         else:
             self.get_logger().error('Service /state_controller/try_turn_on not available')
+            self.try_turn_on_in_execution = False
 
     def try_turn_on_callback(self, future):
         try:
@@ -156,6 +168,34 @@ class EthercatCheckerNode(Node):
                 self.get_logger().error('Failed to turn on drives')
         except Exception as e:
             self.get_logger().error(f'Service call failed with exception: {e}')
+        self.try_turn_on_in_execution = False
+    
+    def try_turn_off(self):
+        if self.try_turn_off_in_execution:
+            self.get_logger().warn('Try turn off already in execution, skipping...')
+            return
+        self.try_turn_off_in_execution = True
+        self.get_logger().info('Turning on drives...')
+        try_on_service_group = MutuallyExclusiveCallbackGroup()
+        client = self.create_client(Trigger, '/state_controller/try_turn_off', callback_group=try_on_service_group)
+        if client.wait_for_service(timeout_sec=5.0):
+            request = Trigger.Request()
+            future = client.call_async(request)
+            future.add_done_callback(self.try_turn_off_callback)
+        else:
+            self.get_logger().error('Service /state_controller/try_turn_off not available')
+            self.try_turn_off_in_execution = False
+
+    def try_turn_off_callback(self, future):
+        try:
+            result = future.result()
+            if result.success:
+                self.get_logger().info('Drives turned on successfully')
+            else:
+                self.get_logger().error('Failed to turn on drives')
+        except Exception as e:
+            self.get_logger().error(f'Service call failed with exception: {e}')
+        self.try_turn_off_in_execution = False
     
     def get_op_mode_number(self, mode):
         op_mode_dict={
@@ -199,6 +239,8 @@ def main(args=None):
     try:
         while not _shutdown_request:
             executor.spin_once()
+            if node.error_checking_enabled:
+                node.check_faults()
             
         node.get_logger().info('^^^^^^^^^^^^^^^^^ Shutting down...')
     except KeyboardInterrupt:
