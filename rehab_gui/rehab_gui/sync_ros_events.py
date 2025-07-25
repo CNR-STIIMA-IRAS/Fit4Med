@@ -38,8 +38,10 @@ class SyncRosManager:
         self._controller_timer.timeout.connect(self.update_current_controller)
         self._joint_state = None
         self._joint_names = joint_names
-        #  subscribers        
+        #  subscribers
+        self.RobotJointPosition = [0.0] * len(self._joint_names)
         self.joint_subscriber = self._ros_node.create_subscription(JointState, 'joint_states', self.getJointState, 1)
+        self.HandlePosition = [0.0] * len(self._joint_names)
         self.tool_subscriber = self._ros_node.create_subscription(JointState, 'joint_states', self.getToolPosition, 1)
         #  publisher  
         self.pub_speed_ovr = self._ros_node.create_publisher(Int16, '/speed_ovr', 10)
@@ -119,9 +121,14 @@ class SyncRosManager:
         self.enable_ptp = False
 
         # Mode of operation action
-        self.moo_applied_success = False
+        # self.moo_applied_success = False 
+        # It was assigned in the FMRRMainProgram.py, and assigned by an emitter generated in Async Ros Module ... 
+        # However it was never used anywhere excpet here ....
     
     def getJointState(self, data):
+        if not set(self._joint_names).issubset(data.name):
+            self._ros_node.get_logger().warn(f"JointState names {data.name} do not match the expected joint names {self._joint_names}. Ignoring data.")
+            return
         name_to_position = dict(zip(data.name, data.position))
         self.RobotJointPosition = [
             name_to_position[joint] for joint in self._joint_names if joint in name_to_position
@@ -230,7 +237,10 @@ class SyncRosManager:
             self._soft_start_timer.stop()
 
     def getToolPosition(self, data):
-        ToolPosition = data
+        if not set(self._joint_names).issubset(data.name):
+            self._ros_node.get_logger().warn(f"Tool Position names {data.name} do not match the expected joint names {self._joint_names}. Ignoring data.")
+            return
+        
         self.HandlePosition = [0,0,0]
         name_to_position = dict(zip(data.name, data.position))
         self.HandlePosition = [
@@ -343,8 +353,10 @@ class SyncRosManager:
                         break
                     elif elapsed > timeout_sec:
                         self._ros_node.get_logger().error('Timeout while waiting for homing to complete')
+                        for status_word in op_response.status_words:
+                            self._ros_node.get_logger().error(' - STATUS WORD: 0b{:16b} bit 12: %d, bit 13 (error): %d'.format(status_word, status_word & (1 << 12), status_word & (1 << 13)))
                         return False
-                    self._ros_node.get_logger().info("waiting for status worlds to be all true!!")
+                    self._ros_node.get_logger().info("waiting for status worlds to be all true!!", once=True)
                     time.sleep(0.1)  # sleep a bit to avoid busy waiting
 
                 self.homing_process_started = False
