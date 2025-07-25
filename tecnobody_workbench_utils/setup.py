@@ -24,7 +24,9 @@ setup(
     entry_points={
         'console_scripts': [
             'homing_node = tecnobody_workbench_utils.homing:main',
+            'boot_hw = tecnobody_workbench_utils.boot_hw:main',
             'ethercat_checker_node = tecnobody_workbench_utils.eth_checker:main',
+            'ethercat_checker_no_try_turn_on_node = tecnobody_workbench_utils.eth_checker_no_try_turn_on:main',
             'homing_completion_publisher = tecnobody_workbench_utils.homing_completion_publisher:main',
             'trajectory_action_client = tecnobody_workbench_utils.send_trajectory:main',
             'ft_forwarder = tecnobody_workbench_utils.ft_forwarder:main',
