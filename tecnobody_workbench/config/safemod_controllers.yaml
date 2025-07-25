@@ -6,10 +6,10 @@ controller_manager:
       type: joint_state_broadcaster/JointStateBroadcaster
 
     joint_trajectory_controller:
-      type: "joint_trajectory_controller/JointTrajectoryController"
+      type: joint_trajectory_controller/JointTrajectoryController
 
     scaled_trajectory_controller:
-      type: "scaled_fjt_controller/ScaledFjtController"
+      type: cnr_joint_trajectory_controller/JointTrajectoryController
 
     state_controller:
       type: ethercat_controllers/CiA402Controller
@@ -115,7 +115,7 @@ scaled_trajectory_controller:
     - joint_z
     command_interfaces:
     - position
-    - acceleration
+    - offset_velocity
     state_interfaces:
     - position
     - velocity
