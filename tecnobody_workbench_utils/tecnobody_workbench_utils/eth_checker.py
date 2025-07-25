@@ -146,7 +146,7 @@ class EthercatCheckerNode(Node):
 
     def try_turn_on(self):
         if self.try_turn_on_in_execution:
-            self.get_logger().warn('Try turn on already in execution, skipping...')
+            self.get_logger().warn('Try turn on already in execution, skipping...', throttle_duration_sec=5)
             return
         self.try_turn_on_in_execution = True
         try_on_service_group = MutuallyExclusiveCallbackGroup()
