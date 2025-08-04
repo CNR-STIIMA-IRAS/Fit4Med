@@ -464,6 +464,37 @@ class Ui_FMRRMainWindow(object):
         self.pushButton_CLOSEprogram = QtWidgets.QPushButton(FMRRMainWindow)
         self.pushButton_CLOSEprogram.setGeometry(QtCore.QRect(450, 720, 100, 40))
         self.pushButton_CLOSEprogram.setObjectName("pushButton_CLOSEprogram")
+        self.pushButton_StartMotors = QtWidgets.QPushButton(FMRRMainWindow)
+        self.pushButton_StartMotors.setGeometry(QtCore.QRect(250, 850, 61, 51))
+        self.pushButton_StartMotors.setStyleSheet("background-color: green;\n"
+"color: white;\n"
+"")
+        self.pushButton_StartMotors.setObjectName("pushButton_StartMotors")
+        self.pushButton_StopMotors = QtWidgets.QPushButton(FMRRMainWindow)
+        self.pushButton_StopMotors.setEnabled(False)
+        self.pushButton_StopMotors.setGeometry(QtCore.QRect(320, 850, 61, 51))
+        self.pushButton_StopMotors.setStyleSheet("background-color: red;\n"
+"color: white;\n"
+"")
+        self.pushButton_StopMotors.setObjectName("pushButton_StopMotors")
+        self.frame_FaultDetected = QtWidgets.QFrame(FMRRMainWindow)
+        self.frame_FaultDetected.setGeometry(QtCore.QRect(450, 880, 21, 21))
+        self.frame_FaultDetected.setStyleSheet("background-color: lightgray;\n"
+"border-radius: 10px;")
+        self.frame_FaultDetected.setFrameShape(QtWidgets.QFrame.StyledPanel)
+        self.frame_FaultDetected.setFrameShadow(QtWidgets.QFrame.Raised)
+        self.frame_FaultDetected.setObjectName("frame_FaultDetected")
+        self.lineEdit_FaultDetected = QtWidgets.QLineEdit(FMRRMainWindow)
+        self.lineEdit_FaultDetected.setGeometry(QtCore.QRect(440, 850, 51, 25))
+        self.lineEdit_FaultDetected.setObjectName("lineEdit_FaultDetected")
+        self.comboBox_ResetFaults = QtWidgets.QComboBox(FMRRMainWindow)
+        self.comboBox_ResetFaults.setGeometry(QtCore.QRect(500, 850, 72, 25))
+        self.comboBox_ResetFaults.setObjectName("comboBox_ResetFaults")
+        self.comboBox_ResetFaults.addItem("")
+        self.comboBox_ResetFaults.addItem("")
+        self.pushButton_ResetFaults = QtWidgets.QPushButton(FMRRMainWindow)
+        self.pushButton_ResetFaults.setGeometry(QtCore.QRect(500, 880, 80, 25))
+        self.pushButton_ResetFaults.setObjectName("pushButton_ResetFaults")
 
         self.retranslateUi(FMRRMainWindow)
         self.tabWidget.setCurrentIndex(0)
@@ -485,7 +516,7 @@ class Ui_FMRRMainWindow(object):
 "hr { height: 1px; border-width: 0; }\n"
 "li.unchecked::marker { content: \"\\2610\"; }\n"
 "li.checked::marker { content: \"\\2612\"; }\n"
-"</style></head><body style=\" font-family:\'Ubuntu\'; font-size:11pt; font-weight:400; font-style:normal;\">\n"
+"</style></head><body style=\" font-family:\'Sans Serif\'; font-size:9pt; font-weight:400; font-style:normal;\">\n"
 "<p align=\"center\" style=\" margin-top:12px; margin-bottom:12px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;\"><span style=\" font-family:\'MS Shell Dlg 2\'; font-size:10pt;\">Movement duration</span></p></body></html>"))
         self.pushButton_STOPtrainig.setText(_translate("FMRRMainWindow", "STOP training"))
         self.lineEdit_MovementName.setText(_translate("FMRRMainWindow", "MOVEMENT "))
@@ -552,13 +583,11 @@ class Ui_FMRRMainWindow(object):
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_2), _translate("FMRRMainWindow", "Online Data Viewer"))
         self.pushButton_CLOSEprogram.setText(_translate("FMRRMainWindow", "CLOSE \n"
 " program"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    FMRRMainWindow = QtWidgets.QDialog()
-    ui = Ui_FMRRMainWindow()
-    ui.setupUi(FMRRMainWindow)
-    FMRRMainWindow.show()
-    sys.exit(app.exec_())
+        self.pushButton_StartMotors.setText(_translate("FMRRMainWindow", "Start\n"
+" Motors"))
+        self.pushButton_StopMotors.setText(_translate("FMRRMainWindow", "Stop\n"
+" Motors"))
+        self.lineEdit_FaultDetected.setText(_translate("FMRRMainWindow", "FAULT"))
+        self.comboBox_ResetFaults.setItemText(0, _translate("FMRRMainWindow", "Manual"))
+        self.comboBox_ResetFaults.setItemText(1, _translate("FMRRMainWindow", "Auto"))
+        self.pushButton_ResetFaults.setText(_translate("FMRRMainWindow", "Reset Faults"))

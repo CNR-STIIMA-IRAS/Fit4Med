@@ -14,6 +14,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import JointState # joints positions, velocities and efforts
 from std_msgs.msg import Int16, Float64MultiArray 
 from ethercat_controller_msgs.srv import SwitchDriveModeOfOperation, GetModesOfOperation
+from ethercat_controller_msgs.msg import DriveStateFlags
 from std_srvs.srv import Trigger, SetBool
 from controller_manager_msgs.srv import SwitchController, ListControllers
 from rclpy.parameter_client import AsyncParameterClient
@@ -43,6 +44,7 @@ class SyncRosManager:
         self.joint_subscriber = self._ros_node.create_subscription(JointState, 'joint_states', self.getJointState, 1)
         self.HandlePosition = [0.0] * len(self._joint_names)
         self.tool_subscriber = self._ros_node.create_subscription(JointState, 'joint_states', self.getToolPosition, 1)
+        self.fault_state_subscriber = self._ros_node.create_subscription(DriveStateFlags, '/ethercat_checker/drive_state_flags', self.getDrivestState, 1)
         #  publisher  
         self.pub_speed_ovr = self._ros_node.create_publisher(Int16, '/speed_ovr', 10)
         self.jog_cmd_publisher = self._ros_node.create_publisher(Float64MultiArray, f'/{self.forward_command_controller}/commands', 10)
@@ -57,6 +59,24 @@ class SyncRosManager:
         switch_controller_client_success = self.switch_controller_client.wait_for_service(timeout_sec=5.0)
         if not switch_controller_client_success:
             self._ros_node.get_logger().error("Switch controller service is not ready.")
+            rclpy.shutdown()
+            sys.exit(1)
+        self.motors_on_client = self._ros_node.create_client(Trigger, '/state_controller/try_turn_on')
+        motors_on_client_success = self.motors_on_client.wait_for_service(timeout_sec=5.0)
+        if not motors_on_client_success:
+            self._ros_node.get_logger().error("Try turn on motors service is not ready.")
+            rclpy.shutdown()
+            sys.exit(1)
+        self.motors_off_client = self._ros_node.create_client(Trigger, '/state_controller/try_turn_off')
+        motors_off_client_success = self.motors_off_client.wait_for_service(timeout_sec=5.0)
+        if not motors_off_client_success:
+            self._ros_node.get_logger().error("Try turn off motors service is not ready.")
+            rclpy.shutdown()
+            sys.exit(1)
+        self.reset_fault_client = self._ros_node.create_client(Trigger, '/state_controller/reset_fault')
+        reset_fault_client_success = self.reset_fault_client.wait_for_service(timeout_sec=5.0)
+        if not reset_fault_client_success:
+            self._ros_node.get_logger().error("Reset Faults service is not ready.")
             rclpy.shutdown()
             sys.exit(1)
         self.mode_of_op_client = self._ros_node.create_client(SwitchDriveModeOfOperation, '/state_controller/switch_mode_of_operation')
@@ -74,7 +94,7 @@ class SyncRosManager:
         self.enable_eth_error_check = self._ros_node.create_client(SetBool, '/ethercat_checker/enable_error_checking')
         enable_eth_err_chk_success = self.enable_eth_error_check.wait_for_service(timeout_sec=5.0)
         if not enable_eth_err_chk_success:
-            self._ros_node.get_logger().error("Switch drive mode of operation service is not ready.")
+            self._ros_node.get_logger().error("Enable error checking service is not ready.")
             rclpy.shutdown()
             sys.exit(1)
         self.cm_param_client = AsyncParameterClient(self._ros_node, 'controller_manager')
@@ -109,51 +129,28 @@ class SyncRosManager:
         self._soft_transition_target = None  # "speed_ovr" or "jog"
         self._soft_transition_joint = None   # only for jog, indicates dof number
         self._prev_jog_direction = None
-
         # Enable jog
         self.jog_enabled = False
         self.jog_enabled_pressed = False
+        # Enable manual guidance
+        self.manual_guidance_enabled = False
+        self.manual_guidance_enabled_pressed = False
+        # Enable zeroing
+        self.homing_check_enabled_pressed = False
         # Buttons to enalbe according to active controller name and active mode of operation
         self.enable_jog_buttons = False
         self.enable_zeroing = False
-        self.enable_absolute_homing = False
         self.enable_manual_guidance = False
         self.enable_ptp = False
+        # Motors stop services anti-rebound flags
+        self.try_turn_on_in_execution = False
+        self.try_turn_off_in_execution = False
+        self.are_motors_on = False
+        # Reset Faults
+        self.manual_reset_faults = True
+        self.is_in_fault_state = False
+        self.fault_reset_in_execution = False
 
-        # Mode of operation action
-        # self.moo_applied_success = False 
-        # It was assigned in the FMRRMainProgram.py, and assigned by an emitter generated in Async Ros Module ... 
-        # However it was never used anywhere excpet here ....
-    
-    def getJointState(self, data):
-        if not set(self._joint_names).issubset(data.name):
-            self._ros_node.get_logger().warn(f"JointState names {data.name} do not match the expected joint names {self._joint_names}. Ignoring data.")
-            return
-        name_to_position = dict(zip(data.name, data.position))
-        self.RobotJointPosition = [
-            name_to_position[joint] for joint in self._joint_names if joint in name_to_position
-        ]
-
-    def enable_ethercat_error_checking(self, enable: bool):
-        req = SetBool.Request()
-        req.data = enable
-        future = self.enable_eth_error_check.call_async(req)
-        rclpy.spin_until_future_complete(self._ros_node, future)
-        if future.result().success:
-            self._ros_node.get_logger().info("Ethercat error automatic checking deactivated.")
-        else:
-            self._ros_node.get_logger().error(f"Service call failed: {future.result().message}")
-
-    def get_drives_mode_of_op(self, dof_names):
-        req = GetModesOfOperation.Request()
-        req.dof_names = dof_names
-        future = self.get_op_mode_client.call_async(req)
-        rclpy.spin_until_future_complete(self._ros_node, future)
-        if future.result():
-            return future.result()
-        else:
-            self._ros_node.get_logger().error('Service call failed')
-            return None
 
     def trigger_soft_stop(self, start_value: float, steps: int = 10, target='speed_ovr', jog_joint_idx=None):
         if self._soft_stop_timer.isActive():
@@ -236,6 +233,21 @@ class SyncRosManager:
             self._ros_node.get_logger().warn("Unknown soft start target, stopping timer.")
             self._soft_start_timer.stop()
 
+    ##############################################################################################
+    #####                                                                                    #####  
+    #####                            GENERAL ROS FUNCTIONS                                   ##### 
+    #####                                                                                    #####
+    ##############################################################################################
+
+    def getJointState(self, data):
+        if not set(self._joint_names).issubset(data.name):
+            self._ros_node.get_logger().warn(f"JointState names {data.name} do not match the expected joint names {self._joint_names}. Ignoring data.")
+            return
+        name_to_position = dict(zip(data.name, data.position))
+        self.RobotJointPosition = [
+            name_to_position[joint] for joint in self._joint_names if joint in name_to_position
+        ]
+
     def getToolPosition(self, data):
         if not set(self._joint_names).issubset(data.name):
             self._ros_node.get_logger().warn(f"Tool Position names {data.name} do not match the expected joint names {self._joint_names}. Ignoring data.")
@@ -246,7 +258,14 @@ class SyncRosManager:
         self.HandlePosition = [
             name_to_position[joint] for joint in self._joint_names if joint in name_to_position
         ]
-        
+
+    def getDrivestState(self, msg: DriveStateFlags):
+        try:
+            self.is_in_fault_state = msg.fault_present
+            self.are_motors_on = msg.motors_on
+        except Exception as e:
+            self._ros_node.get_logger().error(f'Drives state flags subscription failed with exception: {e}')
+
     def spin_ros_once(self):
         rclpy.spin_once(self._ros_node, timeout_sec=0)
 
@@ -269,7 +288,6 @@ class SyncRosManager:
                 active_controller = self.forward_command_controller
                 self.enable_jog_buttons = self.jog_enabled
                 self.enable_zeroing = False
-                self.enable_absolute_homing = False
                 self.enable_manual_guidance = False
                 self.enable_ptp = False            
                 break
@@ -277,7 +295,6 @@ class SyncRosManager:
                 active_controller = self.trajectory_controller_name
                 self.enable_jog_buttons = False
                 self.enable_zeroing = False
-                self.enable_absolute_homing = False
                 self.enable_manual_guidance = False
                 self.enable_ptp = True
                 break
@@ -285,19 +302,17 @@ class SyncRosManager:
                 active_controller = self.admittance_controller
                 self.enable_jog_buttons = False
                 self.enable_zeroing = False
-                self.enable_absolute_homing = True
-                self.enable_manual_guidance = True
+                self.enable_manual_guidance = self.manual_guidance_enabled
                 self.enable_ptp = False
                 break
         if active_controller:
-            # self._ros_node.get_logger().info(f'active controller: {active_controller}')
             self.current_controller = active_controller
             return True
         else:
+            self.current_controller = None
             if is_hmg_mode:
                 self.enable_jog_buttons = False
                 self.enable_zeroing = True
-                self.enable_absolute_homing = False
                 self.enable_manual_guidance = False
                 self.enable_ptp = False
                 return True
@@ -317,13 +332,60 @@ class SyncRosManager:
         return future.result()  # type: ignore
 
     def start_homing_procedure(self):
-        res = self.switch_controller(None, self.current_controller)
-        if not res.ok:
-            self._ros_node.get_logger().error(f"⚠️ Failed to deactivate controller before homing")
-            return
-        self.remaining_dofs = set(self._joint_names)
-        if self.set_mode_of_operation(6):
+        if self.are_motors_on:
             self.perform_homing()
+        else:
+            self.turn_on_motors()
+            time.sleep(0.3)
+            if self.are_motors_on:
+                self.perform_homing()
+
+    def activate_controller_after_homing(self):
+        res = self.switch_controller(self.current_controller, None)
+        if not res.ok:
+            self._ros_node.get_logger().error(f"❌ Failed to activate controller after homing")
+            return
+        self.set_mode_of_operation(8) if self.current_controller == self.trajectory_controller_name else self.set_mode_of_operation(9)
+
+
+    ##############################################################################################
+    #####                                                                                    #####  
+    #####                                   Ethercat Controller                              ##### 
+    #####                                        Services                                    #####
+    #####                                                                                    #####
+    ##############################################################################################
+
+    def controller_and_op_mode_switch(self, new_mode, new_controller):
+        if self.current_controller:
+            res = self.switch_controller(new_controller, self.current_controller)
+        else:
+            res = self.switch_controller(new_controller, None)            
+        if not res.ok:
+            self._ros_node.get_logger().error(f"❌ Failed to deactivate controller before switching mode")
+            return False
+        if self.set_mode_of_operation(new_mode):
+            self._ros_node.get_logger().info(f"✅ Switched to mode of OP {new_mode} mode with controller {new_controller}")
+            return True
+        else:
+            self._ros_node.get_logger().error("Error switching mode of OP!!!")
+            return False
+    
+    def set_mode_of_operation(self, mode_value):
+        req = SwitchDriveModeOfOperation.Request()
+        for dof in self._joint_names:
+            req.dof_name = dof
+            req.mode_of_operation = mode_value
+            self._ros_node.get_logger().info(f"Setting mode {mode_value} for {dof}...")
+            future = self.mode_of_op_client.call_async(req)
+            rclpy.spin_until_future_complete(self._ros_node, future)
+        
+        op_response = self.get_drives_mode_of_op(self._joint_names)
+        if (len(op_response.dof_names)==len(self._joint_names)) and all(op_response.values[j] == mode_value for j in range(len(self._joint_names))):
+            return True
+        else:
+            self._ros_node.get_logger().info(f"got response: {op_response} when trying to change OP mode.")
+            time.sleep(0.1)
+            return self.set_mode_of_operation(mode_value)
 
     def perform_homing(self):
         self.homing_process_started = True
@@ -354,8 +416,8 @@ class SyncRosManager:
                     elif elapsed > timeout_sec:
                         self._ros_node.get_logger().error('Timeout while waiting for homing to complete')
                         for status_word in op_response.status_words:
-                            self._ros_node.get_logger().error(' - STATUS WORD: 0b{:16b} bit 12: %d, bit 13 (error): %d'.format(status_word, status_word & (1 << 12), status_word & (1 << 13)))
-                        return False
+                            self._ros_node.get_logger().error(f' - STATUS WORD: bit 12 (homing completed): {status_word & (1 << 12)}, bit 13 (error): {status_word & (1 << 13)}')
+                        break
                     self._ros_node.get_logger().info("waiting for status worlds to be all true!!", once=True)
                     time.sleep(0.1)  # sleep a bit to avoid busy waiting
 
@@ -366,60 +428,131 @@ class SyncRosManager:
         except Exception as e:
             self._ros_node.get_logger().error(f'Service call failed with exception: {e}')
 
-    def activate_controller_after_homing(self):
-        res = self.switch_controller(self.current_controller, None)
-        if not res.ok:
-            self._ros_node.get_logger().error(f"⚠️ Failed to activate controller after homing")
-            return
-        self.set_mode_of_operation(8) if self.current_controller == self.trajectory_controller_name else self.set_mode_of_operation(9)
-    
-    def set_mode_of_operation(self, mode_value):
-        req = SwitchDriveModeOfOperation.Request()
-        for dof in self._joint_names:
-            req.dof_name = dof
-            req.mode_of_operation = mode_value
-            self._ros_node.get_logger().info(f"Setting mode {mode_value} for {dof}...")
-            future = self.mode_of_op_client.call_async(req)
-            rclpy.spin_until_future_complete(self._ros_node, future)
-        
-        op_response = self.get_drives_mode_of_op(self._joint_names)
-        if (len(op_response.dof_names)==len(self._joint_names)) and all(op_response.values[j] == mode_value for j in range(len(self._joint_names))):
-            return True
+    def enable_ethercat_error_checking(self, enable: bool):
+        req = SetBool.Request()
+        req.data = enable
+        future = self.enable_eth_error_check.call_async(req)
+        rclpy.spin_until_future_complete(self._ros_node, future)
+        if future.result().success:
+            self._ros_node.get_logger().info(f"Ethercat error automatic checking state changed to: {enable}")
         else:
-            self._ros_node.get_logger().info(f"got response: {op_response} when trying to change OP mode.")
-            time.sleep(0.1)
-            return self.set_mode_of_operation(mode_value)
+            self._ros_node.get_logger().error(f"Service call failed: {future.result().message}")
 
-    def controller_and_op_mode_switch(self, new_mode, new_controller):
-        res = self.switch_controller(new_controller, self.current_controller)
-        if not res.ok:
-            self._ros_node.get_logger().error(f"⚠️ Failed to deactivate controller before switching mode")
-            return False
-        if self.set_mode_of_operation(new_mode):
-            self._ros_node.get_logger().info(f"✅ Switched to mode of OP {new_mode} mode with controller {new_controller}")
-            return True
+    def get_drives_mode_of_op(self, dof_names):
+        req = GetModesOfOperation.Request()
+        req.dof_names = dof_names
+        future = self.get_op_mode_client.call_async(req)
+        rclpy.spin_until_future_complete(self._ros_node, future)
+        if future.result():
+            return future.result()
         else:
-            self._ros_node.get_logger().error("Error switching mode of OP!!!")
-            return False
+            self._ros_node.get_logger().error('Service call failed')
+            return None
+        
+    def turn_on_motors(self):
+            if self.try_turn_on_in_execution:
+                self._ros_node.get_logger().warn('Try turn on already in execution, skipping...')
+                return
+            self.try_turn_on_in_execution = True
+            self._ros_node.get_logger().info('Turning on drives...')
+            request = Trigger.Request()
+            future = self.motors_on_client.call_async(request)
+            rclpy.spin_until_future_complete(self._ros_node, future)
+            self.try_turn_on_in_execution = False
+            return future.result()  # type: ignore
+        
+    def turn_off_motors(self):
+        if self.try_turn_off_in_execution:
+            self._ros_node.get_logger().warn('Try turn off already in execution, skipping...')
+            return
+        self.try_turn_off_in_execution = True
+        self._ros_node.get_logger().info('Turning off drives...')
+        request = Trigger.Request()
+        future = self.motors_off_client.call_async(request)
+        rclpy.spin_until_future_complete(self._ros_node, future)
+        self.try_turn_off_in_execution = False
+        return future.result()  # type: ignore
+        
+    def reset_fault(self):
+        if self.fault_reset_in_execution:
+            self._ros_node.get_logger().warn('Fault reset already in execution, skipping...', throttle_duration_sec=1)
+            return
+        self.fault_reset_in_execution = True
+        request = Trigger.Request()
+        future = self.reset_fault_client.call_async(request)
+        future.add_done_callback(self.reset_fault_callback)
+
+    def reset_fault_callback(self, future):
+        try:
+            result = future.result()
+            if result.success:
+                self._ros_node.get_logger().info('Fault reset successfully')
+            else:
+                self._ros_node.get_logger().error('Failed to reset faults!')
+        except Exception as e:
+            self._ros_node.get_logger().error(f'Service call failed with exception: {e}')
+        self.fault_reset_in_execution = False
+
+        
+    ##############################################################################################
+    #####                                                                                    #####  
+    #####                                   BUTTONS CALLBACKS                                ##### 
+    #####                                                                                    #####
+    ##############################################################################################
+        
+    def zeroing_enable(self, pressed):
+        # Avoid multiple event
+        if self.homing_check_enabled_pressed == pressed:
+            return
+        self.homing_check_enabled_pressed = pressed
+        if pressed:
+            if not self.controller_and_op_mode_switch(6, None):
+                self._ros_node.get_logger().error(f"❌ Failed to set homing mode!")
+                return
+        else:
+            self._ros_node.get_logger().info(f'>>>>>>>>>>>>>>>>>Disabling homing mode, current controller is: {self.current_controller}')
+            if self.current_controller != self.trajectory_controller_name:
+                self._ros_node.get_logger().info(f"Switching to: {self.trajectory_controller_name}")
+                if not self.controller_and_op_mode_switch(8, self.trajectory_controller_name):
+                    self._ros_node.get_logger().error(f"❌ Failed to switch to {self.trajectory_controller_name}!")
+                    return
+        
+    def manual_guidance_enable(self, pressed):
+        if self.manual_guidance_enabled_pressed == pressed:
+            pass
+        self.manual_guidance_enabled_pressed = pressed
+        if pressed:
+            if self.current_controller != self.admittance_controller:
+                self._ros_node.get_logger().info(f"Switching to: {self.admittance_controller}")
+                if not self.controller_and_op_mode_switch(9, self.admittance_controller):
+                    self._ros_node.get_logger().error(f"❌ Failed to switch to {self.admittance_controller}!")
+                    return
+            self.manual_guidance_enabled = True
+        else:
+            if self.current_controller != self.trajectory_controller_name:
+                self._ros_node.get_logger().info(f"Switching to: {self.trajectory_controller_name}")
+                if not self.controller_and_op_mode_switch(8, self.trajectory_controller_name):
+                    self._ros_node.get_logger().error(f"❌ Failed to switch to {self.trajectory_controller_name}!")
+                    return
+            self.manual_guidance_enabled = False
         
     def jog_enable(self, pressed):
         # Avoid multiple event
         if self.jog_enabled_pressed == pressed:
             pass
-
         self.jog_enabled_pressed = pressed
         if pressed:
             if self.current_controller != self.forward_command_controller:
                 self._ros_node.get_logger().info(f"Switching to: {self.forward_command_controller}")
                 if not self.controller_and_op_mode_switch(9, self.forward_command_controller):
-                    self._ros_node.get_logger().error(f"⚠️ Failed to switch to {self.forward_command_controller}!")
+                    self._ros_node.get_logger().error(f"❌ Failed to switch to {self.forward_command_controller}!")
                     return
             self.jog_enabled = True
         else:
             if self.current_controller != self.trajectory_controller_name:
                 self._ros_node.get_logger().info(f"Switching to: {self.trajectory_controller_name}")
                 if not self.controller_and_op_mode_switch(8, self.trajectory_controller_name):
-                    self._ros_node.get_logger().error(f"⚠️ Failed to switch to {self.trajectory_controller_name}!")
+                    self._ros_node.get_logger().error(f"❌ Failed to switch to {self.trajectory_controller_name}!")
                     return
             self.jog_enabled = False
 
@@ -431,7 +564,8 @@ class SyncRosManager:
         if direction == 0:
             self._ros_node.get_logger().info(f"Stopping JOG movement starting from {velocity_command_ref*self._prev_jog_direction}.")
             self.trigger_soft_stop(start_value=velocity_command_ref*self._prev_jog_direction, steps=15, target='jog', jog_joint_idx=joint_to_move)
-            self.enable_ethercat_error_checking(True)
+            if not self.manual_reset_faults:
+                self.enable_ethercat_error_checking(True)
         else:
             self._ros_node.get_logger().info("Starting JOG movement.")
             self.enable_ethercat_error_checking(False)
@@ -441,3 +575,9 @@ class SyncRosManager:
             self.trigger_soft_start(target_value=target_velocity, steps=10, target='jog', jog_joint_idx=joint_to_move)
             self._prev_jog_direction = direction
 
+    def reset_mode_changed(self, index):
+        self.manual_reset_faults = (index == 0)
+        if self.manual_reset_faults:
+            self.enable_ethercat_error_checking(False)
+        else:
+            self.enable_ethercat_error_checking(True)

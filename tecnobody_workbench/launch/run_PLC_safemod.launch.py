@@ -188,8 +188,8 @@ def generate_launch_description():
         package='controller_manager',
         executable='spawner',
         arguments=[
-            #'joint_trajectory_controller'
-            'scaled_trajectory_controller'
+            'joint_trajectory_controller'
+            # 'scaled_trajectory_controller'
         ],
         output='screen',
     )

@@ -3,12 +3,10 @@ import sys
 from PyQt5 import QtWidgets, QtCore 
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtWidgets import QPushButton
-from PyQt5.QtCore import QTimer, QThread, pyqtSignal, QObject
-import time
+from PyQt5.QtCore import QTimer, QThread, pyqtSignal
 
 # mathematics
 import numpy as np
-from scipy.interpolate import CubicSpline
 
 #MC Classes/methods
 from .MovementProgram import FMRR_Ui_MovementWindow 
@@ -23,15 +21,8 @@ import rclpy
 from ros2node.api import get_node_names
 from rclpy.node import Node
 from builtin_interfaces.msg import Duration
-from rclpy.action import ActionClient
 from control_msgs.action import FollowJointTrajectory
 from trajectory_msgs.msg import JointTrajectoryPoint
-from sensor_msgs.msg import JointState # joints positions, velocities and efforts
-from std_msgs.msg import Int16, Float64MultiArray 
-from ethercat_controller_msgs.srv import SwitchDriveModeOfOperation, GetModesOfOperation
-from std_srvs.srv import Trigger, SetBool
-from controller_manager_msgs.srv import SwitchController, ListControllers
-from rclpy.parameter_client import AsyncParameterClient
 from action_msgs.msg import GoalStatus
 
 from .async_ros_events import ASyncRosManager
@@ -117,6 +108,13 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
     def updateFMRRWindow(self):
         self.lcdNumber_MovementCOUNT.display( self.NumberExecMovements ) 
         self.lcdNumberExerciseTotalTime.display( np.floor((self.TotalTrainingTime - self.ActualTrainingTime)/60) )
+        self.pushButton_StartMotors.enablePushButton(not self.ROS.are_motors_on)
+        self.pushButton_StopMotors.enablePushButton(self.ROS.are_motors_on)
+        self.pushButton_ResetFaults.setEnabled(self.ROS.manual_reset_faults)
+        if self.ROS.is_in_fault_state:
+            self.frame_FaultDetected.setStyleSheet("background-color: red; border-radius: 10px;")
+        else:
+            self.frame_FaultDetected.setStyleSheet("background-color: green; border-radius: 10px;")
     
     def definePaths(self):
         self.FMRR_Paths = dict() 
@@ -144,6 +142,9 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.uiMovementWindow.DialogFMRRMainWindow = self.FMRRMainWindow # type: ignore
         
     def clbk_BtnMoveRobot(self):
+        if self.ROS.are_motors_on:
+            QMessageBox.warning(self.DialogRobotWindow, "Warning", "Motors are still active. Please turn them off before exiting this window!")
+            return
         self.FMRRMainWindow.hide()
         self.DialogRobotWindow.show()
                 
@@ -228,7 +229,20 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.pushButton_PAUSEtrainig.enablePushButton(0)
         self.pushButton_STOPtrainig.enablePushButton(0)
         self._update_TrainingTimer.stop()
-              
+    
+    def clbk_StartMotors(self):
+        self.pushButton_StartMotors.enablePushButton(0)
+        self.pushButton_StopMotors.enablePushButton(1)
+        self.ROS.turn_on_motors()
+
+    def clbk_StopMotors(self):
+        self.uiRobotWindow.pushButton_StartMotors.enablePushButton(1)
+        self.uiRobotWindow.pushButton_StopMotors.enablePushButton(0)
+        self.ROS.turn_off_motors()
+
+    def clbk_BtnResetFaults(self):
+        self.ROS.reset_fault()
+
     def update_TrainingParameters(self):
         if self.iPhase <= 19:
             self.progressBarPhases[self.iPhase].setValue(self.execution_time_percentage)
@@ -260,12 +274,6 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         speed_ovr_msg.data = speed_ovr_Value
         self.ROS.pub_speed_ovr.publish(speed_ovr_msg)
 
-######################## MAIN FUNCTIONS ###########################
-########
-######## setupUi_MainWindow and retranslateUi_MainWindow start the FMRR windox and comnnects callbacks to widgets               
-########
-###################################################################
-
     def setupUi_MainWindow(self):
         Ui_FMRRMainWindow.setupUi(self, self.FMRRMainWindow)
     
@@ -295,6 +303,8 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.pushButton_LoadCreateMovement.enablePushButton(1)
         self.pushButton_MoveRobot.enablePushButton(1)
         self.pushButton_CLOSEprogram.enablePushButton(1)
+        self.pushButton_StartMotors.enablePushButton(1)
+        self.pushButton_ResetFaults.enablePushButton(1)
         #   DISABLE Buttons
         self.pushButton_STARTtrainig.enablePushButton(0)
         self.pushButton_PAUSEtrainig.enablePushButton(0)
@@ -302,6 +312,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.pushButton_SaveProtocol.enablePushButton(0)
         self.pushButton_LoadCreateProtocol.enablePushButton(0)
         self.pushButton_DATAacquisition.enablePushButton(0)
+        self.pushButton_StopMotors.enablePushButton(0)
         #   CALLBACKS 
         #    Buttons
         self.pushButton_LoadCreateMovement.clicked.connect(self.clbk_BtnLoadCreateMovement)
@@ -311,8 +322,12 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.pushButton_STARTtrainig.clicked.connect(self.clbk_STARTtrainig)        
         self.pushButton_PAUSEtrainig.clicked.connect(self.clbk_PAUSEtrainig)
         self.pushButton_STOPtrainig.clicked.connect(self.clbk_STOPtrainig)
+        self.pushButton_StartMotors.clicked.connect(self.clbk_StartMotors)
+        self.pushButton_StopMotors.clicked.connect(self.clbk_StopMotors)
+        self.pushButton_ResetFaults.clicked.connect(self.clbk_BtnResetFaults)
         #    Spinbox
         self.spinBox_MaxVel.valueChanged.connect(self.clbk_spinBox_MaxVel)      
+        self.comboBox_ResetFaults.currentIndexChanged.connect(self.ROS.reset_mode_changed)
         #    CAHNGES
         self.lcdNumberExerciseTotalTime.setSegmentStyle(QtWidgets.QLCDNumber.Flat)
         self.lcdNumber_MovementCOUNT.setSegmentStyle(QtWidgets.QLCDNumber.Flat)

@@ -5,6 +5,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from std_srvs.srv import Trigger
 from ethercat_controller_msgs.msg import Cia402DriveStates
+from ethercat_controller_msgs.msg import DriveStateFlags
 from ethercat_controller_msgs.srv import GetModesOfOperation
 from std_msgs.msg import Bool
 from std_srvs.srv import SetBool, Trigger
@@ -24,9 +25,9 @@ class EthercatCheckerNode(Node):
         self.subscription = self.create_subscription(Cia402DriveStates, '/state_controller/drive_states', self.handle_drive_status, qos_profile=10, callback_group=driver_group)
 
         # Create the no-error publisher
-        self.publisher_ = self.create_publisher(Bool, '/ethercat_error_check', 10)
+        self.publisher_ = self.create_publisher(DriveStateFlags, '/ethercat_checker/drive_state_flags', 10)
 
-        # Create error checking enable service
+        # Service Servers
         self.enable_error_check_srv = self.create_service(
             SetBool,
             '/ethercat_checker/enable_error_checking',
@@ -45,7 +46,7 @@ class EthercatCheckerNode(Node):
             "/ethercat_checker/request_shutdown", self.shutdown_node
         )
 
-        self.error_checking_enabled = True
+        self.error_auto_reset_enabled = False
         self.dof_names = ['joint_x', 'joint_y', 'joint_z']
         self.state = {dof: 'STATE_UNDEFINED' for dof in self.dof_names}
         self.mode = {dof: 'MODE_NO_MODE' for dof in self.dof_names}
@@ -55,7 +56,7 @@ class EthercatCheckerNode(Node):
         self.try_turn_on_in_execution = False
 
     def enable_error_checking_callback(self, request, response):
-        self.error_checking_enabled = request.data
+        self.error_auto_reset_enabled = request.data
         response.success = True
         response.message = f"Error checking {'enabled' if request.data else 'disabled'}."
         return response
@@ -91,30 +92,23 @@ class EthercatCheckerNode(Node):
 
         return response
 
-    def check_faults(self):
-        msg_to_pub = Bool()
+    def check_states(self):
+        msg_to_pub = DriveStateFlags()
         if 'STATE_FAULT' in self.state.values():
-            self.get_logger().error("Detected FAULT state - Trying to resetting faults...", throttle_duration_sec=1)
-            self.reset_fault()
-            msg_to_pub.data = False
+            msg_to_pub.fault_present = True
             self.publisher_.publish(msg_to_pub)
-        elif 'STATE_SWITCH_ON_DISABLED' in self.state.values():
-            self.get_logger().info("Detected DISABLED state - Trying to turn on", throttle_duration_sec=1)
-            self.try_turn_on()
-            msg_to_pub.data = False
+            if self.error_auto_reset_enabled:
+                self.get_logger().error("Detected FAULT state - Trying to resetting faults...", throttle_duration_sec=1)
+                self.reset_fault()
+        else:
+            msg_to_pub.fault_present = False
+            self.publisher_.publish(msg_to_pub)
+        if 'STATE_SWITCH_ON_DISABLED' in self.state.values():   
+            msg_to_pub.motors_on = False
             self.publisher_.publish(msg_to_pub)
         else:
-            counter = 0
-            for dof in self.dof_names:
-                if (self.state[dof] == 'STATE_SWITCH_ON') or (self.state[dof] == 'STATE_SWITCH_ON_ENABLED') or (self.state[dof] == 'STATE_OPERATION_ENABLED'):
-                    counter += 1
-            if counter == len(self.dof_names):
-                msg_to_pub.data = True
-                self.publisher_.publish(msg_to_pub)
-            else:
-                self.get_logger().info(f'Found ethercat slave in {self.state[dof]} state. Not managed.', throttle_duration_sec=1)
-                msg_to_pub.data = False
-                self.publisher_.publish(msg_to_pub)
+            msg_to_pub.motors_on = True
+            self.publisher_.publish(msg_to_pub)
 
     def reset_fault(self):
         if self.fault_reset_in_execution:
@@ -216,13 +210,6 @@ class EthercatCheckerNode(Node):
         _shutdown_request = True
         response.success = True
         return response
-    #     self.get_logger().info('Shutting down...')
-    #     time.sleep(2)
-    #     self.destroy_node()
-
-    #     # Ensure context is valid before shutting down
-    #     if rclpy.ok():
-    #         rclpy.shutdown()
 
 
 def main(args=None):
@@ -233,14 +220,13 @@ def main(args=None):
 
     node = EthercatCheckerNode()
 
-    executor = MultiThreadedExecutor()
+    executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(node)
 
     try:
         while not _shutdown_request:
             executor.spin_once()
-            if node.error_checking_enabled:
-                node.check_faults()
+            node.check_states()
             
         node.get_logger().info('^^^^^^^^^^^^^^^^^ Shutting down...')
     except KeyboardInterrupt:

@@ -30,9 +30,12 @@ class HomingNode(Node):
         # Flag to set true when homing process has completed
         self.cyclic_modes = {'MODE_CYCLIC_SYNC_POSITION', 'MODE_CYCLIC_SYNC_VELOCITY', 'MODE_CYCLIC_SYNC_TORQUE'}
         self.homing_process_started = False
+        self.homing_process_successful = False
         # Target cyclic mode
         self.target_cyclic_mode = target_op_mode
+        self.try_turn_off_in_execution = False
         self.shutdown_requested = False
+        self.attempt_cnt = 0
 
     def check_ethercat_slaves(self):
         eth_states = self.get_ethercat_slaves_status()
@@ -99,6 +102,11 @@ class HomingNode(Node):
                             self.switch_mode(dof, self.get_op_mode_number('MODE_HOMING'))
                 if self.all_in_homing_mode() and not self.homing_process_started:
                     self.perform_homing()
+                if self.all_in_homing_mode() and self.homing_process_successful:
+                    self.set_target_moo(self.target_cyclic_mode)
+                if self.all_in_target_mode(self.target_cyclic_mode) and self.homing_process_successful:
+                    self.try_turn_off()
+                
 
 
     def get_op_mode_number(self, mode):
@@ -157,6 +165,46 @@ class HomingNode(Node):
         except Exception as e:
             self.get_logger().error(f'Service call failed with exception: {e}')
 
+    def try_turn_off(self):
+        if self.try_turn_off_in_execution:
+            return 1
+        self.try_turn_off_in_execution = True
+        self.get_logger().info('Turning off drives...')
+        try_on_service_group = MutuallyExclusiveCallbackGroup()
+        client = self.create_client(Trigger, '/state_controller/try_turn_off', callback_group=try_on_service_group)
+        if client.wait_for_service(timeout_sec=5.0):
+            request = Trigger.Request()
+            future = client.call_async(request)
+            future.add_done_callback(self.try_turn_off_callback)
+        else:
+            self.get_logger().error('Service /state_controller/try_turn_off not available')
+
+    def try_turn_off_callback(self, future):
+        try:
+            result = future.result()
+            if result.success:
+                self.get_logger().info('Drives turned off successfully')
+                self.try_turn_off_starting_time = self.get_clock().now()
+                self.check_turn_off_timer = self.create_timer(0.1, self.check_if_turned_off)
+            else:
+                self.get_logger().error('Failed to turn off drives')
+        except Exception as e:
+            self.get_logger().error(f'Service call failed with exception: {e}')
+
+    def check_if_turned_off(self):
+        if all(state == 'STATE_SWITCH_ON_DISABLED' for state in self.state.values()):
+            self.get_logger().info('All drives are now OFF.')
+            self.try_turn_off_in_execution = False
+            self.check_turn_off_timer.cancel()
+            self.shutdown_node()
+        else:
+            elapsed = (self.get_clock().now() - self.try_turn_off_starting_time).nanoseconds / 1e9
+            if elapsed > 5.0:
+                self.get_logger().error('Timeout while waiting for drives to turn off. Retrying...')
+                self.try_turn_off_in_execution = False
+                self.check_turn_off_timer.cancel()
+                self.try_turn_off()
+
     def perform_homing(self):
         self.homing_process_started = True
         self.get_logger().info('--------------->Performing Homing for all three joints')
@@ -179,16 +227,22 @@ class HomingNode(Node):
                 while True:
                     current_time = self.get_clock().now()
                     elapsed = (current_time - start_time).nanoseconds / 1e9  # convert to seconds
-                    
                     if all((status_word & (1 << 12)) != 0 for status_word in self.status_words.values()):
-                        self.get_logger().info('Homing performed successfully')
+                        self.get_logger().info('✅ Homing performed successfully')
+                        self.homing_process_successful = True
                         break
                     elif elapsed > timeout_sec:
-                        self.get_logger().error('Timeout while waiting for homing to complete')
-                        return False
-                    self.get_logger().info("waiting for status worlds to be all true!!")
+                        self.get_logger().error('❌ Timeout while waiting for homing to complete')
+                        # if self.attempt_cnt < 1:
+                        #     self.attempt_cnt += 1
+                        #     self.homing_process_started = False
+                        # else:
+                        self.get_logger().info(f'⚠️ Status word did not confirmed homing done, proceeding anyway but be careful!')
+                        self.homing_process_successful = True
+                        break
+                        # return False
+                    self.get_logger().info("waiting for status worlds to be all true!!", once=True)
                     time.sleep(0.1)  # sleep a bit to avoid busy waiting
-                self.set_target_moo(self.target_cyclic_mode)
         except Exception as e:
             self.get_logger().error(f'Service call failed with exception: {e}')
 
@@ -196,9 +250,6 @@ class HomingNode(Node):
         for curr_dof in self.dof_names:
             self.get_logger().info(f'Setting dof {curr_dof} to final target mode being: {target_mode}.')
             self.switch_mode(curr_dof, self.get_op_mode_number(target_mode))
-        while not self.all_in_target_state_mode(self.target_cyclic_mode):
-            time.sleep(0.1)
-        self.shutdown_node()
 
     def switch_mode(self, dof_name, target_mode):
         self.get_logger().info(f'Switching mode for {dof_name}...')
@@ -248,14 +299,9 @@ class HomingNode(Node):
         else:
             return False
 
-    def all_in_target_state_mode(self, target_mode):
+    def all_in_target_mode(self, target_mode):
         if all(mode == target_mode for mode in self.mode.values()):
-            if all(state == 'STATE_OPERATION_ENABLED' for state in self.state.values()):
-                return True
-            else:
-                for dof, state in self.state.items():
-                    if state not in ['STATE_SWITCH_ON_ENABLED', 'STATE_SWITCH_ON', 'STATE_OPERATION_ENABLED']:
-                        self.get_logger().info(f'{dof} is in {target_mode} but has unexpected state: {state}')
+            return True
         else:
             return False
         
@@ -279,7 +325,7 @@ def main(args=None):
     input_op_mode = sys.argv[1] if len(sys.argv) > 1 else "MODE_CYCLIC_SYNC_POSITION"
     node = HomingNode(input_op_mode)
 
-    executor = MultiThreadedExecutor()
+    executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(node)
 
     try:
