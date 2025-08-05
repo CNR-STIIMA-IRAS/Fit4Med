@@ -1,9 +1,10 @@
 import os
 import sys
+import signal
 from PyQt5 import QtWidgets, QtCore 
-from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtWidgets import QPushButton
-from PyQt5.QtCore import QTimer, QThread, pyqtSignal
+from PyQt5.QtWidgets import QMessageBox, QLabel, QPushButton, QDialog, QVBoxLayout
+from PyQt5.QtCore import QTimer, QThread, pyqtSignal, Qt
+from functools import partial
 
 # mathematics
 import numpy as np
@@ -18,23 +19,39 @@ from yaml.loader import SafeLoader
 
 #ROS
 import rclpy
-from ros2node.api import get_node_names
 from rclpy.node import Node
 from builtin_interfaces.msg import Duration
 from control_msgs.action import FollowJointTrajectory
 from trajectory_msgs.msg import JointTrajectoryPoint
 from action_msgs.msg import GoalStatus
+from std_msgs.msg import Int16
 
 from .async_ros_events import ASyncRosManager
 from .sync_ros_events import SyncRosManager
 
-DEBUG = False
 
 JOINT_NAMES = [
     'joint_x',
     'joint_y',
     'joint_z'
 ]
+
+class WaitingDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Alert")
+        self.setModal(True)
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+
+        label = QLabel("Waiting for ROS connection...")
+        label.setAlignment(Qt.AlignCenter)
+
+        layout = QVBoxLayout()
+        layout.addWidget(label)
+        self.setLayout(layout)
+        self.resize(300, 100)
+
+
 class MainProgram(Ui_FMRRMainWindow, QtCore.QObject): 
     _update_windows_period = 500
     _update_TrainingTime = 20
@@ -49,26 +66,36 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         
         self.DialogMovementWindow = QtWidgets.QDialog()
         self.DialogRobotWindow = QtWidgets.QDialog()
-        self.FMRRMainWindow = QtWidgets.QMainWindow() # FMRRMainWindow is an instance of the class QtWidgets.QMainWindow. Not to be confuse with the namof the file FMRRMainWindow.py
-        self._ros_node.get_logger().info("FMRR cell node started.")
+        self.FMRRMainWindow = QtWidgets.QMainWindow()
+        print("FMRR cell node started.")
 
-        # Set up Movement Worker
-        self._ros_network_status_timer = QTimer()                                           # creo l'oggetto
-        # self._ros_network_status_timer.timeout.connect( lambda: self.updateROSNetworkStatus() )        
+        # Set up ROS Network timer
+        self._ros_network_status_timer = QTimer()
+        self._ros_network_status_timer.timeout.connect( self.updateROSNetworkStatus )        
         self._ros_network_status_timer.start(self._update_windows_period)
     
         self.ROS = None
         self.MovementWorker = None
+        self.ROS_active = False
+        self.movement_worker_init = False
+        self.ros_waiting_dialog = WaitingDialog(self.FMRRMainWindow)
 
     def initializeRosProcesses(self):
+        self.FMRRMainWindow.setDisabled(False)
         self.worker_thread = QThread()
         self.ROS = SyncRosManager(self._ros_node, JOINT_NAMES)
-        self.MovementWorker = ASyncRosManager(self._ros_node, JOINT_NAMES, self.ROS.trajectory_controller_name)
-        self.MovementWorker.moveToThread(self.worker_thread)
+        self.startMovementWindow()
+        self.startRobotWindow()
+        self._update_robot_window_callback = partial(self.uiRobotWindow.updateRobotWindow, self.DialogRobotWindow)
+        self.comboBox_ResetFaults.currentIndexChanged.connect(self.ROS.reset_mode_changed)
 
-    # def stopRosProcesses(self):
-    #     self.worker_thread = QThread()
-    #     self.ROS = None
+    def stopRosProcesses(self):
+        self.ROS_active = False
+        self.worker_thread = QThread()
+        self.trigger_pause.disconnect()
+        self.trigger_worker.disconnect()
+        self.comboBox_ResetFaults.currentIndexChanged.disconnect()
+        self._update_windows_timer.timeout.disconnect(self._update_robot_window_callback)
 
     def initializeVariables(self):
         # self.FIRST_TIME = True
@@ -78,44 +105,63 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.execution_time_percentage = 0
         self.iPhase = 0
         self._counter_request_homing_procedure = 0 # counter to avoid multiple request of homing procedure
+
+
+    def initializeMovementWorker(self):
+        self.MovementWorker = ASyncRosManager(self._ros_node, JOINT_NAMES, self.ROS.trajectory_controller_name)
+        self.MovementWorker.moveToThread(self.worker_thread)
+        self._update_windows_timer.timeout.connect( self._update_robot_window_callback ) 
         self.trigger_worker.connect(self.MovementWorker.fct().startMovement)# type: ignore
         self.trigger_pause.connect(self.MovementWorker.fct().is_paused) # type: ignore
         self.MovementWorker.fct().finished.connect(self.on_fct_worker_finished)
         self.MovementWorker.fct().progress.connect(self.on_fct_worker_progress)
         #self.MovementWorker.moo().finished.connect(self.on_moo_worker_finished)
-        
         self.worker_thread.start()
         self.MovementWorker.fct().clear()
+        self.ros_waiting_dialog.hide()
+        self.ROS_active = True
 
-    # def updateROSNetworkStatus(self):
-    #     available_nodes = [ full_name for _, _, full_name in self._ros_node.get_node_names(node=self, include_hidden_nodes=False) ]
-    #     if self.ROS is not None and 'state_controlle' is not in available_nodes:
-    #         pass
-    #     elif self.ROS is not None and 'state_controlle' is not in available_nodes:
+    def updateROSNetworkStatus(self):
+        available_nodes = [full_name for full_name in self._ros_node.get_node_names()]
+        if self.ROS is not None and 'state_controller' in available_nodes:
+            if not self.movement_worker_init and self.ROS.current_controller is not None:
+                self.initializeMovementWorker()
+                self.movement_worker_init = True
+        elif self.ROS is not None and 'state_controller' not in available_nodes:
+            print('No ROS processes detected, disabling GUI!')
+            self.stopRosProcesses()
+        elif self.ROS is None and 'state_controller' in available_nodes:
+            print('ROS processes detected, enabling GUI!')
+            self.initializeRosProcesses()
+        else:
+            self.FMRRMainWindow.setDisabled(True)
+            self.ROS = None
+            self.movement_worker_init = False
+            self.ros_waiting_dialog.show()
         
     def updateWindowTimerCallback(self):
         self._update_windows_timer = QTimer()                                           # creo l'oggetto
         self._update_windows_timer.timeout.connect( lambda: self.updateFMRRWindow() )                    # lo collego ad una callback
-        self._update_windows_timer.timeout.connect( lambda: self.uiRobotWindow.updateRobotWindow( self.DialogRobotWindow ) ) # lo collego ad una seconda  callback
         self._update_windows_timer.start(self._update_windows_period)
 
     def updateTrainingTimer(self):
         self._update_TrainingTimer = QTimer()                                           # creo l'oggetto
         self._update_TrainingTimer.timeout.connect(lambda: self.update_TrainingParameters())
         self._update_TrainingTimer.start(self._update_TrainingTime)
-        self._ros_node.get_logger().info("Update Training TImer Started (event loop in the main thread)")
+        print("Update Training TImer Started (event loop in the main thread)")
 
     def updateFMRRWindow(self):
         self.lcdNumber_MovementCOUNT.display( self.NumberExecMovements ) 
         self.lcdNumberExerciseTotalTime.display( np.floor((self.TotalTrainingTime - self.ActualTrainingTime)/60) )
-        self.pushButton_StartMotors.enablePushButton(not self.ROS.are_motors_on)
-        self.pushButton_StopMotors.enablePushButton(self.ROS.are_motors_on)
-        self.pushButton_ResetFaults.setEnabled(self.ROS.manual_reset_faults)
-        if self.ROS.is_in_fault_state:
-            self.frame_FaultDetected.setStyleSheet("background-color: red; border-radius: 10px;")
-        else:
-            self.frame_FaultDetected.setStyleSheet("background-color: green; border-radius: 10px;")
-    
+        if self.ROS_active:
+            self.pushButton_StartMotors.setEnabled(not self.ROS.are_motors_on)
+            self.pushButton_StopMotors.setEnabled(self.ROS.are_motors_on)
+            self.pushButton_ResetFaults.setEnabled(self.ROS.manual_reset_faults)
+            if self.ROS.is_in_fault_state:
+                self.frame_FaultDetected.setStyleSheet("background-color: red; border-radius: 10px;")
+            else:
+                self.frame_FaultDetected.setStyleSheet("background-color: green; border-radius: 10px;")
+        
     def definePaths(self):
         self.FMRR_Paths = dict() 
         current_directory = os.path.dirname(os.path.abspath(__file__))  # Get the current file's directory
@@ -142,11 +188,12 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.uiMovementWindow.DialogFMRRMainWindow = self.FMRRMainWindow # type: ignore
         
     def clbk_BtnMoveRobot(self):
-        if self.ROS.are_motors_on:
-            QMessageBox.warning(self.DialogRobotWindow, "Warning", "Motors are still active. Please turn them off before exiting this window!")
-            return
-        self.FMRRMainWindow.hide()
-        self.DialogRobotWindow.show()
+        if self.ROS_active:
+            if self.ROS.are_motors_on:
+                QMessageBox.warning(self.DialogRobotWindow, "Warning", "Motors are still active. Please turn them off before exiting this window!")
+                return
+            self.FMRRMainWindow.hide()
+            self.DialogRobotWindow.show()
                 
     def clbk_BtnLoadCreateMovement(self):
         self.FMRRMainWindow.hide()
@@ -190,58 +237,62 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
               quit()
 
     def clbk_STARTtrainig(self):
-        self.ActualTrainingTime = 0
-        self.movement_completed = False
-        self.iPhase = 0
-        self._home_goal_sent = False
-        if self.ROS.current_controller != self.ROS.trajectory_controller_name:
-                if not self.ROS.controller_and_op_mode_switch(8, self.ROS.trajectory_controller_name):
-                    self._ros_node.get_logger().error(f"Failed to set position mode and switch from {self.ROS.current_controller} to {self.ROS.trajectory_controller_name}!")
-                    return
-        self.sendTrajectoryFCT()
-        self.updateTrainingTimer()
-        self.ModalityActualValue = self.Modalities[0]
-        print(f'------------------------------------------{self.spinBoxSpeedOvr[0].value()}')
-        self.startMovementFCT(self.spinBoxSpeedOvr[0].value()) # type: ignore
-        self.pushButton_PAUSEtrainig.enablePushButton(1)
-        self.pushButton_STOPtrainig.enablePushButton(1)
+        if self.ROS_active:
+            self.ActualTrainingTime = 0
+            self.movement_completed = False
+            self.iPhase = 0
+            self._home_goal_sent = False
+            if not self.ROS.are_motors_on:
+                self.ROS.turn_on_motors()
+            if self.ROS.current_controller != self.ROS.trajectory_controller_name:
+                    if not self.ROS.controller_and_op_mode_switch(8, self.ROS.trajectory_controller_name):
+                        print(f"Failed to set position mode and switch from {self.ROS.current_controller} to {self.ROS.trajectory_controller_name}!")
+                        return
+            self.sendTrajectoryFCT()
+            self.updateTrainingTimer()
+            self.ModalityActualValue = self.Modalities[0]
+            print(f'------------------------------------------{self.spinBoxSpeedOvr[0].value()}')
+            self.startMovementFCT(self.spinBoxSpeedOvr[0].value()) # type: ignore
+            self.pushButton_PAUSEtrainig.enablePushButton(1)
+            self.pushButton_STOPtrainig.enablePushButton(1)
     
     def clbk_PAUSEtrainig(self):
-        _translate = QtCore.QCoreApplication.translate
-        current_speed_ovr = self.spinBoxSpeedOvr[self.iPhase].value()
-        if self.pushButton_PAUSEtrainig.State:
-            self.pushButton_PAUSEtrainig.State = 0    
-            self.pushButton_PAUSEtrainig.setText( _translate("FMRRMainWindow", "RESUME training") )
-            self.trigger_pause.emit(True)
-            self.ROS.trigger_soft_stop(start_value=current_speed_ovr, steps=10, target='speed_ovr')
-            print('The robot movement was successfully stopped')
-        else:
-            self.pushButton_PAUSEtrainig.State = 1    
-            self.pushButton_PAUSEtrainig.setText( _translate("FMRRMainWindow", "PAUSE training") )
-            self.ROS.trigger_soft_start(target_value=current_speed_ovr, steps=10, target='speed_ovr')
-            self.trigger_pause.emit(False)
-            print('The robot movement was successfully resumed')
+        if self.ROS_active:
+            _translate = QtCore.QCoreApplication.translate
+            current_speed_ovr = self.spinBoxSpeedOvr[self.iPhase].value()
+            if self.pushButton_PAUSEtrainig.State:
+                self.pushButton_PAUSEtrainig.State = 0    
+                self.pushButton_PAUSEtrainig.setText( _translate("FMRRMainWindow", "RESUME training") )
+                self.trigger_pause.emit(True)
+                self.ROS.trigger_soft_stop(start_value=current_speed_ovr, steps=10, target='speed_ovr')
+                print('The robot movement was successfully stopped')
+            else:
+                self.pushButton_PAUSEtrainig.State = 1    
+                self.pushButton_PAUSEtrainig.setText( _translate("FMRRMainWindow", "PAUSE training") )
+                self.ROS.trigger_soft_start(target_value=current_speed_ovr, steps=10, target='speed_ovr')
+                self.trigger_pause.emit(False)
+                print('The robot movement was successfully resumed')
 
     def clbk_STOPtrainig(self):   
-        self.MovementWorker.fct().stop() 
-        for iProgBar in self.progressBarPhases:
-            iProgBar = 0
-        self.pushButton_PAUSEtrainig.enablePushButton(0)
-        self.pushButton_STOPtrainig.enablePushButton(0)
-        self._update_TrainingTimer.stop()
+        if self.ROS_active:
+            self.MovementWorker.fct().stop() 
+            for iProgBar in self.progressBarPhases:
+                iProgBar = 0
+            self.pushButton_PAUSEtrainig.enablePushButton(0)
+            self.pushButton_STOPtrainig.enablePushButton(0)
+            self._update_TrainingTimer.stop()
     
     def clbk_StartMotors(self):
-        self.pushButton_StartMotors.enablePushButton(0)
-        self.pushButton_StopMotors.enablePushButton(1)
-        self.ROS.turn_on_motors()
+        if self.ROS_active:
+            self.ROS.turn_on_motors()
 
     def clbk_StopMotors(self):
-        self.uiRobotWindow.pushButton_StartMotors.enablePushButton(1)
-        self.uiRobotWindow.pushButton_StopMotors.enablePushButton(0)
-        self.ROS.turn_off_motors()
+        if self.ROS_active:
+            self.ROS.turn_off_motors()
 
     def clbk_BtnResetFaults(self):
-        self.ROS.reset_fault()
+        if self.ROS_active:
+            self.ROS.reset_fault()
 
     def update_TrainingParameters(self):
         if self.iPhase <= 19:
@@ -261,9 +312,6 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
     def on_fct_worker_finished(self):
         self.iPhase += 1
         self.movement_completed = True
-
-    # def on_moo_worker_finished(self):
-    #     self.ROS.moo_applied_success = True
     
     def on_fct_worker_progress(self,value):
         self.execution_time_percentage = int(value)  # Get the progress percentage from the worker
@@ -272,7 +320,8 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         speed_ovr_Value = self.spinBox_MaxVel.value()
         speed_ovr_msg = Int16()
         speed_ovr_msg.data = speed_ovr_Value
-        self.ROS.pub_speed_ovr.publish(speed_ovr_msg)
+        if self.ROS_active:
+            self.ROS.pub_speed_ovr.publish(speed_ovr_msg)
 
     def setupUi_MainWindow(self):
         Ui_FMRRMainWindow.setupUi(self, self.FMRRMainWindow)
@@ -303,7 +352,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.pushButton_LoadCreateMovement.enablePushButton(1)
         self.pushButton_MoveRobot.enablePushButton(1)
         self.pushButton_CLOSEprogram.enablePushButton(1)
-        self.pushButton_StartMotors.enablePushButton(1)
+        self.pushButton_StartMotors.setEnabled(1)
         self.pushButton_ResetFaults.enablePushButton(1)
         #   DISABLE Buttons
         self.pushButton_STARTtrainig.enablePushButton(0)
@@ -312,7 +361,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.pushButton_SaveProtocol.enablePushButton(0)
         self.pushButton_LoadCreateProtocol.enablePushButton(0)
         self.pushButton_DATAacquisition.enablePushButton(0)
-        self.pushButton_StopMotors.enablePushButton(0)
+        self.pushButton_StopMotors.setEnabled(0)
         #   CALLBACKS 
         #    Buttons
         self.pushButton_LoadCreateMovement.clicked.connect(self.clbk_BtnLoadCreateMovement)
@@ -327,7 +376,6 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.pushButton_ResetFaults.clicked.connect(self.clbk_BtnResetFaults)
         #    Spinbox
         self.spinBox_MaxVel.valueChanged.connect(self.clbk_spinBox_MaxVel)      
-        self.comboBox_ResetFaults.currentIndexChanged.connect(self.ROS.reset_mode_changed)
         #    CAHNGES
         self.lcdNumberExerciseTotalTime.setSegmentStyle(QtWidgets.QLCDNumber.Flat)
         self.lcdNumber_MovementCOUNT.setSegmentStyle(QtWidgets.QLCDNumber.Flat)
@@ -339,36 +387,38 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.trigger_worker.emit(default_speed_override)  # Trigger the worker to start the movement
         
     def clbk_ApproachPoint(self, point):
-        self._ros_node.get_logger().info("Approaching desired position...")
-        approach_point_goal = FollowJointTrajectory.Goal()
-        approach_point_goal.trajectory.joint_names = JOINT_NAMES
+        if self.ROS_active:
+            print("Approaching desired position...")
+            approach_point_goal = FollowJointTrajectory.Goal()
+            approach_point_goal.trajectory.joint_names = JOINT_NAMES
 
-        init_point = JointTrajectoryPoint()
-        init_point.positions = self.ROS.RobotJointPosition
-        init_point.velocities = [0.0] * len(JOINT_NAMES)
-        init_point.accelerations = [0.0] * len(JOINT_NAMES)
-        init_point.effort = []
-        init_point.time_from_start = Duration(sec=0, nanosec=0)
-        approach_point_goal.trajectory.points.append(init_point)  # type: ignore
+            init_point = JointTrajectoryPoint()
+            init_point.positions = self.ROS.RobotJointPosition
+            init_point.velocities = [0.0] * len(JOINT_NAMES)
+            init_point.accelerations = [0.0] * len(JOINT_NAMES)
+            init_point.effort = []
+            init_point.time_from_start = Duration(sec=0, nanosec=0)
+            approach_point_goal.trajectory.points.append(init_point)  # type: ignore
 
-        final_point = JointTrajectoryPoint()
-        final_point.positions = point
-        final_point.velocities = [0.0] * len(JOINT_NAMES)
-        final_point.accelerations = [0.0] * len(JOINT_NAMES)
-        final_point.effort = []
-        final_point.time_from_start = Duration(sec=3, nanosec=0)
-        approach_point_goal.trajectory.points.append(final_point) # type: ignore
-        
-        approach_point_goal.trajectory.header.stamp = self._ros_node.get_clock().now().to_msg()
-        home_future = self.MovementWorker.fct().client.send_goal_async(approach_point_goal)
-        #home_future.add_done_callback(self.home_cancel_callback)
+            final_point = JointTrajectoryPoint()
+            final_point.positions = point
+            final_point.velocities = [0.0] * len(JOINT_NAMES)
+            final_point.accelerations = [0.0] * len(JOINT_NAMES)
+            final_point.effort = []
+            final_point.time_from_start = Duration(sec=3, nanosec=0)
+            approach_point_goal.trajectory.points.append(final_point) # type: ignore
+            
+            approach_point_goal.trajectory.header.stamp = self._ros_node.get_clock().now().to_msg()
+            home_future = self.MovementWorker.fct().client.send_goal_async(approach_point_goal)
+            #home_future.add_done_callback(self.home_cancel_callback)
         return True
 
     def sendTrajectoryFCT(self):       
-        TrjYamlData = self.uiMovementWindow.TrjYamlData
-        self.CartesianPositions = TrjYamlData.get("cart_trj3").get("cart_positions")
-        self.TimeFromStart = TrjYamlData.get("cart_trj3").get("time_from_start")
-        self.MovementWorker.fct().set(self.CartesianPositions, self.TimeFromStart)  # type: ignore    
+        if self.ROS_active:
+            TrjYamlData = self.uiMovementWindow.TrjYamlData
+            self.CartesianPositions = TrjYamlData.get("cart_trj3").get("cart_positions")
+            self.TimeFromStart = TrjYamlData.get("cart_trj3").get("time_from_start")
+            self.MovementWorker.fct().set(self.CartesianPositions, self.TimeFromStart)  # type: ignore    
 
         
 def main(args=None):
@@ -377,15 +427,25 @@ def main(args=None):
     app = QtWidgets.QApplication(sys.argv)
     ui = MainProgram()
     ui.setupUi_MainWindow()
-    ui.initializeRosProcesses()
     ui.retranslateUi_MainWindow(app)
     ui.definePaths()
-    ui.startRobotWindow()
-    ui.startMovementWindow()
     ui.updateWindowTimerCallback()
     ui.initializeVariables()
     ui.FMRRMainWindow.show()
-    sys.exit(app.exec_())
+
+    signal.signal(signal.SIGINT, lambda *args: app.quit())
+
+    timer = QTimer()
+    timer.start(100)
+    timer.timeout.connect(lambda: None) 
+
+    # ---------------------------
+    # Event loop Qt
+    # ---------------------------
+    exit_code = app.exec_()
+
+    rclpy.shutdown()
+    sys.exit(exit_code)
 
 if __name__ == "__main__":
     main()

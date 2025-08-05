@@ -226,8 +226,8 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
         self.frame_GoalPosition.setEnabled(self.ui_FMRRMainWindow.ROS.enable_ptp)
         self.pushButton_ResetFaults.setEnabled(self.ui_FMRRMainWindow.ROS.manual_reset_faults)
 
-        self.pushButton_StartMotors.enablePushButton(not self.ui_FMRRMainWindow.ROS.are_motors_on)
-        self.pushButton_StopMotors.enablePushButton(self.ui_FMRRMainWindow.ROS.are_motors_on)
+        self.pushButton_StartMotors.setEnabled(not self.ui_FMRRMainWindow.ROS.are_motors_on)
+        self.pushButton_StopMotors.setEnabled(self.ui_FMRRMainWindow.ROS.are_motors_on)
 
         if self.ui_FMRRMainWindow.ROS.is_in_fault_state:
             self.frame_FaultDetected.setStyleSheet("background-color: red; border-radius: 10px;")
@@ -287,12 +287,12 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
         self.pushButton_GOtoTraining.enablePushButton(1)
         self.pushButton_GOtoMovement.enablePushButton(1)
         self.pushButton_StartMoveRobotManually.enablePushButton(1)
-        self.pushButton_StartMotors.enablePushButton(1)
+        self.pushButton_StartMotors.setEnabled(1)
         self.pushButton_ResetFaults.enablePushButton(1)
             
 # DISABLE        
         self.pushButton_StopMoveRobotManually.enablePushButton(0)
-        self.pushButton_StopMotors.enablePushButton(0)
+        self.pushButton_StopMotors.setEnabled(0)
         
         self.pushButton_Approach_Joint1.enablePushButton(1)
         self.pushButton_Approach_Joint2.enablePushButton(1)

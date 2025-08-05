@@ -48,55 +48,7 @@ class SyncRosManager:
         #  publisher  
         self.pub_speed_ovr = self._ros_node.create_publisher(Int16, '/speed_ovr', 10)
         self.jog_cmd_publisher = self._ros_node.create_publisher(Float64MultiArray, f'/{self.forward_command_controller}/commands', 10)
-        #  service clients
-        self.current_controller_client = self._ros_node.create_client(ListControllers, '/controller_manager/list_controllers')
-        client_success = self.current_controller_client.wait_for_service(timeout_sec=5.0)
-        if not client_success:
-            self._ros_node.get_logger().error("List controllers service is not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
-        self.switch_controller_client = self._ros_node.create_client(SwitchController, '/controller_manager/switch_controller')
-        switch_controller_client_success = self.switch_controller_client.wait_for_service(timeout_sec=5.0)
-        if not switch_controller_client_success:
-            self._ros_node.get_logger().error("Switch controller service is not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
-        self.motors_on_client = self._ros_node.create_client(Trigger, '/state_controller/try_turn_on')
-        motors_on_client_success = self.motors_on_client.wait_for_service(timeout_sec=5.0)
-        if not motors_on_client_success:
-            self._ros_node.get_logger().error("Try turn on motors service is not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
-        self.motors_off_client = self._ros_node.create_client(Trigger, '/state_controller/try_turn_off')
-        motors_off_client_success = self.motors_off_client.wait_for_service(timeout_sec=5.0)
-        if not motors_off_client_success:
-            self._ros_node.get_logger().error("Try turn off motors service is not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
-        self.reset_fault_client = self._ros_node.create_client(Trigger, '/state_controller/reset_fault')
-        reset_fault_client_success = self.reset_fault_client.wait_for_service(timeout_sec=5.0)
-        if not reset_fault_client_success:
-            self._ros_node.get_logger().error("Reset Faults service is not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
-        self.mode_of_op_client = self._ros_node.create_client(SwitchDriveModeOfOperation, '/state_controller/switch_mode_of_operation')
-        mode_of_op_client_success = self.mode_of_op_client.wait_for_service(timeout_sec=5.0)
-        if not mode_of_op_client_success:
-            self._ros_node.get_logger().error("Switch drive mode of operation service is not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
-        self.get_op_mode_client = self._ros_node.create_client(GetModesOfOperation, '/ethercat_checker/get_drive_mode_of_operation')
-        get_op_mode_client_success = self.get_op_mode_client.wait_for_service(timeout_sec=5.0)
-        if not get_op_mode_client_success:
-            self._ros_node.get_logger().error("Get drive mode of operation service is not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
-        self.enable_eth_error_check = self._ros_node.create_client(SetBool, '/ethercat_checker/enable_error_checking')
-        enable_eth_err_chk_success = self.enable_eth_error_check.wait_for_service(timeout_sec=5.0)
-        if not enable_eth_err_chk_success:
-            self._ros_node.get_logger().error("Enable error checking service is not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
+        # Read parameters
         self.cm_param_client = AsyncParameterClient(self._ros_node, 'controller_manager')
         param_client_success= self.cm_param_client.wait_for_services(5.0)
         if not param_client_success:
@@ -104,7 +56,6 @@ class SyncRosManager:
             rclpy.shutdown()
             sys.exit(1)
         self.update_rate = -1 
-        # Read parameters
         future =  self.cm_param_client.get_parameters(['update_rate'])
         rclpy.spin_until_future_complete(self._ros_node,future)
         result = future.result()
@@ -115,11 +66,6 @@ class SyncRosManager:
             self._ros_node.get_logger().error("Failed to read update rate parameter.")
             rclpy.shutdown()
             sys.exit(1)
-        # catch the controller names
-        available_nodes = [ full_name for _, _, full_name in get_node_names(node=self._ros_node, include_hidden_nodes=False) ]
-        self.trajectory_controller_name = list(filter(lambda x: x.endswith("_trajectory_controller"), available_nodes))[0].lstrip('/')
-        self._ros_node.get_logger().error(f"Trajectory Controller Name: {self.trajectory_controller_name}")
-        self._controller_timer.start(self._controller_list_period)
         # soft stop variables
         self._soft_transition_values = []
         self._soft_start_timer = QTimer()
@@ -150,6 +96,10 @@ class SyncRosManager:
         self.manual_reset_faults = True
         self.is_in_fault_state = False
         self.fault_reset_in_execution = False
+        # check if ros env is correctly launched 
+        self._ros_ready_timer = QTimer()
+        self._ros_ready_timer.timeout.connect(self.check_ros_ready)
+        self._ros_ready_timer.start(100)
 
 
     def trigger_soft_stop(self, start_value: float, steps: int = 10, target='speed_ovr', jog_joint_idx=None):
@@ -238,6 +188,65 @@ class SyncRosManager:
     #####                            GENERAL ROS FUNCTIONS                                   ##### 
     #####                                                                                    #####
     ##############################################################################################
+
+    def check_ros_ready(self):
+        available_nodes = [ full_name for _, _, full_name in get_node_names(node=self._ros_node, include_hidden_nodes=False) ]
+        if len(list(filter(lambda x: x.endswith("_trajectory_controller"), available_nodes)))>0:
+            self.trajectory_controller_name = list(filter(lambda x: x.endswith("_trajectory_controller") and "spawner" not in x, available_nodes))[0].lstrip('/')
+            self._ros_node.get_logger().error(f"Trajectory Controller Name: {self.trajectory_controller_name}")
+            self.initServices()
+            self._controller_timer.start(self._controller_list_period)
+            self._ros_ready_timer.stop()
+
+    def initServices(self):
+        self.current_controller_client = self._ros_node.create_client(ListControllers, '/controller_manager/list_controllers')
+        client_success = self.current_controller_client.wait_for_service(timeout_sec=10.0)
+        if not client_success:
+            self._ros_node.get_logger().error("List controllers service is not ready.")
+            rclpy.shutdown()
+            sys.exit(1)
+        self.switch_controller_client = self._ros_node.create_client(SwitchController, '/controller_manager/switch_controller')
+        switch_controller_client_success = self.switch_controller_client.wait_for_service(timeout_sec=10.0)
+        if not switch_controller_client_success:
+            self._ros_node.get_logger().error("Switch controller service is not ready.")
+            rclpy.shutdown()
+            sys.exit(1)
+        self.motors_on_client = self._ros_node.create_client(Trigger, '/state_controller/try_turn_on')
+        motors_on_client_success = self.motors_on_client.wait_for_service(timeout_sec=10.0)
+        if not motors_on_client_success:
+            self._ros_node.get_logger().error("Try turn on motors service is not ready.")
+            rclpy.shutdown()
+            sys.exit(1)
+        self.motors_off_client = self._ros_node.create_client(Trigger, '/state_controller/try_turn_off')
+        motors_off_client_success = self.motors_off_client.wait_for_service(timeout_sec=10.0)
+        if not motors_off_client_success:
+            self._ros_node.get_logger().error("Try turn off motors service is not ready.")
+            rclpy.shutdown()
+            sys.exit(1)
+        self.reset_fault_client = self._ros_node.create_client(Trigger, '/state_controller/reset_fault')
+        reset_fault_client_success = self.reset_fault_client.wait_for_service(timeout_sec=10.0)
+        if not reset_fault_client_success:
+            self._ros_node.get_logger().error("Reset Faults service is not ready.")
+            rclpy.shutdown()
+            sys.exit(1)
+        self.mode_of_op_client = self._ros_node.create_client(SwitchDriveModeOfOperation, '/state_controller/switch_mode_of_operation')
+        mode_of_op_client_success = self.mode_of_op_client.wait_for_service(timeout_sec=10.0)
+        if not mode_of_op_client_success:
+            self._ros_node.get_logger().error("Switch drive mode of operation service is not ready.")
+            rclpy.shutdown()
+            sys.exit(1)
+        self.get_op_mode_client = self._ros_node.create_client(GetModesOfOperation, '/ethercat_checker/get_drive_mode_of_operation')
+        get_op_mode_client_success = self.get_op_mode_client.wait_for_service(timeout_sec=10.0)
+        if not get_op_mode_client_success:
+            self._ros_node.get_logger().error("Get drive mode of operation service is not ready.")
+            rclpy.shutdown()
+            sys.exit(1)
+        self.enable_eth_error_check = self._ros_node.create_client(SetBool, '/ethercat_checker/enable_error_checking')
+        enable_eth_err_chk_success = self.enable_eth_error_check.wait_for_service(timeout_sec=10.0)
+        if not enable_eth_err_chk_success:
+            self._ros_node.get_logger().error("Enable error checking service is not ready.")
+            rclpy.shutdown()
+            sys.exit(1)
 
     def getJointState(self, data):
         if not set(self._joint_names).issubset(data.name):
