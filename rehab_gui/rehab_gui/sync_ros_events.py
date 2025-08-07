@@ -36,7 +36,7 @@ class SyncRosManager:
         self._ros_timer.timeout.connect(self.spin_ros_once)
         self._ros_timer.start(self._ros_period)
         self._controller_timer = QTimer()
-        self._controller_timer.timeout.connect(self.update_current_controller)
+        self._controller_timer.timeout.connect(self.list_active_controllers)
         self._joint_state = None
         self._joint_names = joint_names
         #  subscribers
@@ -52,9 +52,7 @@ class SyncRosManager:
         self.cm_param_client = AsyncParameterClient(self._ros_node, 'controller_manager')
         param_client_success= self.cm_param_client.wait_for_services(5.0)
         if not param_client_success:
-            self._ros_node.get_logger().error("Parameter client services are not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
+            raise RuntimeError("Parameter client services are not ready.")
         self.update_rate = -1 
         future =  self.cm_param_client.get_parameters(['update_rate'])
         rclpy.spin_until_future_complete(self._ros_node,future)
@@ -63,9 +61,7 @@ class SyncRosManager:
             self._ros_node.get_logger().info(f"Read: update rate = {result.values[0].integer_value}")
             self.update_rate = result.values[0].integer_value
         else:
-            self._ros_node.get_logger().error("Failed to read update rate parameter.")
-            rclpy.shutdown()
-            sys.exit(1)
+            raise RuntimeError("Failed to gather update rate parameter!")
         # soft stop variables
         self._soft_transition_values = []
         self._soft_start_timer = QTimer()
@@ -100,6 +96,8 @@ class SyncRosManager:
         self._ros_ready_timer = QTimer()
         self._ros_ready_timer.timeout.connect(self.check_ros_ready)
         self._ros_ready_timer.start(100)
+        # check if clients are being destroyed
+        self.destroy_clients_init = False
 
 
     def trigger_soft_stop(self, start_value: float, steps: int = 10, target='speed_ovr', jog_joint_idx=None):
@@ -190,63 +188,67 @@ class SyncRosManager:
     ##############################################################################################
 
     def check_ros_ready(self):
-        available_nodes = [ full_name for _, _, full_name in get_node_names(node=self._ros_node, include_hidden_nodes=False) ]
-        if len(list(filter(lambda x: x.endswith("_trajectory_controller"), available_nodes)))>0:
-            self.trajectory_controller_name = list(filter(lambda x: x.endswith("_trajectory_controller") and "spawner" not in x, available_nodes))[0].lstrip('/')
+        available_nodes = [
+            full_name
+            for _, _, full_name in get_node_names(
+                node=self._ros_node, include_hidden_nodes=False
+            )
+        ]
+        controllers = [
+            x for x in available_nodes
+            if x.endswith("_trajectory_controller") and "spawner" not in x
+        ]
+        if controllers:
+            self.trajectory_controller_name = controllers[0].lstrip('/')
             self._ros_node.get_logger().error(f"Trajectory Controller Name: {self.trajectory_controller_name}")
-            self.initServices()
-            self._controller_timer.start(self._controller_list_period)
-            self._ros_ready_timer.stop()
+            if self.init_service_clients():
+                self._controller_timer.start(self._controller_list_period)
+                self._ros_ready_timer.stop()
+                self._ros_node.get_logger().info('ROS class correctly started!')
 
-    def initServices(self):
+    def init_service_clients(self):
         self.current_controller_client = self._ros_node.create_client(ListControllers, '/controller_manager/list_controllers')
         client_success = self.current_controller_client.wait_for_service(timeout_sec=10.0)
         if not client_success:
             self._ros_node.get_logger().error("List controllers service is not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
+            return False
         self.switch_controller_client = self._ros_node.create_client(SwitchController, '/controller_manager/switch_controller')
         switch_controller_client_success = self.switch_controller_client.wait_for_service(timeout_sec=10.0)
         if not switch_controller_client_success:
             self._ros_node.get_logger().error("Switch controller service is not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
+            return False
         self.motors_on_client = self._ros_node.create_client(Trigger, '/state_controller/try_turn_on')
         motors_on_client_success = self.motors_on_client.wait_for_service(timeout_sec=10.0)
         if not motors_on_client_success:
             self._ros_node.get_logger().error("Try turn on motors service is not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
+            return False
         self.motors_off_client = self._ros_node.create_client(Trigger, '/state_controller/try_turn_off')
         motors_off_client_success = self.motors_off_client.wait_for_service(timeout_sec=10.0)
         if not motors_off_client_success:
             self._ros_node.get_logger().error("Try turn off motors service is not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
+            return False
         self.reset_fault_client = self._ros_node.create_client(Trigger, '/state_controller/reset_fault')
         reset_fault_client_success = self.reset_fault_client.wait_for_service(timeout_sec=10.0)
         if not reset_fault_client_success:
             self._ros_node.get_logger().error("Reset Faults service is not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
+            return False
         self.mode_of_op_client = self._ros_node.create_client(SwitchDriveModeOfOperation, '/state_controller/switch_mode_of_operation')
         mode_of_op_client_success = self.mode_of_op_client.wait_for_service(timeout_sec=10.0)
         if not mode_of_op_client_success:
             self._ros_node.get_logger().error("Switch drive mode of operation service is not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
+            return False
         self.get_op_mode_client = self._ros_node.create_client(GetModesOfOperation, '/ethercat_checker/get_drive_mode_of_operation')
         get_op_mode_client_success = self.get_op_mode_client.wait_for_service(timeout_sec=10.0)
         if not get_op_mode_client_success:
             self._ros_node.get_logger().error("Get drive mode of operation service is not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
+            return False
         self.enable_eth_error_check = self._ros_node.create_client(SetBool, '/ethercat_checker/enable_error_checking')
         enable_eth_err_chk_success = self.enable_eth_error_check.wait_for_service(timeout_sec=10.0)
         if not enable_eth_err_chk_success:
             self._ros_node.get_logger().error("Enable error checking service is not ready.")
-            rclpy.shutdown()
-            sys.exit(1)
+            return False
+        self._ros_node.get_logger().info('All service clients correctly initialized.')
+        return True
 
     def getJointState(self, data):
         if not set(self._joint_names).issubset(data.name):
@@ -278,14 +280,16 @@ class SyncRosManager:
     def spin_ros_once(self):
         rclpy.spin_once(self._ros_node, timeout_sec=0)
 
-    def update_current_controller(self):
-        req = ListControllers.Request()
-        future = self.current_controller_client.call_async(req)
-        rclpy.spin_until_future_complete(self._ros_node, future)
+    def list_active_controllers(self):
+        if not self.destroy_clients_init:
+            req = ListControllers.Request()
+            future = self.current_controller_client.call_async(req)
+            future.add_done_callback(self.update_current_controller)
+        
+    def update_current_controller(self, future):
         if not future.result():
             self._ros_node.get_logger().error("Failed to call list_controllers service")
             return False
-        
         op_response = self.get_drives_mode_of_op(self._joint_names)
         is_csv_mode = (len(op_response.dof_names)==len(self._joint_names)) and all(op_response.values[j] == 9 for j in range(len(self._joint_names)))
         is_csp_mode = (len(op_response.dof_names)==len(self._joint_names)) and all(op_response.values[j] == 8 for j in range(len(self._joint_names)))
@@ -316,6 +320,10 @@ class SyncRosManager:
                 break
         if active_controller:
             self.current_controller = active_controller
+            # self._ros_node.get_logger().info(
+            #     f'current controller: {self.current_controller} \t current MOO: [{op_response.values[0]}, {op_response.values[1]}, {op_response.values[2]}]')
+            # self._ros_node.get_logger().info(
+            #     f'\nFlags status: enable jog: {self.enable_jog_buttons}\n enable zeroing: {self.enable_zeroing}\n enable manual guide: {self.enable_manual_guidance}\n enable ptp: {self.enable_ptp}')
             return True
         else:
             self.current_controller = None
@@ -326,7 +334,7 @@ class SyncRosManager:
                 self.enable_ptp = False
                 return True
             else:
-                self._ros_node.get_logger().warn("⚠️ No known controller is currently active!")
+                self._ros_node.get_logger().warn(f"⚠️ No known controller is currently active! Current MOO: [{op_response.values[0]}, {op_response.values[1]}, {op_response.values[2]}]")
                 return False
 
     def switch_controller(self, controller_to_activate, controller_to_deactivate):
@@ -356,6 +364,68 @@ class SyncRosManager:
             return
         self.set_mode_of_operation(8) if self.current_controller == self.trajectory_controller_name else self.set_mode_of_operation(9)
 
+    def destroy(self):
+        self.destroy_clients_init = True
+
+        if hasattr(self, '_ros_ready_timer'):
+            self._ros_ready_timer.stop()
+            self._ros_ready_timer.deleteLater()
+        if hasattr(self, '_controller_timer'):
+            self._controller_timer.stop()
+            self._controller_timer.deleteLater()
+        if hasattr(self, '_ros_timer'):
+            self._ros_timer.stop()
+            self._ros_timer.deleteLater()
+        if hasattr(self, '_soft_stop_timer'):
+            self._soft_stop_timer.stop()
+            self._soft_stop_timer.deleteLater()
+
+        if self.joint_subscriber:
+            self._ros_node.destroy_subscription(self.joint_subscriber)
+        if self.tool_subscriber:
+            self._ros_node.destroy_subscription(self.tool_subscriber)
+        if self.fault_state_subscriber:
+            self._ros_node.destroy_subscription(self.fault_state_subscriber)
+        if self.pub_speed_ovr:
+            self._ros_node.destroy_publisher(self.pub_speed_ovr)
+        if self.jog_cmd_publisher:
+            self._ros_node.destroy_publisher(self.jog_cmd_publisher)
+        if self.current_controller_client:
+            self._ros_node.destroy_client(self.current_controller_client)
+        if self.switch_controller_client:
+            self._ros_node.destroy_client(self.switch_controller_client)
+        if self.motors_on_client:
+            self._ros_node.destroy_client(self.motors_on_client)
+        if self.motors_off_client:
+            self._ros_node.destroy_client(self.motors_off_client)
+        if self.reset_fault_client:
+            self._ros_node.destroy_client(self.reset_fault_client)
+        if self.mode_of_op_client:
+            self._ros_node.destroy_client(self.mode_of_op_client)
+        if self.get_op_mode_client:
+            self._ros_node.destroy_client(self.get_op_mode_client)
+        if self.enable_eth_error_check:
+            self._ros_node.destroy_client(self.enable_eth_error_check)
+
+        # Null out handles to publishers, services, etc.
+        self.speed_ovr_publisher = None
+        self.jog_publisher = None
+        self.list_controllers_cli = None
+        self.switch_controller_cli = None
+        self.reset_fault_cli = None
+        self.try_turn_on_cli = None
+        self.try_turn_off_cli = None
+        self.switch_mode_of_operation_cli = None
+        self.get_drive_mode_of_operation_cli = None
+        self.enable_error_checking_cli = None
+
+        try:
+            self.comboBox_ResetFaults.currentIndexChanged.disconnect()
+        except Exception:
+            pass
+
+        print("SyncRosManager correctly destroyed.")
+        return True
 
     ##############################################################################################
     #####                                                                                    #####  

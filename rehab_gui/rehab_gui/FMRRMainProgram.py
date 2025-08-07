@@ -1,9 +1,10 @@
 import os
 import sys
 import signal
+import time
 from PyQt5 import QtWidgets, QtCore 
 from PyQt5.QtWidgets import QMessageBox, QLabel, QPushButton, QDialog, QVBoxLayout
-from PyQt5.QtCore import QTimer, QThread, pyqtSignal, Qt
+from PyQt5.QtCore import QTimer, QObject, QThread, pyqtSignal, Qt
 from functools import partial
 
 # mathematics
@@ -25,7 +26,7 @@ from control_msgs.action import FollowJointTrajectory
 from trajectory_msgs.msg import JointTrajectoryPoint
 from action_msgs.msg import GoalStatus
 from std_msgs.msg import Int16
-
+from rclpy.executors import ExternalShutdownException
 from .async_ros_events import ASyncRosManager
 from .sync_ros_events import SyncRosManager
 
@@ -51,6 +52,45 @@ class WaitingDialog(QDialog):
         self.setLayout(layout)
         self.resize(300, 100)
 
+class ROSNetworkChecker(QObject):
+    ros_ready = pyqtSignal(bool)  # True = ROS attivo, False = ROS non attivo
+
+    def __init__(self, ros_node: Node, interval_sec=0.5):
+        super().__init__()
+        self.ros_node = ros_node
+        self.context_alive = True  # Flag per sapere se ROS è vivo
+
+        # Timer Qt, così il check viene sempre fatto anche se ROS è spento
+        self.check_timer = QTimer(self)
+        self.check_timer.timeout.connect(self.check)
+        self.check_timer.start(int(interval_sec * 1000))
+
+        print('[ROSNetworkChecker] initialized.')
+
+    def check(self):
+        """Controlla se ROS è vivo e se il nodo 'state_controller' è presente."""
+        ready = False
+        if self.context_alive:
+            try:
+                nodes = list(self.ros_node.get_node_names())
+                ready = 'state_controller' in nodes
+            except ExternalShutdownException:
+                # ROS è stato spento → segnala False ma continua il timer
+                print('[ROSNetworkChecker] ROS shutdown detected.')
+                self.context_alive = False
+                ready = False
+            except Exception as e:
+                # Altri errori (es. nodo non raggiungibile)
+                print(f'[ROSNetworkChecker] Exception: {e}')
+                ready = False
+
+            self.ros_ready.emit(ready)
+
+    def stop(self):
+        """Da chiamare quando vogliamo chiudere il checker (es. in closeEvent)."""
+        print('[ROSNetworkChecker] stopping...')
+        self.check_timer.stop()
+
 
 class MainProgram(Ui_FMRRMainWindow, QtCore.QObject): 
     _update_windows_period = 500
@@ -67,21 +107,23 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.DialogMovementWindow = QtWidgets.QDialog()
         self.DialogRobotWindow = QtWidgets.QDialog()
         self.FMRRMainWindow = QtWidgets.QMainWindow()
-        print("FMRR cell node started.")
 
-        # Set up ROS Network timer
-        self._ros_network_status_timer = QTimer()
-        self._ros_network_status_timer.timeout.connect( self.updateROSNetworkStatus )        
-        self._ros_network_status_timer.start(self._update_windows_period)
+        # Set up ROS Network checker
+        self.ros_checker = ROSNetworkChecker(self._ros_node, interval_sec=0.5)
+        self.ros_checker.ros_ready.connect(self.updateROSNetworkStatus)
     
         self.ROS = None
         self.MovementWorker = None
         self.ROS_active = False
         self.movement_worker_init = False
+        self.ROS_is_quitting = False
         self.ros_waiting_dialog = WaitingDialog(self.FMRRMainWindow)
+        print("FMRR cell node started.")
 
     def initializeRosProcesses(self):
-        self.FMRRMainWindow.setDisabled(False)
+        if self.ROS is not None:
+            print("[MainProgram] ROS already initialized.")
+            return
         self.worker_thread = QThread()
         self.ROS = SyncRosManager(self._ros_node, JOINT_NAMES)
         self.startMovementWindow()
@@ -90,12 +132,58 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.comboBox_ResetFaults.currentIndexChanged.connect(self.ROS.reset_mode_changed)
 
     def stopRosProcesses(self):
+        if self.ROS_is_quitting:
+            print('Already stopping ROS objects, waiting for completion...')
+            return 0
+        
+        self.ROS_is_quitting = True
         self.ROS_active = False
-        self.worker_thread = QThread()
-        self.trigger_pause.disconnect()
-        self.trigger_worker.disconnect()
-        self.comboBox_ResetFaults.currentIndexChanged.disconnect()
-        self._update_windows_timer.timeout.disconnect(self._update_robot_window_callback)
+
+        # Destroy ROS clients
+        if self.ROS is not None:
+            if not self.ROS.destroy():
+                print('Error trying to destroy ROS class.')
+                return -1
+            self.ROS = None
+            self.uiRobotWindow.disconnect_ROS_callbacks()
+
+        # Disconnect GUI signals
+        for signal in [
+            self.trigger_pause,
+            self.trigger_worker,
+            self.comboBox_ResetFaults.currentIndexChanged,
+        ]:
+            try:
+                signal.disconnect()
+            except (TypeError, RuntimeError):
+                pass
+
+        try:
+            self._update_windows_timer.timeout.disconnect(self._update_robot_window_callback)
+        except (TypeError, RuntimeError, AttributeError):
+            pass
+
+        if hasattr(self, "_update_windows_timer"):
+            self._update_windows_timer.stop()
+
+        # Stop worker and its thread
+        if self.MovementWorker:
+            try:
+                self.MovementWorker.deleteLater()
+            except Exception:
+                pass
+            self.MovementWorker = None
+
+        if hasattr(self, "worker_thread") and self.worker_thread.isRunning():
+            self.worker_thread.quit()
+            self.worker_thread.wait()
+
+        self.movement_worker_init = False
+        self.FMRRMainWindow.setDisabled(True)
+        self.ros_waiting_dialog.show()
+        self.ROS_is_quitting = False
+        print("[MainProgram] ROS processes stopped.")
+        return 1
 
     def initializeVariables(self):
         # self.FIRST_TIME = True
@@ -106,8 +194,13 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.iPhase = 0
         self._counter_request_homing_procedure = 0 # counter to avoid multiple request of homing procedure
 
-
     def initializeMovementWorker(self):
+        print("[MainProgram] Initializing MovementWorker...")
+
+        if not self.ROS:
+            print("[MainProgram] Cannot start MovementWorker: ROS not initialized.")
+            return
+        
         self.MovementWorker = ASyncRosManager(self._ros_node, JOINT_NAMES, self.ROS.trajectory_controller_name)
         self.MovementWorker.moveToThread(self.worker_thread)
         self._update_windows_timer.timeout.connect( self._update_robot_window_callback ) 
@@ -115,30 +208,39 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.trigger_pause.connect(self.MovementWorker.fct().is_paused) # type: ignore
         self.MovementWorker.fct().finished.connect(self.on_fct_worker_finished)
         self.MovementWorker.fct().progress.connect(self.on_fct_worker_progress)
-        #self.MovementWorker.moo().finished.connect(self.on_moo_worker_finished)
+        
         self.worker_thread.start()
         self.MovementWorker.fct().clear()
         self.ros_waiting_dialog.hide()
         self.ROS_active = True
+        self.FMRRMainWindow.setDisabled(False)
+        print("[MainProgram] MovementWorker initialized.")
 
-    def updateROSNetworkStatus(self):
-        available_nodes = [full_name for full_name in self._ros_node.get_node_names()]
-        if self.ROS is not None and 'state_controller' in available_nodes:
+    def updateROSNetworkStatus(self, ros_ready):
+        if self.ROS is not None and ros_ready:
+            # ROS active → create the worker if not present
             if not self.movement_worker_init and self.ROS.current_controller is not None:
                 self.initializeMovementWorker()
                 self.movement_worker_init = True
-        elif self.ROS is not None and 'state_controller' not in available_nodes:
+        elif self.ROS is not None and not ros_ready:
             print('No ROS processes detected, disabling GUI!')
-            self.stopRosProcesses()
-        elif self.ROS is None and 'state_controller' in available_nodes:
+            if not self.ROS_is_quitting:
+                self.FMRRMainWindow.setDisabled(True)
+                self.ros_waiting_dialog.show()
+                if self.stopRosProcesses()==-1:
+                    print('[MainProgram] ROS destruction failed. Retrying to stop ROS processes!')
+                    self.ROS_is_quitting = False
+        elif self.ROS is None and ros_ready:
             print('ROS processes detected, enabling GUI!')
             self.initializeRosProcesses()
         else:
-            self.FMRRMainWindow.setDisabled(True)
+            # ROS inactive → GUI disabled
+            self.uiRobotWindow = None
+            self.uiMovementWindow = None
             self.ROS = None
-            self.movement_worker_init = False
+            self.FMRRMainWindow.setDisabled(True)
             self.ros_waiting_dialog.show()
-        
+
     def updateWindowTimerCallback(self):
         self._update_windows_timer = QTimer()                                           # creo l'oggetto
         self._update_windows_timer.timeout.connect( lambda: self.updateFMRRWindow() )                    # lo collego ad una callback
@@ -443,6 +545,13 @@ def main(args=None):
     # Event loop Qt
     # ---------------------------
     exit_code = app.exec_()
+
+    if hasattr(ui, "ros_checker"):
+        ui.ros_checker.stop()
+
+    if hasattr(ui, "worker_thread"):
+        ui.worker_thread.quit()
+        ui.worker_thread.wait()
 
     rclpy.shutdown()
     sys.exit(exit_code)

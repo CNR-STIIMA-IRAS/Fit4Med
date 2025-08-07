@@ -34,6 +34,7 @@ from ros2node.api import get_node_names
 class FMRR_Ui_RobotWindow(Ui_RobotWindow):
     def __init__(self) -> None:
         super().__init__()
+        self.window_is_disabled = False
 
 ##############################################################################################################
 #####                                                                                                    #####  
@@ -167,74 +168,108 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
         self.DialogRobotWindow.hide()
 
 ######
-    def updateRobotWindow(self, RobotWindow):
-#       Joint and tool postions are converted and displayed 
-#       conversion factors (fromm RAD to Degree and from meters tocentimeteres are declared at the beginning od the FMRRMainProgram class    
-#       Joints lcd 
-        _jointPosConvFact = self.ui_FMRRMainWindow._jointPosConvFact #
-        try:
-            RobotJointPosition = self.ui_FMRRMainWindow.ROS.RobotJointPosition
-        except:
-            return
-#        print('ActualRobotJointPositon:')
-#        print(RobotJointPosition)
-        RobotJointPosition = [Ji_position * _jointPosConvFact for Ji_position in RobotJointPosition]
-        
-        ##       Handle lcd 
-        _toolPosCovFact = self.ui_FMRRMainWindow._toolPosCovFact
-        try:
-            HandlePosition = self.ui_FMRRMainWindow.ROS.HandlePosition
-        except:
-            return
-        # print('HandlePosition:')
-        # print(HandlePosition)
-        HandlePosition[:] = [i_position * _toolPosCovFact for i_position in HandlePosition]
+    def updateRobotWindow(self, RobotWindow: QtWidgets.QDialog):
+        if self.ui_FMRRMainWindow.ROS_active:
+            
+            if self.window_is_disabled:
+                RobotWindow.setDisabled(False)
+                self.window_is_disabled = False
 
-        CurrentDisplayedHandlePos = [self.lcdNumber_X, self.lcdNumber_Y, self.lcdNumber_Z]
-        for iCoord in range(0,3):
-            CurrentDisplayedHandlePos[iCoord].display( int(HandlePosition[iCoord]) )         
+    #       Joint and tool postions are converted and displayed 
+    #       conversion factors (fromm RAD to Degree and from meters tocentimeteres are declared at the beginning od the FMRRMainProgram class    
+    #       Joints lcd 
+            _jointPosConvFact = self.ui_FMRRMainWindow._jointPosConvFact #
+            try:
+                RobotJointPosition = self.ui_FMRRMainWindow.ROS.RobotJointPosition
+            except:
+                return
+    #        print('ActualRobotJointPositon:')
+    #        print(RobotJointPosition)
+            RobotJointPosition = [Ji_position * _jointPosConvFact for Ji_position in RobotJointPosition]
+            
+            ##       Handle lcd 
+            _toolPosCovFact = self.ui_FMRRMainWindow._toolPosCovFact
+            try:
+                HandlePosition = self.ui_FMRRMainWindow.ROS.HandlePosition
+            except:
+                return
+            # print('HandlePosition:')
+            # print(HandlePosition)
+            HandlePosition[:] = [i_position * _toolPosCovFact for i_position in HandlePosition]
 
-        ##############################################################################################
-        #####                                                                                    #####
-        #####                               SET GOAL FRAME                                       #####
-        #####                                                                                    #####
-        #####                                                                                    #####
-        #######################à######################################################################
-        file_path = '/tmp/absolute_homing_performed'
-        if os.path.exists(file_path):
-            self.lineEdit_MoveRobotPosition_GoalPosition.setText( "Goal Position (ABSOLUTE FRAME)" ) # type: ignore
-            self.frame_GoalPosition.setStyleSheet("background-color: rgb(0, 190, 0);")
-            self.frame_GoalPosition.setEnabled(True)
-            self.pushButton_LoadJointPosition.setEnabled(True)
-            self.pushButton_SaveStartPosition.setEnabled(True)
-        else:    
-            file_path = '/tmp/relative_homing_performed'
+            CurrentDisplayedHandlePos = [self.lcdNumber_X, self.lcdNumber_Y, self.lcdNumber_Z]
+            for iCoord in range(0,3):
+                CurrentDisplayedHandlePos[iCoord].display( int(HandlePosition[iCoord]) )         
+
+            ##############################################################################################
+            #####                                                                                    #####
+            #####                               SET GOAL FRAME                                       #####
+            #####                                                                                    #####
+            #####                                                                                    #####
+            #######################à######################################################################
+            file_path = '/tmp/absolute_homing_performed'
             if os.path.exists(file_path):
-                self.lineEdit_MoveRobotPosition_GoalPosition.setText( "Goal Position (RELATIVE FRAME)" ) # type: ignore
-                self.frame_GoalPosition.setStyleSheet("Background: light blue")
+                self.lineEdit_MoveRobotPosition_GoalPosition.setText( "Goal Position (ABSOLUTE FRAME)" ) # type: ignore
+                self.frame_GoalPosition.setStyleSheet("background-color: rgb(0, 190, 0);")
                 self.frame_GoalPosition.setEnabled(True)
-                self.pushButton_LoadJointPosition.setEnabled(False)
-                self.pushButton_SaveStartPosition.setEnabled(False)
+                self.pushButton_LoadJointPosition.setEnabled(True)
+                self.pushButton_SaveStartPosition.setEnabled(True)
+            else:    
+                file_path = '/tmp/relative_homing_performed'
+                if os.path.exists(file_path):
+                    self.lineEdit_MoveRobotPosition_GoalPosition.setText( "Goal Position (RELATIVE FRAME)" ) # type: ignore
+                    self.frame_GoalPosition.setStyleSheet("Background: light blue")
+                    self.frame_GoalPosition.setEnabled(True)
+                    self.pushButton_LoadJointPosition.setEnabled(False)
+                    self.pushButton_SaveStartPosition.setEnabled(False)
+                else:
+                    self.lineEdit_MoveRobotPosition_GoalPosition.setText( "Goal Position (!!! UNDEFINED FRAME!!!)" ) # type: ignore
+                    self.frame_GoalPosition.setEnabled(False)
+
+            self.frame_JOG.setEnabled(self.ui_FMRRMainWindow.ROS.enable_jog_buttons)
+            self.frame_ManualGuide.setEnabled(self.ui_FMRRMainWindow.ROS.enable_manual_guidance)
+            self.frame_Homing.setEnabled(self.ui_FMRRMainWindow.ROS.enable_zeroing)
+            self.frame_GoalPosition.setEnabled(self.ui_FMRRMainWindow.ROS.enable_ptp)
+            self.frame_GoalPosition.setEnabled(self.ui_FMRRMainWindow.ROS.enable_ptp)
+            self.pushButton_ResetFaults.setEnabled(self.ui_FMRRMainWindow.ROS.manual_reset_faults)
+
+            self.pushButton_StartMotors.setEnabled(not self.ui_FMRRMainWindow.ROS.are_motors_on)
+            self.pushButton_StopMotors.setEnabled(self.ui_FMRRMainWindow.ROS.are_motors_on)
+
+            if self.ui_FMRRMainWindow.ROS.is_in_fault_state:
+                self.frame_FaultDetected.setStyleSheet("background-color: red; border-radius: 10px;")
             else:
-                self.lineEdit_MoveRobotPosition_GoalPosition.setText( "Goal Position (!!! UNDEFINED FRAME!!!)" ) # type: ignore
-                self.frame_GoalPosition.setEnabled(False)
-
-        self.frame_JOG.setEnabled(self.ui_FMRRMainWindow.ROS.enable_jog_buttons)
-        self.frame_ManualGuide.setEnabled(self.ui_FMRRMainWindow.ROS.enable_manual_guidance)
-        self.frame_Homing.setEnabled(self.ui_FMRRMainWindow.ROS.enable_zeroing)
-        self.frame_GoalPosition.setEnabled(self.ui_FMRRMainWindow.ROS.enable_ptp)
-        self.frame_GoalPosition.setEnabled(self.ui_FMRRMainWindow.ROS.enable_ptp)
-        self.pushButton_ResetFaults.setEnabled(self.ui_FMRRMainWindow.ROS.manual_reset_faults)
-
-        self.pushButton_StartMotors.setEnabled(not self.ui_FMRRMainWindow.ROS.are_motors_on)
-        self.pushButton_StopMotors.setEnabled(self.ui_FMRRMainWindow.ROS.are_motors_on)
-
-        if self.ui_FMRRMainWindow.ROS.is_in_fault_state:
-            self.frame_FaultDetected.setStyleSheet("background-color: red; border-radius: 10px;")
+                self.frame_FaultDetected.setStyleSheet("background-color: green; border-radius: 10px;")
         else:
-            self.frame_FaultDetected.setStyleSheet("background-color: green; border-radius: 10px;")
-    
-              
+            RobotWindow.setDisabled(True)
+            self.window_is_disabled = True
+
+    def disconnect_ROS_callbacks(self):
+        try:
+            self.pushButton_JOG.toggled.disconnect(self.ui_FMRRMainWindow.ROS.jog_enable)
+            self.pushButton_ManualGuide.toggled.disconnect(self.ui_FMRRMainWindow.ROS.manual_guidance_enable)
+            self.radioButton_EnableHoming.clicked.disconnect(self.ui_FMRRMainWindow.ROS.zeroing_enable)
+
+            self.comboBox_ResetFaults.currentIndexChanged.disconnect(self.ui_FMRRMainWindow.ROS.reset_mode_changed)
+
+            self.pushButton_Xminus.pressed.disconnect()
+            self.pushButton_Xplus.pressed.disconnect()
+            self.pushButton_Yminus.pressed.disconnect()
+            self.pushButton_Yplus.pressed.disconnect()
+            self.pushButton_Zminus.pressed.disconnect()
+            self.pushButton_Zplus.pressed.disconnect()
+
+            self.pushButton_Xminus.released.disconnect()
+            self.pushButton_Xplus.released.disconnect()
+            self.pushButton_Yminus.released.disconnect()
+            self.pushButton_Yplus.released.disconnect()
+            self.pushButton_Zminus.released.disconnect()
+            self.pushButton_Zplus.released.disconnect()
+            
+            print("🔌 Signal-slot ROS disconnected")
+        except Exception as e:
+            print(f"⚠️ Error during disconnect_ROS_callbacks: {e}")
+
     def setupUi_RobotWindow(self, RobotWindow):
         Ui_RobotWindow.setupUi(self, RobotWindow)
                         
