@@ -1,34 +1,31 @@
-safety_plc:
-  plc_controller_manager:
-    ros__parameters:
-      update_rate: 1000 #Hz
-
-      PLC_controller:
-        type: plc_controller/PLCController
-
-  PLC_controller:
-    ros__parameters:
-      gpios:
-        - PLC_node
-      command_interfaces:
-        PLC_node:
-          - interfaces:
-            - mode_of_operation
-            - power_cutoff
-            - sonar_teach
-            - s_output.4
-            - s_output.5
-            - s_output.6
-            - s_output.7
-            - s_output.8
-      state_interfaces:
-        PLC_node:
-          - interfaces:
-            - s_input.0        
-            - estop
-            - reset
-            - s_input.4
-            - s_input.5
-            - s_input.6
-            - s_input.7
-            - s_input.8
+plc_controller_manager:
+  ros__parameters:
+    update_rate: 1000 #Hz
+    PLC_controller:
+      type: plc_controller/PLCController
+PLC_controller:
+  ros__parameters:
+    gpios:
+      - PLC_node
+    command_interfaces:
+      PLC_node:
+        - interfaces:
+          - mode_of_operation
+          - power_cutoff
+          - sonar_teach
+          - s_output.4
+          - s_output.5
+          - s_output.6
+          - s_output.7
+          - s_output.8
+    state_interfaces:
+      PLC_node:
+        - interfaces:
+          - s_input.0        
+          - estop
+          - reset
+          - s_input.4
+          - s_input.5
+          - s_input.6
+          - s_input.7
+          - s_input.8

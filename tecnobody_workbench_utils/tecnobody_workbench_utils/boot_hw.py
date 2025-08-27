@@ -80,15 +80,22 @@ class HomingNode(Node):
                                     text=True,
                                     check=True)
             lines = result.stdout.strip().splitlines()
+            lines_master1 =[]
+            section_master1_found = False
+            for line in lines:
+                section_master1_found = section_master1_found or 'Master1' in line
+                if section_master1_found and not 'Master1' in line:
+                    lines_master1.append(line)
+
             eth_states = {}
             for idx in self.slave_indices:
-                if idx < len(lines):
-                    parts = lines[idx].split()
+                if idx < len(lines_master1):
+                    parts = lines_master1[idx].split()
                     if len(parts) > 2:
                         slave_name, state = parts[1], parts[2]
                         eth_states[idx] = {'name': slave_name, 'state': state}
                     else:
-                        self.get_logger().warn(f"Formato non valido per la linea dello slave {idx}: {lines[idx]}")
+                        self.get_logger().warn(f"Formato non valido per la linea dello slave {idx}: {lines_master1[idx]}")
                 else:
                     self.get_logger().warn(f"Nessuno slave trovato all'indice {idx}.")
             return eth_states
