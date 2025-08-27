@@ -27,6 +27,7 @@ def generate_launch_description():
     ros2_control_node = Node(
         package='controller_manager',
         executable='ros2_control_node',
+        name='plc_control_node',
         arguments=[],
         parameters=[initial_joint_controllers],
         output='screen',
@@ -42,7 +43,7 @@ def generate_launch_description():
     plc_controller_spawner = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['PLC_controller'],
+        arguments=['PLC_controller', '-c', '/plc_control_node'],
         output='screen',
     )
 

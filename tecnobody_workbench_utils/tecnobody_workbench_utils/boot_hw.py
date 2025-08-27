@@ -141,8 +141,8 @@ class HomingNode(Node):
         self.reset_faults_in_execution = False
 
     def try_turn_on(self):
-        if self.try_turn_on_in_execution:
-            return 1
+        # if self.try_turn_on_in_execution:
+        #     return 1
         self.try_turn_on_in_execution = True
         self.get_logger().info('Turning on drives...', once = True)
         try_on_service_group = MutuallyExclusiveCallbackGroup()
@@ -397,7 +397,7 @@ def main(args=None):
                     node.try_turn_off()
                     if node.try_turn_off_checker():
                         node.get_logger().info('Drives turned off successfully, Try to perform homing again ...')
-                        node.homing_process_started = True
+                        node.homing_process_started = False
                         node.homing_process_attained = False
                 else:
                     if all((status_word & (1 << 12)) != 0 for status_word in node.status_words.values()):

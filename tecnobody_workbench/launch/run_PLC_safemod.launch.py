@@ -160,7 +160,7 @@ def generate_launch_description():
 
     homing = Node(
         package='tecnobody_workbench_utils',
-        executable='homing_node',
+        executable='boot_hw',
         arguments=['MODE_CYCLIC_SYNC_POSITION'],
         output='screen',
     )

@@ -101,7 +101,7 @@ def generate_launch_description():
         [
             PathJoinSubstitution([FindExecutable(name='xacro')]),
             ' ',
-            PathJoinSubstitution([FindPackageShare(description_package), "urdf",'platform_complete_PLC.config.urdf']),
+            PathJoinSubstitution([FindPackageShare(description_package), "urdf",'platform_complete.config.urdf']),
         ]
     )
     robot_description = {'robot_description': robot_description_content}
@@ -129,19 +129,6 @@ def generate_launch_description():
         executable='robot_state_publisher',
         output='screen',
         parameters=[robot_description]
-    )
-    
-    plc_spawner = Node(
-        package='controller_manager',
-        executable='spawner',
-        arguments=['PLC_controller'],
-        output='screen',
-    )
-
-    plc_manager = Node(
-        package='plc_manager',
-        executable='plc_manager_node',
-        output = 'screen',
     )
 
     ssb = Node(
@@ -173,7 +160,7 @@ def generate_launch_description():
 
     eth_checker = Node(
         package='tecnobody_workbench_utils',
-        executable='ethercat_checker_no_try_turn_on_node',
+        executable='ethercat_checker_node',
         name='tecnobody_ethercat_checker_node',
         output='screen',
     )
@@ -188,8 +175,8 @@ def generate_launch_description():
         package='controller_manager',
         executable='spawner',
         arguments=[
-            #'joint_trajectory_controller'
-            'scaled_trajectory_controller' 
+            'joint_trajectory_controller'
+            # 'scaled_trajectory_controller'
         ],
         output='screen',
     )
@@ -204,7 +191,7 @@ def generate_launch_description():
     forward_pos_controller_node = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['forward_position_controller', '--inactive'],
+        arguments=['forward_position_controller'],
         output='screen',
     )
 
@@ -230,8 +217,7 @@ def generate_launch_description():
                      forward_pos_controller_node,
                      admittance_controller_node, 
                      homing_done_publisher,
-                     eth_checker,
-                     plc_manager],
+                     eth_checker],
         )
     )
 
@@ -253,7 +239,6 @@ def generate_launch_description():
 
     ld = LaunchDescription()
     ld.add_action(ros2_control_node)
-    ld.add_action(plc_spawner)
     ld.add_action(ssb)
     ld.add_action(rsp)
     ld.add_action(homing_launcher)
