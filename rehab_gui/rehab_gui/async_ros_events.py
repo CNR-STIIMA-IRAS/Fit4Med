@@ -44,14 +44,18 @@ class FollowJointTrajectoryActionManager(QObject):
         self._pause_start_time = None
         self._paused_duration = 0.0
         self._joint_names = joint_names
-        #   action client
-        self.controller_name = controller_name
-        self.client = ActionClient(self.node, FollowJointTrajectory, f'/{self.controller_name}/follow_joint_trajectory')
-        if not self.client.wait_for_server(2):
-            raise ValueError('Follow Joint Trajectory Action server not available, exiting...')
-        self._goal_handle = None
-        self.clear()
+        self.action_server_timer = self.node.create_timer(0.5, self._check_client_ready)
 
+    def _check_client_ready(self):
+        if not hasattr(self, 'client'):
+            self.client = ActionClient(self.node, FollowJointTrajectory, '/joint_trajectory_controller/follow_joint_trajectory')
+        if self.client.wait_for_server(timeout_sec=1.0):
+            self.node.get_logger().info('Follow Joint Trajectory Action server is available.')
+            self.action_server_timer.cancel()
+            self.clear()
+        else:
+            self.node.get_logger().info('Waiting for Follow Joint Trajectory Action server...', throttle_duration_sec=5.0)
+            
     def clear(self):
         self.goalFCT = FollowJointTrajectory.Goal()
         self.goalFCT.trajectory.joint_names = self._joint_names

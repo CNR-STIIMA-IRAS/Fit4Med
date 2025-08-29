@@ -14,7 +14,7 @@ PLC_controller:
           - power_cutoff
           - sonar_teach
           - s_output.4
-          - s_output.5
+          - estop
           - s_output.6
           - s_output.7
           - s_output.8

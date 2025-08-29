@@ -2,8 +2,10 @@ from launch import LaunchDescription
 from launch.substitutions import Command, FindExecutable, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+from launch.conditions import IfCondition, UnlessCondition
+from launch.substitutions import LaunchConfiguration
 from launch.event_handlers import OnProcessExit, OnShutdown
-from launch.actions import RegisterEventHandler, LogInfo, OpaqueFunction
+from launch.actions import RegisterEventHandler, LogInfo, OpaqueFunction, DeclareLaunchArgument, GroupAction
 import threading
 
 import os
@@ -94,6 +96,12 @@ def clean_shutdown():
 def generate_launch_description():
     ros2_controllers = 'safemod_controllers.yaml'
     description_package = 'tecnobody_workbench'
+    DeclareLaunchArgument(
+            'perform_homing',
+            default_value='false',
+            description='Se true lancia il nodo extra'
+    ),
+
     
     nodes_names = []
 
@@ -150,6 +158,7 @@ def generate_launch_description():
         executable='boot_hw',
         arguments=['MODE_CYCLIC_SYNC_POSITION'],
         output='screen',
+        condition=IfCondition(LaunchConfiguration('perform_homing'))
     )
 
     homing_done_publisher = Node(
@@ -209,15 +218,41 @@ def generate_launch_description():
         )
     )
     
+    group1 = GroupAction(
+                actions=[
+                    joint_controller_node,
+                    forward_controller_node,
+                    forward_pos_controller_node,
+                    admittance_controller_node,
+                    homing_done_publisher,
+                    eth_checker
+                ],
+                condition=IfCondition(LaunchConfiguration('perform_homing'))
+            )
+    
+    group2 = GroupAction(
+                actions=[
+                    joint_controller_node,
+                    forward_controller_node,
+                    forward_pos_controller_node,
+                    admittance_controller_node,
+                    homing_done_publisher,
+                    eth_checker
+                ],
+                condition=UnlessCondition(LaunchConfiguration('perform_homing'))
+            )
+
     controllers_launcher = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=homing,
-            on_exit=[joint_controller_node, 
-                     forward_controller_node,
-                     forward_pos_controller_node,
-                     admittance_controller_node, 
-                     homing_done_publisher,
-                     eth_checker],
+            on_exit=[group1],
+        )
+    )
+
+    controllers_launcher_no_homing = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=ssb,
+            on_exit=[group2],
         )
     )
 
@@ -244,4 +279,5 @@ def generate_launch_description():
     ld.add_action(homing_launcher)
     ld.add_action(controllers_launcher)
     ld.add_action(controller_unspawner)
+    ld.add_action(controllers_launcher_no_homing)
     return ld

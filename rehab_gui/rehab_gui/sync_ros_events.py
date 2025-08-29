@@ -287,6 +287,7 @@ class SyncRosManager:
             future.add_done_callback(self.update_current_controller)
         
     def update_current_controller(self, future):
+        # self.current_controller = self.trajectory_controller_name
         if not future.result():
             self._ros_node.get_logger().error("Failed to call list_controllers service")
             return False
@@ -318,12 +319,11 @@ class SyncRosManager:
                 self.enable_manual_guidance = self.manual_guidance_enabled
                 self.enable_ptp = False
                 break
+        # DEBUG PRINTS
+        # self._ros_node.get_logger().info(f"Current controller: {self.current_controller}")
+        # self._ros_node.get_logger().info(f'enable_jog_buttons: {self.enable_jog_buttons}, enable_zeroing: {self.enable_zeroing}, enable_manual_guidance: {self.enable_manual_guidance}, enable_ptp: {self.enable_ptp}')
         if active_controller:
             self.current_controller = active_controller
-            # self._ros_node.get_logger().info(
-            #     f'current controller: {self.current_controller} \t current MOO: [{op_response.values[0]}, {op_response.values[1]}, {op_response.values[2]}]')
-            # self._ros_node.get_logger().info(
-            #     f'\nFlags status: enable jog: {self.enable_jog_buttons}\n enable zeroing: {self.enable_zeroing}\n enable manual guide: {self.enable_manual_guidance}\n enable ptp: {self.enable_ptp}')
             return True
         else:
             self.current_controller = None
@@ -336,6 +336,7 @@ class SyncRosManager:
             else:
                 self._ros_node.get_logger().warn(f"⚠️ No known controller is currently active! Current MOO: [{op_response.values[0]}, {op_response.values[1]}, {op_response.values[2]}]")
                 return False
+        
 
     def switch_controller(self, controller_to_activate, controller_to_deactivate):
         switch_req = SwitchController.Request()

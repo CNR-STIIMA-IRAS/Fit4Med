@@ -13,7 +13,7 @@
             <command_interface name="power_cutoff"/>
             <command_interface name="sonar_teach"/>
             <command_interface name="s_output.4"/>
-            <command_interface name="s_output.5"/>
+            <command_interface name="estop"/>
             <command_interface name="s_output.6"/>
             <command_interface name="s_output.7"/>
             <command_interface name="s_output.8"/>

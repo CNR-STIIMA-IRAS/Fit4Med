@@ -91,7 +91,8 @@ try
   {
     plc_command_subscriber_ = get_node()->create_subscription<CmdType>(
       "~/plc_commands", rclcpp::SystemDefaultsQoS(),
-      [this](const CmdType::SharedPtr msg) { rt_command_ptr_.writeFromNonRT(msg); });
+      [this](const CmdType::SharedPtr msg) { 
+        rt_command_ptr_.writeFromNonRT(msg); });
   }
 
   plc_state_publisher_ =
@@ -357,10 +358,10 @@ controller_interface::return_type PLCController::update_plc_commands()
         auto index = std::distance(gpio_commands.interface_names.begin(), it);
         command_interface.get().set_value(static_cast<double>(gpio_commands.values[index]));
       }
-      else
-      {
-        RCLCPP_WARN(get_node()->get_logger(), "Interface %s not found in command message", interface_name.c_str());
-      }
+      // else
+      // {
+      //   RCLCPP_WARN(get_node()->get_logger(), "Interface %s not found in command message", interface_name.c_str());
+      // }
     }
     
   }
