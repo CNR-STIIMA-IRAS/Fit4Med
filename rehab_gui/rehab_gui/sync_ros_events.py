@@ -48,20 +48,6 @@ class SyncRosManager:
         #  publisher  
         self.pub_speed_ovr = self._ros_node.create_publisher(Int16, '/speed_ovr', 10)
         self.jog_cmd_publisher = self._ros_node.create_publisher(Float64MultiArray, f'/{self.forward_command_controller}/commands', 10)
-        # Read parameters
-        self.cm_param_client = AsyncParameterClient(self._ros_node, 'controller_manager')
-        param_client_success= self.cm_param_client.wait_for_services(5.0)
-        if not param_client_success:
-            raise RuntimeError("Parameter client services are not ready.")
-        self.update_rate = -1 
-        future =  self.cm_param_client.get_parameters(['update_rate'])
-        rclpy.spin_until_future_complete(self._ros_node,future)
-        result = future.result()
-        if result:
-            self._ros_node.get_logger().info(f"Read: update rate = {result.values[0].integer_value}")
-            self.update_rate = result.values[0].integer_value
-        else:
-            raise RuntimeError("Failed to gather update rate parameter!")
         # soft stop variables
         self._soft_transition_values = []
         self._soft_start_timer = QTimer()

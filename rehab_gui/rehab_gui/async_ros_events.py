@@ -265,7 +265,7 @@ class ASyncRosManager(QObject):
         super(ASyncRosManager, self).__init__()
         
         self._fct = FollowJointTrajectoryActionManager(ros_node, joint_names, controller_name)
-        self._moo = ModesOfOperationActionManager(ros_node)
+        # self._moo = ModesOfOperationActionManager(ros_node)
         
     def moo(self) -> ModesOfOperationActionManager:
         return self._moo

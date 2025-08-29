@@ -87,13 +87,8 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.startRobotWindow()
         self._update_robot_window_callback = partial(self.uiRobotWindow.updateRobotWindow, self.DialogRobotWindow)
         self.comboBox_ResetFaults.currentIndexChanged.connect(self.ROS.reset_mode_changed)
-        # timeout = int(10 * 1000 / self._update_windows_period)
-        # while self.ROS.current_controller is None:
-        #     time.sleep(1) # wait for ROS to be ready
-        #     timeout -= 1
-        #     if timeout <= 0:
-        #         print("Timeout waiting for ROS to be ready.")
-        #         return -1
+        self.ros_waiting_dialog.hide()
+        self.ROS_active = True
         self.movement_worker_init = True
         return self.initializeMovementWorker()
 
@@ -185,8 +180,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         
         self.worker_thread.start()
         self.MovementWorker.fct().clear()
-        self.ros_waiting_dialog.hide()
-        self.ROS_active = True
+        
         print("[MainProgram] MovementWorker initialized.")
         return 1
 

@@ -15,7 +15,7 @@ PLC_controller:
           - sonar_teach
           - s_output.4
           - estop
-          - s_output.6
+          - manual_mode
           - s_output.7
           - s_output.8
     state_interfaces:
