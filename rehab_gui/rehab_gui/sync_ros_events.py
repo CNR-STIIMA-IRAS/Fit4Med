@@ -17,8 +17,6 @@ from ethercat_controller_msgs.srv import SwitchDriveModeOfOperation, GetModesOfO
 from ethercat_controller_msgs.msg import DriveStateFlags
 from std_srvs.srv import Trigger, SetBool
 from controller_manager_msgs.srv import SwitchController, ListControllers
-from rclpy.parameter_client import AsyncParameterClient
-
 
 class SyncRosManager:
     _ros_period = 1
