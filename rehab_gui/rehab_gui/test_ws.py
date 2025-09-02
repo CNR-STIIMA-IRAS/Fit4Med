@@ -7,8 +7,8 @@ client = roslibpy.Ros(host='10.2.16.42', port=9090)
 client.run()
 print('Is ROS connected?', client.is_connected)
 
-listener = roslibpy.Topic(client, '/PLC_controller/plc_states', 'plc_controller_msgs/msg/PlcController')
-listener.subscribe(lambda message: print(f'Heard talking: {message}'))
+#listener = roslibpy.Topic(client, '/PLC_controller/plc_states', 'plc_controller_msgs/msg/PlcController')
+#listener.subscribe(lambda message: print(f'Heard talking: {message}'))
 
 
 action_client = roslibpy.actionlib.ActionClient(client,
