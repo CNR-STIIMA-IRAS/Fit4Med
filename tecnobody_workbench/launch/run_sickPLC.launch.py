@@ -1,8 +1,8 @@
 from launch import LaunchDescription
-from launch.substitutions import PathJoinSubstitution, Command, FindExecutable
+from launch.substitutions import PathJoinSubstitution, Command, FindExecutable, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
-from launch.actions import RegisterEventHandler
+from launch.actions import RegisterEventHandler, DeclareLaunchArgument
 from launch.event_handlers import OnProcessExit
 # import os
 # os.environ['RCUTILS_CONSOLE_OUTPUT_FORMAT']="[{severity}] [{name}]: {message} ({function_name}() at {file_name}:{line_number})"
@@ -10,6 +10,11 @@ from launch.event_handlers import OnProcessExit
 def generate_launch_description():
     controllers_file = 'plc_controller.yaml'
     description_package = 'tecnobody_workbench'
+    DeclareLaunchArgument(
+            'gui_ip',
+            default_value='127.0.0.0',
+            description='IP of the GUI'
+    ),
     
     robot_description_content = Command(
         [
@@ -54,6 +59,7 @@ def generate_launch_description():
         package='plc_manager',
         executable='plc_manager_node',
         output = 'screen',
+        arguments=[LaunchConfiguration('gui_ip')],
     )
 
     plc_manager_launcher = RegisterEventHandler(

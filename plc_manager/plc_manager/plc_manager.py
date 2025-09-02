@@ -60,7 +60,7 @@ class bcolors:
 
 
 class PLCControllerInterface(Node):
-    def __init__(self):
+    def __init__(self, target_ip):
         super().__init__('plc_manager')
         
         self.shutdown_all = False
@@ -108,9 +108,10 @@ class PLCControllerInterface(Node):
         self.ros_launched_prev = False    
         self.check_ros_status_timer = self.create_timer(1.0, self.check_ros_launch_status, timer_group)
         self.FIRST_TIME = False
+        self.publish_command('PLC_node/estop', 1)
 
         # UDP client to send status messages
-        self.client = UdpClient("127.0.0.1", 5005)
+        self.client = UdpClient(target_ip, 5005) #10.2.16.43
         
     def check_ros_launch_status(self):
         launcher_name = "run_platform_control.launch.py"   
@@ -128,9 +129,9 @@ class PLCControllerInterface(Node):
             if (self.ros_launched_prev != self.ros_launched) and (self.ros_launched_prev == 1 and self.ros_launched == 0):
                     self.get_logger().info('Call a SW ESTOP!', throttle_duration_sec=5.0)
                     # open the emergency => emergency status will become 0
-                    self.publish_command('PLC_node/estop', 1)
-                    time.sleep(0.05)
                     self.publish_command('PLC_node/estop', 0)
+                    time.sleep(0.05)
+                    self.publish_command('PLC_node/estop', 1)
             self.ros_launched_prev = self.ros_launched
             return self.ros_launched
         except subprocess.CalledProcessError:
@@ -185,6 +186,7 @@ class PLCControllerInterface(Node):
                         pass
 
                     elif self.state_values[int_idx] == 1 and self.ESTOP  == 1:
+                        self.get_logger().info(f"[UdpClient] Sending message to {self.client.target_ip}:{self.client.target_port}: RUNNING", throttle_duration_sec=5.0)
                         self.client.send(b"RUNNING")
                         pass
                     self.ESTOP = self.state_values[int_idx]
@@ -204,8 +206,10 @@ class PLCControllerInterface(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = PLCControllerInterface()
-    
+    target_ip = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.0"
+
+
+    node = PLCControllerInterface(target_ip)
     mt_executor = MultiThreadedExecutor(2)
     mt_executor.add_node(node)
 
