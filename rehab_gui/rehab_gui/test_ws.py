@@ -11,10 +11,12 @@ print('Is ROS connected?', client.is_connected)
 #listener.subscribe(lambda message: print(f'Heard talking: {message}'))
 
 
+print(f'Creating the action client')
 action_client = roslibpy.actionlib.ActionClient(client,
                                                 '/joint_trajectory_controller/follow_joint_trajectory',
                                                 'control_msgs/action/FollowJointTrajectory')
 
+print(f'Creating the goal')
 goal = {'trajectory': {'joint_names': ['joint_x', 'joint_y', 'joint_z'],
             'points': [{'positions': [0.0, 0.0, 0.0],
                         'velocities': [0.0, 0.0, 0.0],
