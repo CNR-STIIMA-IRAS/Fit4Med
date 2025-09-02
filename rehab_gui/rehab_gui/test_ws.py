@@ -7,7 +7,7 @@ client.run()
 print('Is ROS connected?', client.is_connected)
 
 listener = roslibpy.Topic(client, '/joint_states', 'sensor_msgs/msg/JointState')
-listener.subscribe(lambda message: print('Heard talking: ' + message['data']))
+listener.subscribe(lambda message: print('Heard talking: ' + message))
 
 try:
     while True:
