@@ -32,7 +32,7 @@ goal = {'trajectory': {'joint_names': ['joint_x', 'joint_y', 'joint_z'],
 goal = roslibpy.actionlib.Goal(action_client,
                                roslibpy.Message(goal))
 
-goal.on('feedback', lambda f: print(f))
+#goal.on('feedback', lambda f: print(f))
 goal.send()
 result = goal.wait(10)
 action_client.dispose()
