@@ -29,8 +29,10 @@ goal = {'trajectory': {'joint_names': ['joint_x', 'joint_y', 'joint_z'],
                         'accelerations': [0.0, 0.0, 0.0],
                         'time_from_start': {'secs': 6, 'nsecs': 0}}]}}
 
+print(f'Sending goal: {goal}')
 goal = roslibpy.actionlib.Goal(action_client,
                                roslibpy.Message(goal))
+print(f'Sending goal: {roslibpy.Message(goal)}')
 
 #goal.on('feedback', lambda f: print(f))
 goal.send()
