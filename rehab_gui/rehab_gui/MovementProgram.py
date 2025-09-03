@@ -12,22 +12,15 @@ import sys
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import QMessageBox, QDialog, QLabel, QPushButton, QHBoxLayout, QVBoxLayout, QApplication
-from .MovementWindow import Ui_MovementWindow
+from MovementWindow import Ui_MovementWindow
 import yaml
 from yaml.loader import SafeLoader
 import numpy as np
 from scipy import interpolate
 from copy import deepcopy
-#import FMRRMainProgram as FMRRMain
-
+import roslibpy
 #MC Classes/methods
-from . import MC_Tools
-
-#ROS
-from builtin_interfaces.msg import Duration
-#import rospkg
-from geometry_msgs.msg import Point
-#from StringIO import StringIO
+import MC_Tools
 
 class ManualGuidanceDialog(QtWidgets.QDialog):
     finish_pressed = pyqtSignal()
@@ -548,9 +541,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
     def clbk_pushButton_SetCurrentPos(self):
         _toolPosCovFact = self.ui_FMRRMainWindow._toolPosCovFact        
         HandlePosition = self.ui_FMRRMainWindow.ROS.HandlePosition
-        RobotJointPosition = self.ui_FMRRMainWindow.ROS.RobotJointPosition#       Put doublespin values in list to allow for iteration 
-
-        end_msg = Point()
+        RobotJointPosition = self.ui_FMRRMainWindow.ROS.RobotJointPosition#       Put doublespin values in list to allow for iteration
 
         # save data to create movement
         self.End_HandlePosition = deepcopy( self.ui_FMRRMainWindow.ROS.HandlePosition )
@@ -563,9 +554,10 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         self.lcdNumber_EndPos_Z.display( int( HandlePosition[2] ) )
         self.pushButton_CREATEMovement.enablePushButton(1)
 
-        end_msg.x = HandlePosition[0]/100.0
-        end_msg.y = HandlePosition[1]/100.0
-        end_msg.z = HandlePosition[2]/100.0
+        end_msg = roslibpy.Message({
+            'x': HandlePosition[0]/100.0,
+            'y': HandlePosition[1]/100.0,
+            'z': HandlePosition[2]/100.0})
         # self.ui_FMRRMainWindow.pub_end_point.publish(end_msg)        
 
 

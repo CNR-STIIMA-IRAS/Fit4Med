@@ -1,44 +1,54 @@
 from __future__ import print_function
 import time
 import roslibpy
-import roslibpy.actionlib
+# import roslibpy.actionlib
 
 client = roslibpy.Ros(host='10.2.16.42', port=9090)
 client.run()
-print('Is ROS connected?', client.is_connected)
+# print('Is ROS connected?', client.is_connected)
 
+# TOPIC LISTENER EXAMPLE
 #listener = roslibpy.Topic(client, '/PLC_controller/plc_states', 'plc_controller_msgs/msg/PlcController')
 #listener.subscribe(lambda message: print(f'Heard talking: {message}'))
 
+# SERVICE EXAMPLE
+service = roslibpy.Service(client, '/ethercat_checker/get_drive_mode_of_operation', 'ethercat_controller_msgs/srv/GetDriveModeOfOperation')
+request = roslibpy.ServiceRequest()
+print('Calling service...')
+result = service.call(request)
+print(f'Service response: {result}')
 
-print(f'Creating the action client')
-action_client = roslibpy.actionlib.ActionClient(client,
-                                                '/joint_trajectory_controller/follow_joint_trajectory',
-                                                'control_msgs/action/FollowJointTrajectory')
+# ACTION CLIENT EXAMPLE
+# print(f'Creating the action client')
+# action_client = roslibpy.actionlib.ActionClient(client,
+#                                                 '/joint_trajectory_controller/follow_joint_trajectory',
+#                                                 'control_msgs/action/FollowJointTrajectory')
+#
+# print(f'Creating the goal')
+# goal = {'trajectory': {'joint_names': ['joint_x', 'joint_y', 'joint_z'],
+#             'points': [{'positions': [0.0, 0.0, 0.0],
+#                         'velocities': [0.0, 0.0, 0.0],
+#                         'accelerations': [0.0, 0.0, 0.0],
+#                         'time_from_start': {'secs': 2, 'nsecs': 0}},
+#                        {'positions': [0.1, 0.1, 0.1],
+#                         'velocities': [0.0, 0.0, 0.0],
+#                         'accelerations': [0.0, 0.0, 0.0],
+#                         'time_from_start': {'secs': 4, 'nsecs': 0}},
+#                        {'positions': [0.2, 0.2, 0.2],
+#                         'velocities': [0.0, 0.0, 0.0],
+#                         'accelerations': [0.0, 0.0, 0.0],
+#                         'time_from_start': {'secs': 6, 'nsecs': 0}}]}}
+#
+# print(f'Sending goal: {goal}')
+# goal = roslibpy.actionlib.Goal(action_client,
+#                                roslibpy.Message(goal))
+# print(f'Sending goal: {roslibpy.Message(goal)}')
+#
+# #goal.on('feedback', lambda f: print(f))
+# goal.send()
+# result = goal.wait(10)
+# action_client.dispose()
+#
+# print(f'Result: {result}')
 
-print(f'Creating the goal')
-goal = {'trajectory': {'joint_names': ['joint_x', 'joint_y', 'joint_z'],
-            'points': [{'positions': [0.0, 0.0, 0.0],
-                        'velocities': [0.0, 0.0, 0.0],
-                        'accelerations': [0.0, 0.0, 0.0],
-                        'time_from_start': {'secs': 2, 'nsecs': 0}},
-                       {'positions': [0.1, 0.1, 0.1],
-                        'velocities': [0.0, 0.0, 0.0],
-                        'accelerations': [0.0, 0.0, 0.0],
-                        'time_from_start': {'secs': 4, 'nsecs': 0}},
-                       {'positions': [0.2, 0.2, 0.2],
-                        'velocities': [0.0, 0.0, 0.0],
-                        'accelerations': [0.0, 0.0, 0.0],
-                        'time_from_start': {'secs': 6, 'nsecs': 0}}]}}
-
-print(f'Sending goal: {goal}')
-goal = roslibpy.actionlib.Goal(action_client,
-                               roslibpy.Message(goal))
-print(f'Sending goal: {roslibpy.Message(goal)}')
-
-#goal.on('feedback', lambda f: print(f))
-goal.send()
-result = goal.wait(10)
-action_client.dispose()
-
-print(f'Result: {result}')
+client.terminate()
