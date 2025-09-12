@@ -11,25 +11,19 @@ from functools import partial
 import numpy as np
 
 #MC Classes/methods
-from .MovementProgram import FMRR_Ui_MovementWindow 
-from .RobotProgram import FMRR_Ui_RobotWindow 
-from .FMRRMainWindow import Ui_FMRRMainWindow # import from file FMRRMainWindow the class Ui_FMRRMainWindow  
-from . import MC_Tools
+from MovementProgram import FMRR_Ui_MovementWindow
+from RobotProgram import FMRR_Ui_RobotWindow
+from FMRRMainWindow import Ui_FMRRMainWindow # import from file FMRRMainWindow the class Ui_FMRRMainWindow
+import MC_Tools
 import yaml
 from yaml.loader import SafeLoader
 
 #ROS
-import rclpy
-from rclpy.node import Node
-from builtin_interfaces.msg import Duration
-from control_msgs.action import FollowJointTrajectory
-from trajectory_msgs.msg import JointTrajectoryPoint
-from action_msgs.msg import GoalStatus
-from std_msgs.msg import Int16
-from .async_ros_events import ASyncRosManager
-from .sync_ros_events import SyncRosManager
-from .ros_network_checker import WaitingDialog
-from .RosReadyUDPServer import UdpServer
+import roslibpy
+from async_ros_events import ASyncRosManager
+from sync_ros_events import SyncRosManager
+from ros_network_checker import WaitingDialog
+from RosReadyUDPServer import UdpServer
 
 JOINT_NAMES = [
     'joint_x',
@@ -47,8 +41,6 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
 
     def __init__(self):
         QtCore.QObject.__init__(self)
-        self._ros_node = Node('FMRR_cell_node')
-        
         self.DialogMovementWindow = QtWidgets.QDialog()
         self.DialogRobotWindow = QtWidgets.QDialog()
         self.FMRRMainWindow = QtWidgets.QMainWindow()
@@ -72,7 +64,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         print("FMRR cell node started.")
 
     def check_ros_status(self):
-        if self.ROS is None or self.MovementWorker is None:
+        if self.ROS is None:
             self.ros_waiting_dialog.show()
         else:
             self.ros_waiting_dialog.hide()
@@ -82,7 +74,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
             print("[MainProgram] ROS already initialized.")
             return 0
         self.worker_thread = QThread()
-        self.ROS = SyncRosManager(self._ros_node, JOINT_NAMES)
+        self.ROS = SyncRosManager(JOINT_NAMES)
         self.startMovementWindow()
         self.startRobotWindow()
         self._update_robot_window_callback = partial(self.uiRobotWindow.updateRobotWindow, self.DialogRobotWindow)
@@ -90,7 +82,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.ros_waiting_dialog.hide()
         self.ROS_active = True
         self.movement_worker_init = True
-        return self.initializeMovementWorker()
+        return True  # self.initializeMovementWorker() return TODO: implement movement worker with roslibpy
 
     def udp_request_received(self, data):
         if data == b'STOP':
@@ -170,7 +162,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
     def initializeMovementWorker(self):
         print("[MainProgram] Initializing MovementWorker...")
         
-        self.MovementWorker = ASyncRosManager(self._ros_node, JOINT_NAMES) #, self.ROS.trajectory_controller_name)
+        self.MovementWorker = ASyncRosManager(JOINT_NAMES) #, self.ROS.trajectory_controller_name)
         self.MovementWorker.moveToThread(self.worker_thread)
         self._update_windows_timer.timeout.connect( self._update_robot_window_callback ) 
         self.trigger_worker.connect(self.MovementWorker.fct().startMovement)# type: ignore
@@ -363,8 +355,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
 
     def clbk_spinBox_MaxVel(self):
         speed_ovr_Value = self.spinBox_MaxVel.value()
-        speed_ovr_msg = Int16()
-        speed_ovr_msg.data = speed_ovr_Value
+        speed_ovr_msg = roslibpy.Message({'data': int(speed_ovr_Value)})
         if self.ROS_active:
             self.ROS.pub_speed_ovr.publish(speed_ovr_msg)
 
@@ -427,34 +418,35 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
 
     def startMovementFCT(self, default_speed_override=100):
         self.movement_completed = False
-        self._home_status = GoalStatus.STATUS_UNKNOWN
+        self._home_status = 0 # GoalStatus.STATUS_UNKNOWN # TODO: implement goal status with roslibpy
         self._home_goal_sent = False
         self.trigger_worker.emit(default_speed_override)  # Trigger the worker to start the movement
         
     def clbk_ApproachPoint(self, point):
         if self.ROS_active:
-            print("Approaching desired position...")
-            approach_point_goal = FollowJointTrajectory.Goal()
-            approach_point_goal.trajectory.joint_names = JOINT_NAMES
-
-            init_point = JointTrajectoryPoint()
-            init_point.positions = self.ROS.RobotJointPosition
-            init_point.velocities = [0.0] * len(JOINT_NAMES)
-            init_point.accelerations = [0.0] * len(JOINT_NAMES)
-            init_point.effort = []
-            init_point.time_from_start = Duration(sec=0, nanosec=0)
-            approach_point_goal.trajectory.points.append(init_point)  # type: ignore
-
-            final_point = JointTrajectoryPoint()
-            final_point.positions = point
-            final_point.velocities = [0.0] * len(JOINT_NAMES)
-            final_point.accelerations = [0.0] * len(JOINT_NAMES)
-            final_point.effort = []
-            final_point.time_from_start = Duration(sec=3, nanosec=0)
-            approach_point_goal.trajectory.points.append(final_point) # type: ignore
-            
-            approach_point_goal.trajectory.header.stamp = self._ros_node.get_clock().now().to_msg()
-            home_future = self.MovementWorker.fct().client.send_goal_async(approach_point_goal)
+            print("TODO: follow joint trajectory to approach point not implemented yet with roslibpy.")
+            # print("Approaching desired position...")
+            # approach_point_goal = FollowJointTrajectory.Goal()
+            # approach_point_goal.trajectory.joint_names = JOINT_NAMES
+            #
+            # init_point = JointTrajectoryPoint()
+            # init_point.positions = self.ROS.RobotJointPosition
+            # init_point.velocities = [0.0] * len(JOINT_NAMES)
+            # init_point.accelerations = [0.0] * len(JOINT_NAMES)
+            # init_point.effort = []
+            # init_point.time_from_start = Duration(sec=0, nanosec=0)
+            # approach_point_goal.trajectory.points.append(init_point)  # type: ignore
+            #
+            # final_point = JointTrajectoryPoint()
+            # final_point.positions = point
+            # final_point.velocities = [0.0] * len(JOINT_NAMES)
+            # final_point.accelerations = [0.0] * len(JOINT_NAMES)
+            # final_point.effort = []
+            # final_point.time_from_start = Duration(sec=3, nanosec=0)
+            # approach_point_goal.trajectory.points.append(final_point) # type: ignore
+            #
+            # approach_point_goal.trajectory.header.stamp = self._ros_node.get_clock().now().to_msg()
+            # home_future = self.MovementWorker.fct().client.send_goal_async(approach_point_goal)
             #home_future.add_done_callback(self.home_cancel_callback)
         return True
 
@@ -467,7 +459,6 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
 
         
 def main(args=None):
-    rclpy.init(args=args)
     QPushButton.enablePushButton = MC_Tools.enablePushButton #Adding a new method defined in MC_Tools file
     app = QtWidgets.QApplication(sys.argv)
     ui = MainProgram()
@@ -496,9 +487,7 @@ def main(args=None):
         ui.worker_thread.quit()
         ui.worker_thread.wait()
 
-    rclpy.shutdown()
     sys.exit(exit_code)
 
 if __name__ == "__main__":
     main()
-    rclpy.shutdown()
