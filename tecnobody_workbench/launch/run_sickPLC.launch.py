@@ -2,9 +2,8 @@ from launch import LaunchDescription
 from launch.substitutions import PathJoinSubstitution, Command, FindExecutable, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
-from launch.actions import RegisterEventHandler, DeclareLaunchArgument
+from launch.actions import RegisterEventHandler, DeclareLaunchArgument, IncludeLaunchDescription
 from launch.event_handlers import OnProcessExit
-# import os
 # os.environ['RCUTILS_CONSOLE_OUTPUT_FORMAT']="[{severity}] [{name}]: {message} ({function_name}() at {file_name}:{line_number})"
 
 def generate_launch_description():
@@ -59,7 +58,7 @@ def generate_launch_description():
         package='plc_manager',
         executable='plc_manager_node',
         output = 'screen',
-        arguments=[LaunchConfiguration('gui_ip')],
+        arguments=[LaunchConfiguration('gui_ip', default='127.0.0.0')],
     )
 
     plc_manager_launcher = RegisterEventHandler(
@@ -68,7 +67,7 @@ def generate_launch_description():
             on_exit=[plc_manager],
         )
     )
-    
+
     # Create the launch description and populate
     ld = LaunchDescription()
 
@@ -77,7 +76,6 @@ def generate_launch_description():
     ld.add_action(rsp)
     ld.add_action(plc_controller_spawner)
     ld.add_action(plc_manager_launcher)
-
     return ld
 
 

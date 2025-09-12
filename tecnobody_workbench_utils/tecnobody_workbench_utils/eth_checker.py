@@ -85,7 +85,7 @@ class EthercatCheckerNode(Node):
         for name in if_names:
             if name in self.dof_names:
                 response.dof_names.append(name)
-                response.values.append(self.get_op_mode_number(self.mode[name]))
+                response.values.append(self.mode[name])
                 response.status_words.append(self.status_words[name])
             else:
                 self.get_logger().warn(f"DOF named '{name}' not found")

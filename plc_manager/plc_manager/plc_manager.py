@@ -163,7 +163,7 @@ class PLCControllerInterface(Node):
                     elif self.state_values[int_idx] == 0 and self.ESTOP == 1:
                         self.get_logger().info(bcolors.OKCYAN + f"************************ INPUT 0 and ESTOP 1 => KILL" + bcolors.ENDC)
                         try:
-                            _ = subprocess.check_output(["pgrep", "-f", "ros2 run rehab"])
+                            # _ = subprocess.check_output(["pgrep", "-f", "ros2 run rehab"])
                             self.client.send(b"STOP")
                             timeout = time.time() + 15  # 15 seconds timeout
                             data, addr = self.client.receive()

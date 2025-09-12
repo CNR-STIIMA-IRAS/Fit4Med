@@ -39,8 +39,8 @@ class SyncRosManager:
         self._joint_names = joint_names
         #  subscribers
         self.RobotJointPosition = [0.0] * len(self._joint_names)
-        self.joint_subscriber = self._ros_node.create_subscription(JointState, 'joint_states', self.getJointState, 1)
         self.HandlePosition = [0.0] * len(self._joint_names)
+        self.joint_subscriber = self._ros_node.create_subscription(JointState, 'joint_states', self.getJointState, 1)
         self.tool_subscriber = self._ros_node.create_subscription(JointState, 'joint_states', self.getToolPosition, 1)
         self.fault_state_subscriber = self._ros_node.create_subscription(DriveStateFlags, '/ethercat_checker/drive_state_flags', self.getDrivestState, 1)
         #  publisher  
@@ -304,8 +304,8 @@ class SyncRosManager:
                 self.enable_ptp = False
                 break
         # DEBUG PRINTS
-        # self._ros_node.get_logger().info(f"Current controller: {self.current_controller}")
-        # self._ros_node.get_logger().info(f'enable_jog_buttons: {self.enable_jog_buttons}, enable_zeroing: {self.enable_zeroing}, enable_manual_guidance: {self.enable_manual_guidance}, enable_ptp: {self.enable_ptp}')
+        self._ros_node.get_logger().info(f"Current controller: {self.current_controller}", throttle_duration_sec=5.0)
+        self._ros_node.get_logger().info(f'enable_jog_buttons: {self.enable_jog_buttons}, enable_zeroing: {self.enable_zeroing}, enable_manual_guidance: {self.enable_manual_guidance}, enable_ptp: {self.enable_ptp}', throttle_duration_sec=5.0)
         if active_controller:
             self.current_controller = active_controller
             return True
