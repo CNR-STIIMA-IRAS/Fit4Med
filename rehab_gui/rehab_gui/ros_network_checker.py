@@ -14,7 +14,7 @@ class WaitingDialog(QDialog):
         self.setModal(True)
         self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
 
-        label = QLabel("Waiting for ROS connection...")
+        label = QLabel("Waiting for robot connection...")
         label.setAlignment(Qt.AlignCenter)
 
         layout = QVBoxLayout()

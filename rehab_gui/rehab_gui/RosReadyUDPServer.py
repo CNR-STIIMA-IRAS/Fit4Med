@@ -23,7 +23,6 @@ class UdpServer(QObject):
                 data, addr = self.sock.recvfrom(4096)
                 self._last_addr = addr
                 self.message_received.emit(data, addr)
-                # print(f"[UdpServer] Received message from {addr}: {data}")
             except OSError:
                 break
 

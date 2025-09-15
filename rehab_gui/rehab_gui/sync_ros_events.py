@@ -20,13 +20,14 @@ class SyncRosManager:
     current_controller = None
     jog_cmd_pos = []
 
-    def __init__(self, joint_names: list):
+    def __init__(self, joint_names: list, ros_client: roslibpy.Ros):
         self._controller_timer = QTimer()
         self._controller_timer.timeout.connect(self.list_active_controllers)
         self._joint_state = None
         self._joint_names = joint_names
-        # roslibpy init
-        self.ros_client = roslibpy.Ros(host='10.2.16.42', port=9090)
+
+        self.ros_client = ros_client
+
         #  subscribers
         self.RobotJointPosition = [0.0] * len(self._joint_names)
         self.joint_subscriber = roslibpy.Topic(self.ros_client, '/joint_states', 'sensor_msgs/msg/JointState')
@@ -78,7 +79,7 @@ class SyncRosManager:
         self._ros_ready_timer.start(100)
         # check if clients are being destroyed
         self.destroy_clients_init = False
-        self.ros_client.run()
+
         print('SyncRosManager class correctly initialized.')
 
     def trigger_soft_stop(self, start_value: float, steps: int = 10, target='speed_ovr', jog_joint_idx=None):
@@ -187,7 +188,7 @@ class SyncRosManager:
         self.motors_off_client = roslibpy.Service(self.ros_client, '/state_controller/try_turn_off',
                                                   'std_srvs/srv/Trigger')
 
-        self.reset_fault_client = roslibpy.Service(self.ros_client, '/state_controller/reset_faults',
+        self.reset_fault_client = roslibpy.Service(self.ros_client, '/state_controller/reset_fault',
                                                    'std_srvs/srv/Trigger')
 
         self.mode_of_op_client = roslibpy.Service(self.ros_client, '/state_controller/switch_mode_of_operation',
@@ -233,74 +234,88 @@ class SyncRosManager:
 
     def list_active_controllers(self):
         if not self.destroy_clients_init:
-            req = roslibpy.ServiceRequest()
-            _ = self.current_controller_client.call(req, callback=self.update_current_controller)
+            try:
+                req = roslibpy.ServiceRequest()
+                #_ = self.current_controller_client.call(req, callback=self.update_current_controller)
+                res = self.current_controller_client.call(req)
 
-    def update_current_controller(self, res):
-        # self.current_controller = self.trajectory_controller_name
-        op_response = self.get_drives_mode_of_op(self._joint_names)
-        is_csv_mode = (len(op_response['dof_names']) == len(self._joint_names)) and all(
-            op_response['values'][j] == 9 for j in range(len(self._joint_names)))
-        is_csp_mode = (len(op_response['dof_names']) == len(self._joint_names)) and all(
-            op_response['values'][j] == 8 for j in range(len(self._joint_names)))
-        is_hmg_mode = (len(op_response['dof_names']) == len(self._joint_names)) and all(
-            op_response['values'][j] == 6 for j in range(len(self._joint_names)))
+            #def update_current_controller(self, res):
+                # self.current_controller = self.trajectory_controller_name
+                op_response_str = self.get_drives_mode_of_op(self._joint_names)
+                op_response = []
+                for mode in op_response_str['values']:
+                    op_response.append(self.get_op_mode_number(mode))
+            except Exception:
+                return False
 
-        active_controller = None
-        for ctrl in res['controller']:
-            if ctrl['name'] == self.forward_command_controller and ctrl['state'] == 'active' and is_csv_mode:
-                active_controller = self.forward_command_controller
-                self.enable_jog_buttons = self.jog_enabled
-                self.enable_zeroing = False
-                self.enable_manual_guidance = False
-                self.enable_ptp = False
-                break
-            elif ctrl['name'] == self.trajectory_controller_name and ctrl['state'] == 'active' and is_csp_mode:
-                active_controller = self.trajectory_controller_name
-                self.enable_jog_buttons = False
-                self.enable_zeroing = False
-                self.enable_manual_guidance = False
-                self.enable_ptp = True
-                break
-            elif ctrl['name'] == self.admittance_controller and ctrl['state'] == 'active' and is_csv_mode:
-                active_controller = self.admittance_controller
-                self.enable_jog_buttons = False
-                self.enable_zeroing = False
-                self.enable_manual_guidance = self.manual_guidance_enabled
-                self.enable_ptp = False
-                break
-        # DEBUG PRINTS
-        # print(f"Current controller: {self.current_controller}")
-        # print(f'enable_jog_buttons: {self.enable_jog_buttons}, enable_zeroing: {self.enable_zeroing}, enable_manual_guidance: {self.enable_manual_guidance}, enable_ptp: {self.enable_ptp}')
-        if active_controller:
-            self.current_controller = active_controller
-            return True
-        else:
-            self.current_controller = None
-            if is_hmg_mode:
-                self.enable_jog_buttons = False
-                self.enable_zeroing = True
-                self.enable_manual_guidance = False
-                self.enable_ptp = False
+            is_csv_mode = (len(op_response_str['dof_names']) == len(self._joint_names)) and all(
+                op_response[j] == 9 for j in range(len(self._joint_names)))
+            is_csp_mode = (len(op_response_str['dof_names']) == len(self._joint_names)) and all(
+                op_response[j] == 8 for j in range(len(self._joint_names)))
+            is_hmg_mode = (len(op_response_str['dof_names']) == len(self._joint_names)) and all(
+                op_response[j] == 6 for j in range(len(self._joint_names)))
+
+            active_controller = None
+            for ctrl in res['controller']:
+                if ctrl['name'] == self.forward_command_controller and ctrl['state'] == 'active' and is_csv_mode:
+                    active_controller = self.forward_command_controller
+                    self.enable_jog_buttons = self.jog_enabled
+                    self.enable_zeroing = False
+                    self.enable_manual_guidance = False
+                    self.enable_ptp = False
+                    break
+                elif ctrl['name'] == self.trajectory_controller_name and ctrl['state'] == 'active' and is_csp_mode:
+                    active_controller = self.trajectory_controller_name
+                    self.enable_jog_buttons = False
+                    self.enable_zeroing = False
+                    self.enable_manual_guidance = False
+                    self.enable_ptp = True
+                    break
+                elif ctrl['name'] == self.admittance_controller and ctrl['state'] == 'active' and is_csv_mode:
+                    active_controller = self.admittance_controller
+                    self.enable_jog_buttons = False
+                    self.enable_zeroing = False
+                    self.enable_manual_guidance = self.manual_guidance_enabled
+                    self.enable_ptp = False
+                    break
+            # DEBUG PRINTS
+            if active_controller:
+                self.current_controller = active_controller
+                # print("--------------------------------------------")
+                # print(f"✅ Active controller: {self.current_controller} - MOO: [{op_response[0]}, {op_response[1]}, {op_response[2]}]")
+                # print(f" - Enable jog buttons: {self.enable_jog_buttons}")
+                # print(f" - Enable zeroing: {self.enable_zeroing}")
+                # print(f" - Enable manual guidance: {self.enable_manual_guidance}")
+                # print(f" - Enable PTP: {self.enable_ptp}")
+                # print("\n\n")
                 return True
             else:
-                print(
-                    f"⚠️ No known controller is currently active! Current MOO: [{op_response['values'][0]}, {op_response['values'][1]}, {op_response['values'][2]}]")
-                return False
+                self.current_controller = None
+                if is_hmg_mode:
+                    self.enable_jog_buttons = False
+                    self.enable_zeroing = True
+                    self.enable_manual_guidance = False
+                    self.enable_ptp = False
+                    return True
+                else:
+                    print(
+                        f"⚠️ No known controller is currently active!")
+                    return False
 
     def switch_controller(self, controller_to_activate, controller_to_deactivate):
         switch_req = roslibpy.ServiceRequest({
             'activate_controllers': [] if controller_to_activate is None else [controller_to_activate],
             'deactivate_controllers': [] if controller_to_deactivate is None else [controller_to_deactivate],
             'strictness': 2,  # BEST_EFFORT = 1, STRICT = 2
-            'start_asap': True,
-            'timeout': 5.0
+            'activate_asap': True,
+            #'timeout': 5.0
         })
         print(f'Activating controller {controller_to_activate}...') if controller_to_activate else print(
             'No controller to activate.')
         print(f'Deactivating controller {controller_to_deactivate}...') if controller_to_deactivate else print(
             'No controller to deactivate.')
         result = self.switch_controller_client.call(switch_req)
+        print(f'Switch_controller result: {result}')
         return result  # type: ignore
 
     def start_homing_procedure(self):
@@ -335,9 +350,6 @@ class SyncRosManager:
         if hasattr(self, '_soft_start_timer'):
             self._soft_start_timer.stop()
             self._soft_start_timer.deleteLater()
-
-        # Terminate roslibpy client
-        self.ros_client.terminate()
 
         # Null out handles to publishers, services, etc.
         self.speed_ovr_publisher = None
@@ -390,12 +402,15 @@ class SyncRosManager:
             print(f"Setting mode {mode_value} for {dof}...")
             _ = self.mode_of_op_client.call(req)
 
-        op_response = self.get_drives_mode_of_op(self._joint_names)
-        if (len(op_response['dof_names']) == len(self._joint_names)) and all(
-                op_response['values'][j] == mode_value for j in range(len(self._joint_names))):
+        op_response_str = self.get_drives_mode_of_op(self._joint_names)
+        op_response = []
+        for mode in op_response_str['values']:
+            op_response.append(self.get_op_mode_number(mode))
+        if (len(op_response_str['dof_names']) == len(self._joint_names)) and all(
+                op_response[j] == mode_value for j in range(len(self._joint_names))):
             return True
         else:
-            print(f"got response: {op_response} when trying to change OP mode.")
+            print(f"got response: {op_response_str} when trying to change OP mode.")
             time.sleep(0.1)
             return self.set_mode_of_operation(mode_value)
 
@@ -417,13 +432,16 @@ class SyncRosManager:
                     current_time = time.time()
                     elapsed = current_time - start_time
 
-                    op_response = self.get_drives_mode_of_op(self._joint_names)
-                    if all((status_word & (1 << 12)) != 0 for status_word in op_response.status_words):
+                    op_response_str = self.get_drives_mode_of_op(self._joint_names)
+                    op_response = []
+                    for mode in op_response_str['values']:
+                        op_response.append(self.get_op_mode_number(mode))
+                    if all((status_word & (1 << 12)) != 0 for status_word in op_response_str['status_words']):
                         print('Homing performed successfully')
                         break
                     elif elapsed > timeout_sec:
                         print('Timeout while waiting for homing to complete')
-                        for status_word in op_response.status_words:
+                        for status_word in op_response_str['status_words']:
                             print(
                                 f' - STATUS WORD: bit 12 (homing completed): {status_word & (1 << 12)}, '
                                 f'bit 13 (error): {status_word & (1 << 13)}'
@@ -444,10 +462,10 @@ class SyncRosManager:
             'data': enable
         })
         result = self.enable_eth_error_check.call(req)
-        if result.success:
+        if result['success']==True:
             print(f"Ethercat error automatic checking state changed to: {enable}")
         else:
-            print(f"Service call failed: {result.message}")
+            print(f"Service call failed: {result['message']}")
 
     def get_drives_mode_of_op(self, dof_names):
         req = roslibpy.ServiceRequest({
@@ -457,6 +475,20 @@ class SyncRosManager:
         if result is None:
             print('Service call failed')
         return result
+
+    def get_op_mode_number(self, mode):
+        op_mode_dict={
+            'MODE_NO_MODE': 0,
+            'MODE_PROFILED_POSITION': 1,
+            'MODE_PROFILED_VELOCITY': 3,
+            'MODE_PROFILED_TORQUE': 4,
+            'MODE_HOMING': 6,
+            'MODE_INTERPOLATED_POSITION': 7,
+            'MODE_CYCLIC_SYNC_POSITION': 8,
+            'MODE_CYCLIC_SYNC_VELOCITY': 9,
+            'MODE_CYCLIC_SYNC_TORQUE': 10
+        }
+        return op_mode_dict.get(mode, 0)
 
     def turn_on_motors(self):
         if self.try_turn_on_in_execution:

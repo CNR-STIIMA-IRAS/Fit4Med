@@ -1,3 +1,4 @@
+import gc
 import os
 import sys
 import signal
@@ -9,6 +10,10 @@ from functools import partial
 
 # mathematics
 import numpy as np
+
+from rich.traceback import install
+install(show_locals=True)
+
 
 #MC Classes/methods
 from MovementProgram import FMRR_Ui_MovementWindow
@@ -64,17 +69,23 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         print("FMRR cell node started.")
 
     def check_ros_status(self):
-        if self.ROS is None:
+        if not hasattr(self, 'ROS') or self.ROS is None:
             self.ros_waiting_dialog.show()
         else:
             self.ros_waiting_dialog.hide()
 
     def initializeRosProcesses(self):
-        if self.ROS is not None:
+        if hasattr(self, 'ROS') and self.ROS is not None:
             print("[MainProgram] ROS already initialized.")
             return 0
+        # Initialize ROS client
+        if not hasattr(self, 'ros_client'):
+            self.ros_client = roslibpy.Ros(host='10.2.15.249', port=9090)
+            self.ros_client.run()
+        else:
+            self.ros_client.connect()
         self.worker_thread = QThread()
-        self.ROS = SyncRosManager(JOINT_NAMES)
+        self.ROS = SyncRosManager(JOINT_NAMES, self.ros_client)
         self.startMovementWindow()
         self.startRobotWindow()
         self._update_robot_window_callback = partial(self.uiRobotWindow.updateRobotWindow, self.DialogRobotWindow)
@@ -82,6 +93,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.ros_waiting_dialog.hide()
         self.ROS_active = True
         self.movement_worker_init = True
+        self._update_windows_timer.timeout.connect(self._update_robot_window_callback)
         return True  # self.initializeMovementWorker() return TODO: implement movement worker with roslibpy
 
     def udp_request_received(self, data):
@@ -91,7 +103,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
                 print("Stopping ROS processes...")
                 self.stopRosProcesses()
         elif data == b'RUNNING':
-            if not self.ROS_active and not self.ROS_is_quitting:
+            if not hasattr(self, 'ROS') or self.ROS is None:
                 print("Starting ROS processes...")
                 self.initializeRosProcesses()
 
@@ -104,11 +116,13 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.ROS_active = False
 
         # Destroy ROS clients
-        if self.ROS is not None:
+        if hasattr(self, 'ROS') and self.ROS is not None:
             if not self.ROS.destroy():
                 print('Error trying to destroy ROS class.')
                 return -1
             self.uiRobotWindow.disconnect_ROS_callbacks()
+
+            self.ros_client.close()
             
             # Disconnect GUI signals
             for signal in [
@@ -126,9 +140,6 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
             except (TypeError, RuntimeError, AttributeError):
                 pass
 
-            if hasattr(self, "_update_windows_timer"):
-                self._update_windows_timer.stop()
-
             # Stop worker and its thread
             if self.MovementWorker:
                 try:
@@ -140,8 +151,9 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
             if hasattr(self, "worker_thread") and self.worker_thread.isRunning():
                 self.worker_thread.quit()
                 self.worker_thread.wait()
-
-            self.ROS = None
+            del self.ROS
+            del self.worker_thread
+            gc.collect()
 
         self.movement_worker_init = False
         self.ros_waiting_dialog.show()
@@ -164,7 +176,6 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         
         self.MovementWorker = ASyncRosManager(JOINT_NAMES) #, self.ROS.trajectory_controller_name)
         self.MovementWorker.moveToThread(self.worker_thread)
-        self._update_windows_timer.timeout.connect( self._update_robot_window_callback ) 
         self.trigger_worker.connect(self.MovementWorker.fct().startMovement)# type: ignore
         self.trigger_pause.connect(self.MovementWorker.fct().is_paused) # type: ignore
         self.MovementWorker.fct().finished.connect(self.on_fct_worker_finished)
