@@ -4,9 +4,8 @@ from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from std_srvs.srv import Trigger
-from ethercat_controller_msgs.msg import Cia402DriveStates
-from ethercat_controller_msgs.msg import DriveStateFlags
-from ethercat_controller_msgs.srv import GetModesOfOperation
+from ethercat_controller_msgs.msg import Cia402DriveStates, DriveStateFlags
+from ethercat_controller_msgs.srv import GetModesOfOperation, GetDriveStates
 from std_msgs.msg import Bool
 from std_srvs.srv import SetBool, Trigger
 
@@ -24,9 +23,6 @@ class EthercatCheckerNode(Node):
         # Subscription to drive status updates
         self.subscription = self.create_subscription(Cia402DriveStates, '/state_controller/drive_states', self.handle_drive_status, qos_profile=10, callback_group=driver_group)
 
-        # Create the no-error publisher
-        self.publisher_ = self.create_publisher(DriveStateFlags, '/ethercat_checker/drive_state_flags', 10)
-
         # Service Servers
         self.enable_error_check_srv = self.create_service(
             SetBool,
@@ -38,6 +34,12 @@ class EthercatCheckerNode(Node):
             GetModesOfOperation,
             '/ethercat_checker/get_drive_mode_of_operation',
             self.get_modes_callback,
+            callback_group=service_group
+        )
+
+        self.get_drives_status_srv = self.create_service(
+            GetDriveStates,
+            '/ethercat_checker/get_drive_states', self.get_drives_status_callback,
             callback_group=service_group
         )
 
@@ -54,6 +56,8 @@ class EthercatCheckerNode(Node):
         self.fault_reset_in_execution = False
         self.try_turn_off_in_execution = False
         self.try_turn_on_in_execution = False
+        self.fault_present = False
+        self.motors_on = False
 
     def enable_error_checking_callback(self, request, response):
         self.error_auto_reset_enabled = request.data
@@ -91,24 +95,24 @@ class EthercatCheckerNode(Node):
                 self.get_logger().warn(f"DOF named '{name}' not found")
 
         return response
+    
+    def get_drives_status_callback(self, request, response):
+        response.fault_present = self.fault_present
+        response.drives_on = self.motors_on
+        return response
 
     def check_states(self):
-        msg_to_pub = DriveStateFlags()
         if 'STATE_FAULT' in self.state.values():
-            msg_to_pub.fault_present = True
-            self.publisher_.publish(msg_to_pub)
+            self.fault_present = True
             if self.error_auto_reset_enabled:
                 self.get_logger().error("Detected FAULT state - Trying to resetting faults...", throttle_duration_sec=1)
                 self.reset_fault()
         else:
-            msg_to_pub.fault_present = False
-            self.publisher_.publish(msg_to_pub)
-        if 'STATE_SWITCH_ON_DISABLED' in self.state.values():   
-            msg_to_pub.motors_on = False
-            self.publisher_.publish(msg_to_pub)
+            self.fault_present = False
+        if all(state in ['STATE_SWITCH_ON_ENABLED', 'STATE_SWITCH_ON', 'STATE_OPERATION_ENABLED'] for state in self.state.values()):
+            self.motors_on = True
         else:
-            msg_to_pub.motors_on = True
-            self.publisher_.publish(msg_to_pub)
+            self.motors_on = False
 
     def reset_fault(self):
         if self.fault_reset_in_execution:
