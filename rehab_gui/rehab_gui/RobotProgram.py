@@ -19,7 +19,6 @@ from copy import deepcopy
 class FMRR_Ui_RobotWindow(Ui_RobotWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.window_is_disabled = False
 
 ##############################################################################################################
 #####                                                                                                    #####  
@@ -154,11 +153,6 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
 ######
     def updateRobotWindow(self, RobotWindow: QtWidgets.QDialog):
         if self.ui_FMRRMainWindow.ROS_active:
-            
-            if self.window_is_disabled:
-                RobotWindow.setDisabled(False)
-                self.window_is_disabled = False
-
     #       Joint and tool postions are converted and displayed 
     #       conversion factors (fromm RAD to Degree and from meters tocentimeteres are declared at the beginning od the FMRRMainProgram class    
     #       Joints lcd 
@@ -211,23 +205,20 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
                     self.frame_GoalPosition.setEnabled(False)
 
             self.frame_JOG.setEnabled(self.ui_FMRRMainWindow.ROS.enable_jog_buttons)
-            print(f" Jog enabled: {self.ui_FMRRMainWindow.ROS.enable_jog_buttons}")
             self.frame_ManualGuide.setEnabled(self.ui_FMRRMainWindow.ROS.enable_manual_guidance)
             self.frame_Homing.setEnabled(self.ui_FMRRMainWindow.ROS.enable_zeroing)
             self.frame_GoalPosition.setEnabled(self.ui_FMRRMainWindow.ROS.enable_ptp)
-            self.frame_GoalPosition.setEnabled(self.ui_FMRRMainWindow.ROS.enable_ptp)
             self.pushButton_ResetFaults.setEnabled(self.ui_FMRRMainWindow.ROS.manual_reset_faults)
-
             self.pushButton_StartMotors.setEnabled(not self.ui_FMRRMainWindow.ROS.are_motors_on)
             self.pushButton_StopMotors.setEnabled(self.ui_FMRRMainWindow.ROS.are_motors_on)
 
+            # print(f"frame_JOG: {self.frame_JOG.isEnabled()}")
+
+            # print(f"frame_JOG enable: {self.frame_JOG.isEnabled()}")
             if self.ui_FMRRMainWindow.ROS.is_in_fault_state:
                 self.frame_FaultDetected.setStyleSheet("background-color: red; border-radius: 10px;")
             else:
                 self.frame_FaultDetected.setStyleSheet("background-color: green; border-radius: 10px;")
-        else:
-            RobotWindow.setDisabled(True)
-            self.window_is_disabled = True
 
     def disconnect_ROS_callbacks(self):
         try:
@@ -254,6 +245,64 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
             print("🔌 Signal-slot ROS disconnected")
         except Exception as e:
             print(f"⚠️ Error during disconnect_ROS_callbacks: {e}")
+
+    def reconnect_ROS_callbacks(self):
+        self.pushButton_LoadJointPosition.enablePushButton(1)
+        self.pushButton_Xminus.enablePushButton(1)
+        self.pushButton_Yminus.enablePushButton(1)
+        self.pushButton_Zminus.enablePushButton(1)
+        self.pushButton_Xplus.enablePushButton(1)
+        self.pushButton_Yplus.enablePushButton(1)
+        self.pushButton_Zplus.enablePushButton(1)
+        self.pushButton_GOtoTraining.enablePushButton(1)
+        self.pushButton_GOtoMovement.enablePushButton(1)
+        self.pushButton_StartMoveRobotManually.enablePushButton(1)
+        self.pushButton_StartMotors.enablePushButton(1)
+        self.pushButton_ResetFaults.enablePushButton(1)
+
+        # DISABLE
+        self.pushButton_StopMoveRobotManually.enablePushButton(0)
+        self.pushButton_StopMotors.enablePushButton(0)
+        self.pushButton_Approach_Joint1.enablePushButton(1)
+        self.pushButton_Approach_Joint2.enablePushButton(1)
+        self.pushButton_Approach_Joint3.enablePushButton(1)
+        self.pushButton_ApproachAllJoint.enablePushButton(1)
+        self.pushButton_SaveStartPosition.enablePushButton(1)
+
+        # CALLBACKS
+        self.pushButton_AbsHoming.clicked.connect(self.clbk_BtnAbsoluteHoming)
+        self.pushButton_RelativeHoming.clicked.connect(self.clbk_BtnRelativeHoming)
+        self.pushButton_StartMoveRobotManually.clicked.connect(self.clbk_StartMoveRobotManually)
+        self.pushButton_StopMoveRobotManually.clicked.connect(self.clbk_StopMoveRobotManually)
+        self.pushButton_StartMotors.clicked.connect(self.ui_FMRRMainWindow.clbk_StartMotors)
+        self.pushButton_StopMotors.clicked.connect(self.ui_FMRRMainWindow.clbk_StopMotors)
+        self.pushButton_LoadJointPosition.clicked.connect(self.clbk_BtnLoadJointPosition)
+        self.radioButton_EnableHoming.setCheckable(True)
+        self.radioButton_EnableHoming.clicked.connect(self.ui_FMRRMainWindow.ROS.zeroing_enable)
+        self.pushButton_JOG.setCheckable(True)
+        self.pushButton_JOG.toggled.connect(self.ui_FMRRMainWindow.ROS.jog_enable)
+        self.pushButton_ManualGuide.setCheckable(True)
+        self.pushButton_ManualGuide.toggled.connect(self.ui_FMRRMainWindow.ROS.manual_guidance_enable)
+        self.pushButton_Xminus.pressed.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(-1, 0))
+        self.pushButton_Xplus.pressed.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(1, 0))
+        self.pushButton_Yminus.pressed.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(-1, 1))
+        self.pushButton_Yplus.pressed.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(1, 1))
+        self.pushButton_Zminus.pressed.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(-1, 2))
+        self.pushButton_Zplus.pressed.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(1, 2))
+        self.pushButton_Xminus.released.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(0, 0))
+        self.pushButton_Xplus.released.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(0, 0))
+        self.pushButton_Yminus.released.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(0, 1))
+        self.pushButton_Yplus.released.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(0, 1))
+        self.pushButton_Zminus.released.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(0, 2))
+        self.pushButton_Zplus.released.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(0, 2))
+        self.comboBox_ResetFaults.currentIndexChanged.connect(self.ui_FMRRMainWindow.ROS.reset_mode_changed)
+        self.pushButton_ResetFaults.clicked.connect(self.ui_FMRRMainWindow.clbk_BtnResetFaults)
+        self.pushButton_Approach_Joint1.clicked.connect(lambda: self.clbk_JointApproach(0))
+        self.pushButton_Approach_Joint2.clicked.connect(lambda: self.clbk_JointApproach(1))
+        self.pushButton_Approach_Joint3.clicked.connect(lambda: self.clbk_JointApproach(2))
+        self.pushButton_ApproachAllJoint.clicked.connect(lambda: self.clbk_JointApproach(3))
+        self.pushButton_GOtoTraining.clicked.connect(lambda: self.clbk_BtnGOtoTraining())
+        self.pushButton_GOtoMovement.clicked.connect(lambda: self.clbk_BtnGotoMovement())
 
     def setupUi_RobotWindow(self, RobotWindow):
         Ui_RobotWindow.setupUi(self, RobotWindow)
@@ -307,12 +356,12 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
         self.pushButton_GOtoTraining.enablePushButton(1)
         self.pushButton_GOtoMovement.enablePushButton(1)
         self.pushButton_StartMoveRobotManually.enablePushButton(1)
-        self.pushButton_StartMotors.setEnabled(1)
+        self.pushButton_StartMotors.enablePushButton(1)
         self.pushButton_ResetFaults.enablePushButton(1)
             
 # DISABLE        
         self.pushButton_StopMoveRobotManually.enablePushButton(0)
-        self.pushButton_StopMotors.setEnabled(0)
+        self.pushButton_StopMotors.enablePushButton(0)
         
         self.pushButton_Approach_Joint1.enablePushButton(1)
         self.pushButton_Approach_Joint2.enablePushButton(1)

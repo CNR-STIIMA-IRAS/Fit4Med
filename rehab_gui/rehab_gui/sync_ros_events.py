@@ -1,11 +1,9 @@
-import sys
 from PyQt5.QtCore import QTimer
 import time
+import threading
 
 # mathematics
 import numpy as np
-
-#MC Classes/methods
 
 #ROS
 import roslibpy
@@ -37,7 +35,6 @@ class SyncRosManager:
         self.tool_subscriber.subscribe(self.getToolPosition)
         self.fault_state_subscriber = roslibpy.Topic(self.ros_client, '/ethercat_checker/drive_state_flags',
                                                      'ethercat_controller_msgs/msg/DriveStateFlags')
-        self.fault_state_subscriber.subscribe(self.getDrivestState)
         #  publisher
         self.pub_speed_ovr = roslibpy.Topic(self.ros_client, '/speed_ovr', 'std_msgs/msg/Int16')
         self.jog_cmd_publisher = roslibpy.Topic(self.ros_client,
@@ -65,10 +62,11 @@ class SyncRosManager:
         self.enable_zeroing = False
         self.enable_manual_guidance = False
         self.enable_ptp = False
-        # Motors stop services anti-rebound flags
+        # Services anti-rebound flags
         self.try_turn_on_in_execution = False
         self.try_turn_off_in_execution = False
         self.are_motors_on = False
+        self.op_mode_request_in_execution = False
         # Reset Faults
         self.manual_reset_faults = True
         self.is_in_fault_state = False
@@ -79,7 +77,7 @@ class SyncRosManager:
         self._ros_ready_timer.start(100)
         # check if clients are being destroyed
         self.destroy_clients_init = False
-
+        self.lock = threading.Lock()
         print('SyncRosManager class correctly initialized.')
 
     def trigger_soft_stop(self, start_value: float, steps: int = 10, target='speed_ovr', jog_joint_idx=None):
@@ -200,6 +198,9 @@ class SyncRosManager:
         self.enable_eth_error_check = roslibpy.Service(self.ros_client, '/ethercat_checker/enable_error_checking',
                                                        'std_srvs/srv/SetBool')
 
+        self.get_drive_state_flags_client = roslibpy.Service(self.ros_client, '/ethercat_checker/get_drive_states',
+                                                            'ethercat_controller_msgs/srv/GetDriveStates')
+
         print('All service clients correctly initialized.')
         return True
 
@@ -225,82 +226,91 @@ class SyncRosManager:
             name_to_position[joint] for joint in self._joint_names if joint in name_to_position
         ]
 
-    def getDrivestState(self, msg):
-        try:
-            self.is_in_fault_state = msg['fault_present']
-            self.are_motors_on = msg['motors_on']
-        except Exception as e:
-            print(f'Drives state flags subscription failed with exception: {e}')
-
     def list_active_controllers(self):
-        if not self.destroy_clients_init:
-            try:
-                req = roslibpy.ServiceRequest()
-                #_ = self.current_controller_client.call(req, callback=self.update_current_controller)
-                res = self.current_controller_client.call(req)
+        with self.lock:
+            if not self.destroy_clients_init:
+                try:
 
-            #def update_current_controller(self, res):
-                # self.current_controller = self.trajectory_controller_name
-                op_response_str = self.get_drives_mode_of_op(self._joint_names)
-                op_response = []
-                for mode in op_response_str['values']:
-                    op_response.append(self.get_op_mode_number(mode))
-            except Exception:
-                return False
+                    req = roslibpy.ServiceRequest()
+                    res = self.current_controller_client.call(req)
 
-            is_csv_mode = (len(op_response_str['dof_names']) == len(self._joint_names)) and all(
-                op_response[j] == 9 for j in range(len(self._joint_names)))
-            is_csp_mode = (len(op_response_str['dof_names']) == len(self._joint_names)) and all(
-                op_response[j] == 8 for j in range(len(self._joint_names)))
-            is_hmg_mode = (len(op_response_str['dof_names']) == len(self._joint_names)) and all(
-                op_response[j] == 6 for j in range(len(self._joint_names)))
+                #def update_current_controller(self, res):
+                    op_response_str = self.get_drives_mode_of_op(self._joint_names)
+                    op_response = []
+                    for mode in op_response_str['values']:
+                        op_response.append(self.get_op_mode_number(mode))
+                except Exception:
+                    return False
 
-            active_controller = None
-            for ctrl in res['controller']:
-                if ctrl['name'] == self.forward_command_controller and ctrl['state'] == 'active' and is_csv_mode:
-                    active_controller = self.forward_command_controller
-                    self.enable_jog_buttons = self.jog_enabled
-                    self.enable_zeroing = False
-                    self.enable_manual_guidance = False
-                    self.enable_ptp = False
-                    break
-                elif ctrl['name'] == self.trajectory_controller_name and ctrl['state'] == 'active' and is_csp_mode:
-                    active_controller = self.trajectory_controller_name
-                    self.enable_jog_buttons = False
-                    self.enable_zeroing = False
-                    self.enable_manual_guidance = False
-                    self.enable_ptp = True
-                    break
-                elif ctrl['name'] == self.admittance_controller and ctrl['state'] == 'active' and is_csv_mode:
-                    active_controller = self.admittance_controller
-                    self.enable_jog_buttons = False
-                    self.enable_zeroing = False
-                    self.enable_manual_guidance = self.manual_guidance_enabled
-                    self.enable_ptp = False
-                    break
-            # DEBUG PRINTS
-            if active_controller:
-                self.current_controller = active_controller
-                # print("--------------------------------------------")
-                # print(f"✅ Active controller: {self.current_controller} - MOO: [{op_response[0]}, {op_response[1]}, {op_response[2]}]")
-                # print(f" - Enable jog buttons: {self.enable_jog_buttons}")
-                # print(f" - Enable zeroing: {self.enable_zeroing}")
-                # print(f" - Enable manual guidance: {self.enable_manual_guidance}")
-                # print(f" - Enable PTP: {self.enable_ptp}")
-                # print("\n\n")
-                return True
-            else:
-                self.current_controller = None
-                if is_hmg_mode:
-                    self.enable_jog_buttons = False
-                    self.enable_zeroing = True
-                    self.enable_manual_guidance = False
-                    self.enable_ptp = False
+                is_csv_mode = (len(op_response_str['dof_names']) == len(self._joint_names)) and all(
+                    op_response[j] == 9 for j in range(len(self._joint_names)))
+                is_csp_mode = (len(op_response_str['dof_names']) == len(self._joint_names)) and all(
+                    op_response[j] == 8 for j in range(len(self._joint_names)))
+                is_hmg_mode = (len(op_response_str['dof_names']) == len(self._joint_names)) and all(
+                    op_response[j] == 6 for j in range(len(self._joint_names)))
+
+                state_flags_response = self.get_drive_states()
+                self.is_in_fault_state = state_flags_response['fault_present']
+                self.are_motors_on = state_flags_response['drives_on']
+
+                active_controller = None
+                for ctrl in res['controller']:
+                    if ctrl['name'] == self.forward_command_controller and ctrl['state'] == 'active' and is_csv_mode:
+                        active_controller = self.forward_command_controller
+                        self.enable_jog_buttons = True
+                        self.enable_zeroing = False
+                        self.enable_manual_guidance = False
+                        self.enable_ptp = False
+                        break
+                    elif ctrl['name'] == self.trajectory_controller_name and ctrl['state'] == 'active' and is_csp_mode:
+                        active_controller = self.trajectory_controller_name
+                        self.enable_jog_buttons = False
+                        self.enable_zeroing = False
+                        self.enable_manual_guidance = False
+                        self.enable_ptp = True
+                        break
+                    elif ctrl['name'] == self.admittance_controller and ctrl['state'] == 'active' and is_csv_mode:
+                        active_controller = self.admittance_controller
+                        self.enable_jog_buttons = False
+                        self.enable_zeroing = False
+                        self.enable_manual_guidance = self.manual_guidance_enabled
+                        self.enable_ptp = False
+                        break
+                    elif ctrl['name'] == self.trajectory_controller_name and ctrl['state'] == 'active' and not is_csp_mode:
+                        print(f"⚠️ {self.trajectory_controller_name} is active but drives are not in CSP mode!, setting correct mode...")
+                        if not self.op_mode_request_in_execution:
+                            self.set_mode_of_operation(8)
+                        break
+                    elif ctrl['name'] == self.forward_command_controller and ctrl['state'] == 'active' and not is_csv_mode:
+                        print(f"⚠️ {ctrl['name']} is active but drives are not in CSV mode!, setting correct mode...")
+                        if not self.op_mode_request_in_execution:
+                            self.set_mode_of_operation(9)
+                        break
+                    elif ctrl['name'] == self.admittance_controller and ctrl['state'] == 'active' and not is_csv_mode:
+                        print(f"⚠️ {ctrl['name']} is active but drives are not in CSV mode!, setting correct mode...")
+                        if not self.op_mode_request_in_execution:
+                            self.set_mode_of_operation(9)
+                        break
+                if active_controller:
+                    self.current_controller = active_controller
+                    # DEBUG PRINTS
+                    # print("--------------------------------------------")
+                    # print(f"✅ Active controller: {self.current_controller} - MOO: [{op_response[0]}, {op_response[1]}, {op_response[2]}]")
+                    # print("\n\n")
+                    # print("--------------------------------------------")
                     return True
                 else:
-                    print(
-                        f"⚠️ No known controller is currently active!")
-                    return False
+                    self.current_controller = None
+                    if is_hmg_mode:
+                        self.enable_jog_buttons = False
+                        self.enable_zeroing = True
+                        self.enable_manual_guidance = False
+                        self.enable_ptp = False
+                        return True
+                    else:
+                        print(
+                            f"⚠️ No known controller is currently active!")
+                        return False
 
     def switch_controller(self, controller_to_activate, controller_to_deactivate):
         switch_req = roslibpy.ServiceRequest({
@@ -394,6 +404,9 @@ class SyncRosManager:
             return False
 
     def set_mode_of_operation(self, mode_value):
+        if not self.op_mode_request_in_execution:
+            self.op_mode_request_in_execution = True
+
         for dof in self._joint_names:
             req = roslibpy.ServiceRequest({
                 'dof_name': dof,
@@ -408,6 +421,7 @@ class SyncRosManager:
             op_response.append(self.get_op_mode_number(mode))
         if (len(op_response_str['dof_names']) == len(self._joint_names)) and all(
                 op_response[j] == mode_value for j in range(len(self._joint_names))):
+            self.op_mode_request_in_execution = False
             return True
         else:
             print(f"got response: {op_response_str} when trying to change OP mode.")
@@ -424,7 +438,7 @@ class SyncRosManager:
     def perform_homing_callback(self, res):
         try:
             result = res
-            if result.success:
+            if result['success']:
                 start_time = time.time()
                 timeout_sec = 5.0
                 print('Homing started, waiting for completion...')
@@ -475,6 +489,14 @@ class SyncRosManager:
         if result is None:
             print('Service call failed')
         return result
+    
+    def get_drive_states(self):
+        try:
+            req = roslibpy.ServiceRequest()
+            result = self.get_drive_state_flags_client.call(req)
+            return result
+        except Exception as e:
+            print(f'Drives state service call failed with exception: {e}')
 
     def get_op_mode_number(self, mode):
         op_mode_dict={
@@ -520,10 +542,9 @@ class SyncRosManager:
         request = roslibpy.ServiceRequest()
         _ = self.reset_fault_client.call(request, callback=self.reset_fault_callback)
 
-    def reset_fault_callback(self, future):
+    def reset_fault_callback(self, result):
         try:
-            result = future.result()
-            if result.success:
+            if result['success']:
                 print('Fault reset successfully')
             else:
                 print('Failed to reset faults!')
@@ -574,24 +595,29 @@ class SyncRosManager:
             self.manual_guidance_enabled = False
 
     def jog_enable(self, pressed):
-        # Avoid multiple event
-        if self.jog_enabled_pressed == pressed:
-            pass
-        self.jog_enabled_pressed = pressed
-        if pressed:
-            if self.current_controller != self.forward_command_controller:
-                print(f"Switching to: {self.forward_command_controller}")
-                if not self.controller_and_op_mode_switch(9, self.forward_command_controller):
-                    print(f"❌ Failed to switch to {self.forward_command_controller}!")
-                    return
-            self.jog_enabled = True
-        else:
-            if self.current_controller != self.trajectory_controller_name:
-                print(f"Switching to: {self.trajectory_controller_name}")
-                if not self.controller_and_op_mode_switch(8, self.trajectory_controller_name):
-                    print(f"❌ Failed to switch to {self.trajectory_controller_name}!")
-                    return
-            self.jog_enabled = False
+        with self.lock:
+            # Avoid multiple event
+            if self.jog_enabled_pressed == pressed:
+                pass
+            self.jog_enabled_pressed = pressed
+            # print(f"pressed: {pressed}")
+            if pressed:
+                # print(f"pressed true - current controller: {self.current_controller}")
+                if self.current_controller != self.forward_command_controller:
+                    print(f"Switching to: {self.forward_command_controller}")
+                    if not self.controller_and_op_mode_switch(9, self.forward_command_controller):
+                        print(f"❌ Failed to switch to {self.forward_command_controller}!")
+                        return
+                self.jog_enabled = True
+            else:
+                # print(f"pressed false - current controller: {self.current_controller}")
+                if self.current_controller != self.trajectory_controller_name:
+                    print(f"Switching to: {self.trajectory_controller_name}")
+                    if not self.controller_and_op_mode_switch(8, self.trajectory_controller_name):
+                        print(f"❌ Failed to switch to {self.trajectory_controller_name}!")
+                        return
+                self.jog_enabled = False
+            # print(f"jog_enabled: {self.jog_enabled}")
 
     def jog_command(self, direction, joint_to_move):
         velocity_command_ref = 0.1

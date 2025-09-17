@@ -14,7 +14,6 @@ import numpy as np
 from rich.traceback import install
 install(show_locals=True)
 
-
 #MC Classes/methods
 from MovementProgram import FMRR_Ui_MovementWindow
 from RobotProgram import FMRR_Ui_RobotWindow
@@ -66,6 +65,8 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.udp_thread.started.connect(self.server.start)
         self.server.message_received.connect(lambda d,a : self.udp_request_received(d))
         self.udp_thread.start()
+
+        self.first_time = True
         print("FMRR cell node started.")
 
     def check_ros_status(self):
@@ -79,21 +80,25 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
             print("[MainProgram] ROS already initialized.")
             return 0
         # Initialize ROS client
-        if not hasattr(self, 'ros_client'):
+        if self.first_time:
             self.ros_client = roslibpy.Ros(host='10.2.15.249', port=9090)
             self.ros_client.run()
         else:
             self.ros_client.connect()
         self.worker_thread = QThread()
         self.ROS = SyncRosManager(JOINT_NAMES, self.ros_client)
-        self.startMovementWindow()
-        self.startRobotWindow()
+        if self.first_time:
+            self.startMovementWindow()
+            self.startRobotWindow()
+        else:
+            self.uiRobotWindow.reconnect_ROS_callbacks()
         self._update_robot_window_callback = partial(self.uiRobotWindow.updateRobotWindow, self.DialogRobotWindow)
         self.comboBox_ResetFaults.currentIndexChanged.connect(self.ROS.reset_mode_changed)
         self.ros_waiting_dialog.hide()
         self.ROS_active = True
         self.movement_worker_init = True
         self._update_windows_timer.timeout.connect(self._update_robot_window_callback)
+        self.first_time = False
         return True  # self.initializeMovementWorker() return TODO: implement movement worker with roslibpy
 
     def udp_request_received(self, data):
@@ -121,7 +126,6 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
                 print('Error trying to destroy ROS class.')
                 return -1
             self.uiRobotWindow.disconnect_ROS_callbacks()
-
             self.ros_client.close()
             
             # Disconnect GUI signals
@@ -138,6 +142,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
             try:
                 self._update_windows_timer.timeout.disconnect(self._update_robot_window_callback)
             except (TypeError, RuntimeError, AttributeError):
+                print("Error disconnecting robot window updating timer.")
                 pass
 
             # Stop worker and its thread
@@ -399,7 +404,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.pushButton_LoadCreateMovement.enablePushButton(1)
         self.pushButton_MoveRobot.enablePushButton(1)
         self.pushButton_CLOSEprogram.enablePushButton(1)
-        self.pushButton_StartMotors.setEnabled(1)
+        self.pushButton_StartMotors.enablePushButton(1)
         self.pushButton_ResetFaults.enablePushButton(1)
         #   DISABLE Buttons
         self.pushButton_STARTtrainig.enablePushButton(0)
@@ -408,7 +413,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.pushButton_SaveProtocol.enablePushButton(0)
         self.pushButton_LoadCreateProtocol.enablePushButton(0)
         self.pushButton_DATAacquisition.enablePushButton(0)
-        self.pushButton_StopMotors.setEnabled(0)
+        self.pushButton_StopMotors.enablePushButton(0)
         #   CALLBACKS 
         #    Buttons
         self.pushButton_LoadCreateMovement.clicked.connect(self.clbk_BtnLoadCreateMovement)
