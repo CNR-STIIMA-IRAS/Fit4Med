@@ -318,7 +318,6 @@ class SyncRosManager:
             'deactivate_controllers': [] if controller_to_deactivate is None else [controller_to_deactivate],
             'strictness': 2,  # BEST_EFFORT = 1, STRICT = 2
             'activate_asap': True,
-            #'timeout': 5.0
         })
         print(f'Activating controller {controller_to_activate}...') if controller_to_activate else print(
             'No controller to activate.')
@@ -327,15 +326,6 @@ class SyncRosManager:
         result = self.switch_controller_client.call(switch_req)
         print(f'Switch_controller result: {result}')
         return result  # type: ignore
-
-    def start_homing_procedure(self):
-        if self.are_motors_on:
-            self.perform_homing()
-        else:
-            self.turn_on_motors()
-            time.sleep(0.3)
-            if self.are_motors_on:
-                self.perform_homing()
 
     def activate_controller_after_homing(self):
         res = self.switch_controller(self.current_controller, None)
@@ -433,11 +423,8 @@ class SyncRosManager:
         print('--------------->Performing Homing for all three joints')
         client = roslibpy.Service(self.ros_client, '/state_controller/perform_homing', 'std_srvs/srv/Trigger')
         request = roslibpy.ServiceRequest()
-        _ = client.call(request, callback=self.perform_homing_callback)
-
-    def perform_homing_callback(self, res):
         try:
-            result = res
+            result = client.call(request)
             if result['success']:
                 start_time = time.time()
                 timeout_sec = 5.0
@@ -469,7 +456,7 @@ class SyncRosManager:
             else:
                 print('Failed to perform homing (service returned False)')
         except Exception as e:
-            print(f'Service call failed with exception: {e}')
+            print(f'Homing service call failed with exception: {e}')
 
     def enable_ethercat_error_checking(self, enable: bool):
         req = roslibpy.ServiceRequest({
@@ -564,11 +551,12 @@ class SyncRosManager:
             return
         self.homing_check_enabled_pressed = pressed
         if pressed:
+            self.turn_on_motors()
             if not self.controller_and_op_mode_switch(6, None):
                 print(f"❌ Failed to set homing mode!")
                 return
         else:
-            print(f'>>>>>>>>>>>>>>>>>Disabling homing mode, current controller is: {self.current_controller}')
+            self.turn_off_motors()
             if self.current_controller != self.trajectory_controller_name:
                 print(f"Switching to: {self.trajectory_controller_name}")
                 if not self.controller_and_op_mode_switch(8, self.trajectory_controller_name):

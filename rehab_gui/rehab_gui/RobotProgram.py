@@ -104,7 +104,7 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
                 print(f"Failed to remove {file_path}: {e}")
         print(f"Files removed {not os.path.exists(file_path)}")
         # Call homing service
-        self.ui_FMRRMainWindow.ROS.start_homing_procedure()
+        self.ui_FMRRMainWindow.ROS.perform_homing()
         # Create an empty file under /tmp
         with open('/tmp/relative_homing_performed', 'w') as f:
             f.write("homing performed")
