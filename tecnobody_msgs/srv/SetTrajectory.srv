@@ -1,0 +1,3 @@
+tecnobody_msgs/CartesianPoint[] cartesian_positions
+---
+bool success

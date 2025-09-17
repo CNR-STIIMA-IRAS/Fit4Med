@@ -1,5 +1,4 @@
 import sys
-from PyQt5.QtCore import pyqtSignal, QObject, QTimer
 import time
 
 # mathematics
@@ -9,65 +8,45 @@ from scipy.interpolate import CubicSpline
 #MC Classes/methods
 
 #ROS
-import roslibpy
-# from rclpy.node import Node
-# from builtin_interfaces.msg import Duration
-# from rclpy.action import ActionClient
-# from control_msgs.action import FollowJointTrajectory
-# from trajectory_msgs.msg import JointTrajectoryPoint
-# from ethercat_controller_msgs.action import SetModesOfOperationAction
-#
-# from action_msgs.msg import GoalStatus
+from rclpy.node import Node
+from builtin_interfaces.msg import Duration
+from rclpy.action import ActionClient
+from control_msgs.action import FollowJointTrajectory
+from trajectory_msgs.msg import JointTrajectoryPoint
+from ethercat_controller_msgs.action import SetModesOfOperationAction
+from tecnobody_msgs.srv import SetTrajectory, StartMovement
+from action_msgs.msg import GoalStatus
 
-# def get_status_string(status):
-#     status_dict = {
-#         GoalStatus.STATUS_UNKNOWN: 'UNKNOWN',
-#         GoalStatus.STATUS_ACCEPTED: 'ACCEPTED',
-#         GoalStatus.STATUS_EXECUTING: 'EXECUTING',
-#         GoalStatus.STATUS_CANCELING: 'CANCELING',
-#         GoalStatus.STATUS_SUCCEEDED: 'SUCCEEDED',
-#         GoalStatus.STATUS_CANCELED: 'CANCELED',
-#         GoalStatus.STATUS_ABORTED: 'ABORTED'
-#     }
-#     return status_dict.get(status, 'UNKNOWN')
-
-class FollowJointTrajectoryActionManager(QObject):
-    finished = pyqtSignal()
-    progress = pyqtSignal(int)
-    stopped = pyqtSignal()
+class FollowJointTrajectoryActionManager(Node):
 
     def __init__(self, joint_names : list, controller_name='joint_trajectory_controller'):
-        super().__init__() # type: ignore
+        super().__init__("fct_manager_node") # type: ignore
         self._init_time_s = 0
         self._is_paused = False
         self._pause_start_time = None
         self._paused_duration = 0.0
         self._joint_names = joint_names
-        self.action_server_timer = QTimer()
-        self.action_server_timer.timeout.connect(self._check_client_ready)
-        self.action_server_timer.start(100000)  # Check every second
-
-    def _check_client_ready(self):
-        if not hasattr(self, 'client'):
-            self.client = ActionClient(self.node, FollowJointTrajectory, '/joint_trajectory_controller/follow_joint_trajectory')
-        if self.client.wait_for_server(timeout_sec=1.0):
-            print('Follow Joint Trajectory Action server is available.')
-            self.action_server_timer.cancel()
-            self.clear()
-        else:
-            print('Waiting for Follow Joint Trajectory Action server...', throttle_duration_sec=5.0)
+        self.set_trajectory_server = self.create_service(
+            SetTrajectory,
+            "/tecnobody_workbench_utils/set_trajectory",
+            self.set
+        )
+        self.start_movement_server = self.create_service(
+            StartMovement,
+            "/tecnobody_workbench_utils/start_movement",
+            self.startMovement
+        )
             
     def clear(self):
         self.goalFCT = FollowJointTrajectory.Goal()
         self.goalFCT.trajectory.joint_names = self._joint_names
     
-    def set(self, cartesian_positions, time_from_start,**kwargs):
+    def set(self, request, response):
+        cartesian_positions = [r.point for r in request.cartesian_positions]
+        time_from_start = [r.time_from_start for r in request.cartesian_positions]
         # Called only at the beginning
         self.clear()
-        if type(time_from_start[0]) is not Duration:
-            self._total_time_s = (time_from_start[-1][0] - time_from_start[0][0])
-        else:
-            self._total_time_s = time_from_start[-1].sec - time_from_start[0].sec + (time_from_start[-1].nanosec - time_from_start[0].nanosec) * 1e-9
+        self._total_time_s = (time_from_start[-1] - time_from_start[0])
         if self._total_time_s <= 0:
             self._total_time_s = 1.0
         _numSample = len(time_from_start)
@@ -76,10 +55,7 @@ class FollowJointTrajectoryActionManager(QObject):
         self._point_velocities = [0.0] * _numSample
         self._point_accelerations= [0.0] * _numSample
         for iPoint in range(0, _numSample):
-            if type(time_from_start[iPoint]) is not Duration:
-                _time_from_start_s = time_from_start[iPoint][0]
-            else:
-                _time_from_start_s = time_from_start[iPoint].sec + time_from_start[iPoint].nanosec * 1e-9
+            _time_from_start_s = time_from_start[iPoint]
             t_spl[iPoint] = float(_time_from_start_s)
         # Interpolate trajectory and calculate velocities and accelerations
         P = np.array(cartesian_positions)
@@ -93,7 +69,11 @@ class FollowJointTrajectoryActionManager(QObject):
             acc = np.array([s.derivative(2)(t_iPoint) for s in splines])
             self._time_from_start_duration[iPoint] = Duration(sec=int(t_iPoint),nanosec=int((t_iPoint - int(t_iPoint)) * 1e9))
             self._point_velocities[iPoint] = vel
-            self.addPoint(pos, vel, acc, t_iPoint, **kwargs)
+            self.addPoint(pos, vel, acc, t_iPoint)
+        self.client = ActionClient(self, FollowJointTrajectory, '/joint_trajectory_controller/follow_joint_trajectory')
+        if self.client.wait_for_server(timeout_sec=5.0):
+            print('Follow Joint Trajectory Action server is available.')
+        response.success = True
     
     def setSpeedOverride(self, speed_ovr : int = 100):
         self.speed_scale = speed_ovr / 100.0
@@ -123,7 +103,7 @@ class FollowJointTrajectoryActionManager(QObject):
                         else:
                             print(f"Warning: Acceleration at point {iPoint} is not zero, but it should be. Acc: {vel_scaled[iPoint]}")
     
-    def addPoint(self, positions, velocities, accelerations, time, **kwargs):
+    def addPoint(self, positions, velocities, accelerations, time):
         point=JointTrajectoryPoint()
         point.positions = positions
         point.velocities = velocities
@@ -132,30 +112,32 @@ class FollowJointTrajectoryActionManager(QObject):
         point.time_from_start = time
         self.goalFCT.trajectory.points.append(point)
     
-    def startMovement(self, default_speed_ovr):
+    def startMovement(self, request, response):
     # Called at the beginning of each movement
+        default_speed_ovr = request.speed_ovr
         self.setSpeedOverride(default_speed_ovr)
         self._init_time_s = time.time()
         self._paused_duration = 0.0
         self._last_actual_time_pct = 0.0
         self._pause_start_time = None
-        self.goalFCT.trajectory.header.stamp = self.node.get_clock().now().to_msg()
+        self.goalFCT.trajectory.header.stamp = self.get_clock().now().to_msg()
         self._send_goal_future = self.client.send_goal_async(self.goalFCT)
         self._send_goal_future.add_done_callback(self.on_goal_accepted)
+        response.success = True
     
-    def is_paused(self, trigger_pause):
-        if trigger_pause:
-            if not self._is_paused:
-                self._pause_start_time = time.time()
-            self._is_paused = True
-            print("⏸️ Paused movement")
-        else:
-            if self._is_paused and self._pause_start_time is not None:
-                pause_duration = time.time() - self._pause_start_time
-                self._paused_duration += pause_duration
-                print(f"▶️ Resumed movement after {pause_duration:.2f}s pause")
-                self._pause_start_time = None
-            self._is_paused = False
+    # def is_paused(self, trigger_pause):
+    #     if trigger_pause:
+    #         if not self._is_paused:
+    #             self._pause_start_time = time.time()
+    #         self._is_paused = True
+    #         print("⏸️ Paused movement")
+    #     else:
+    #         if self._is_paused and self._pause_start_time is not None:
+    #             pause_duration = time.time() - self._pause_start_time
+    #             self._paused_duration += pause_duration
+    #             print(f"▶️ Resumed movement after {pause_duration:.2f}s pause")
+    #             self._pause_start_time = None
+    #         self._is_paused = False
     
     def on_goal_accepted(self, future):
         self._goal_handle = future.result()
@@ -166,7 +148,7 @@ class FollowJointTrajectoryActionManager(QObject):
         self._get_goal_result_future = self._goal_handle.get_result_async()
         self._get_goal_result_future.add_done_callback(self.on_done)
         self._goal_status = GoalStatus.STATUS_UNKNOWN
-        self.timer = self.node.create_timer(0.02, lambda: self.check_status())
+        self.timer = self.create_timer(0.02, lambda: self.check_status())
     
     def on_done(self, future):
         try:
@@ -212,67 +194,3 @@ class FollowJointTrajectoryActionManager(QObject):
             cancel_future.add_done_callback(self.on_cancelled)
         else:
             print('goal handle has not been created yet')
-
-
-class ModesOfOperationActionManager(QObject):
-    finished    = pyqtSignal()
-    stopped    = pyqtSignal()
-    def __init__(self):
-        super().__init__() # type: ignore
-        self.goal_handle = None
-        # self.client = ActionClient(ros_node, SetModesOfOperationAction, '/state_controller/async_set_modes_of_operation')
-        # if not self.client.wait_for_server(2):
-        #     raise ValueError('Set Modes of Operation Action server not available, exiting...')
-    
-    # def switch_mode_of_operation(self, dof : str, new_mode: str):
-    #     self.goal = SetModesOfOperationAction.Goal()
-    #     self.goal.dof_name = dof
-    #     self.goal.mode_of_operation = new_mode
-    #     self.moo_future = self.client.send_goal_async(self.goal)
-    #     self.moo_future.add_done_callback(self.on_goal_accepted)
-    #
-    # def on_goal_accepted(self, future):
-    #     self.goal_handle = future.result()
-    #     if not self.goal_handle.accepted:
-    #         print('Goal rejected!!')
-    #         return
-    #     print('Goal accepted')
-    #     self._get_moo_goal_result_future = self.goal_handle.get_result_async()
-    #     self._get_moo_goal_result_future.add_done_callback(self.on_done)
-    #
-    # def on_done(self, future):
-    #     self.finished.emit()
-    #     self.goal_handle = None
-    #
-    # def on_cancelled(self, future):
-    #     if future.result() is not None:
-    #         print(f'Goal cancelled: {future.result().message}')
-    #     else:
-    #         print('Goal cancelled without result')
-    #     self.stopped.emit()
-    #     self.goal_handle = None
-    #
-    # def stop(self):
-    #     if hasattr(self, 'goal_handle') and self.goal_handle is not None:
-    #         cancel_future = self.goal_handle.cancel_goal_async()
-    #         cancel_future.add_done_callback(self.on_cancelled)
-    #         self.goal = None
-    
-
-class ASyncRosManager(QObject):
-
-    def __init__(self, joint_names, controller_name='joint_trajectory_controller'):
-        super(ASyncRosManager, self).__init__()
-        
-        self._fct = FollowJointTrajectoryActionManager(joint_names, controller_name)
-        # self._moo = ModesOfOperationActionManager(ros_node)
-        
-    def moo(self) -> ModesOfOperationActionManager:
-        return self._moo
-    
-    def fct(self) -> FollowJointTrajectoryActionManager:
-        return self._fct
-
-    def stop(self):
-        self._fct.stop()
-        self._moo.stop()

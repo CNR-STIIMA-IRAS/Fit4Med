@@ -3,7 +3,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
-from plc_controller_msgs.msg import PlcController
+from tecnobody_msgs.msg import PlcController
 from controller_manager_msgs.srv import ListControllers, UnloadController, SwitchController
 from std_srvs.srv import Trigger
 from std_msgs.msg import Bool

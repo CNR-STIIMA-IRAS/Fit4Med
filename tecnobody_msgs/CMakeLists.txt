@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(plc_controller_msgs)
+project(tecnobody_msgs)
 
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
@@ -12,6 +12,9 @@ find_package(rosidl_default_generators REQUIRED)
 # generate messages in the 'msg' folder
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/PlcController.msg"
+  "msg/CartesianPoint.msg"
+  "srv/SetTrajectory.srv"
+  "srv/StartMovement.srv"
 )
 
 if(BUILD_TESTING)

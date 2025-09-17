@@ -10,7 +10,7 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(realtime_tools REQUIRED)
 find_package(generate_parameter_library REQUIRED)
-find_package(plc_controller_msgs REQUIRED)
+find_package(tecnobody_msgs REQUIRED)
 
 generate_parameter_library(plc_controller_parameters
   src/plc_controller_parameters.yaml
@@ -30,7 +30,7 @@ ament_target_dependencies(plc_controller PUBLIC
   rclcpp_lifecycle
   rcutils
   realtime_tools
-  plc_controller_msgs
+  tecnobody_msgs
 )
 pluginlib_export_plugin_description_file(controller_interface plc_controller_plugin.xml)
 

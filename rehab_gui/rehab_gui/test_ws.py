@@ -24,7 +24,7 @@ client.run()
 # print('Is ROS connected?', client.is_connected)
 
 # TOPIC LISTENER EXAMPLE
-#listener = roslibpy.Topic(client, '/PLC_controller/plc_states', 'plc_controller_msgs/msg/PlcController')
+#listener = roslibpy.Topic(client, '/PLC_controller/plc_states', 'tecnobody_msgs/msg/PlcController')
 #listener.subscribe(lambda message: print(f'Heard talking: {message}'))
 
 # SERVICE EXAMPLE

@@ -20,7 +20,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "plc_controller_msgs/msg/plc_controller.hpp"
+#include "tecnobody_msgs/msg/plc_controller.hpp"
 #include "controller_interface/controller_interface.hpp"
 #include "rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp"
 #include "rclcpp_lifecycle/state.hpp"
@@ -31,8 +31,8 @@
 
 namespace plc_controller
 {
-using CmdType = plc_controller_msgs::msg::PlcController;
-using StateType = plc_controller_msgs::msg::PlcController;
+using CmdType = tecnobody_msgs::msg::PlcController;
+using StateType = tecnobody_msgs::msg::PlcController;
 using CallbackReturn = controller_interface::CallbackReturn;
 using InterfacesNames = std::vector<std::string>;
 using MapOfReferencesToCommandInterfaces = std::unordered_map<
