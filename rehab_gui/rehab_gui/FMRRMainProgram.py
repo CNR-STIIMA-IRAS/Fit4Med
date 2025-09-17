@@ -50,9 +50,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.FMRRMainWindow = QtWidgets.QMainWindow()
     
         self.ROS = None
-        self.MovementWorker = None
         self.ROS_active = False
-        self.movement_worker_init = False
         self.ROS_is_quitting = False
         self.ros_waiting_dialog = WaitingDialog(self.FMRRMainWindow)
         self.waiting_dialog_timer = QTimer()
@@ -85,7 +83,6 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
             self.ros_client.run()
         else:
             self.ros_client.connect()
-        self.worker_thread = QThread()
         self.ROS = SyncRosManager(JOINT_NAMES, self.ros_client)
         if self.first_time:
             self.startMovementWindow()
@@ -96,8 +93,11 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.comboBox_ResetFaults.currentIndexChanged.connect(self.ROS.reset_mode_changed)
         self.ros_waiting_dialog.hide()
         self.ROS_active = True
-        self.movement_worker_init = True
         self._update_windows_timer.timeout.connect(self._update_robot_window_callback)
+        self.on_fct_finished_server = roslibpy.Service(self.ros_client, "/rehab_gui/fct_finished", "std_srvs/Trigger")
+        self.on_fct_finished_server.advertise(self.on_fct_worker_finished)
+        self.on_fct_progress_server = roslibpy.Service(self.ros_client, "/rehab_gui/fct_progress", "tecnobody_msgs/MovementProgress")
+        self.on_fct_progress_server.advertise(self.on_fct_worker_progress)
         self.first_time = False
         return True  # self.initializeMovementWorker() return TODO: implement movement worker with roslibpy
 
@@ -130,8 +130,6 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
             
             # Disconnect GUI signals
             for signal in [
-                self.trigger_pause,
-                self.trigger_worker,
                 self.comboBox_ResetFaults.currentIndexChanged,
             ]:
                 try:
@@ -145,22 +143,9 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
                 print("Error disconnecting robot window updating timer.")
                 pass
 
-            # Stop worker and its thread
-            if self.MovementWorker:
-                try:
-                    self.MovementWorker.deleteLater()
-                except Exception:
-                    pass
-                self.MovementWorker = None
-
-            if hasattr(self, "worker_thread") and self.worker_thread.isRunning():
-                self.worker_thread.quit()
-                self.worker_thread.wait()
             del self.ROS
-            del self.worker_thread
             gc.collect()
 
-        self.movement_worker_init = False
         self.ros_waiting_dialog.show()
         self.ROS_is_quitting = False
         print("[MainProgram] ROS processes stopped.")
@@ -175,22 +160,6 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.execution_time_percentage = 0
         self.iPhase = 0
         self._counter_request_homing_procedure = 0 # counter to avoid multiple request of homing procedure
-
-    def initializeMovementWorker(self):
-        print("[MainProgram] Initializing MovementWorker...")
-        
-        self.MovementWorker = ASyncRosManager(JOINT_NAMES) #, self.ROS.trajectory_controller_name)
-        self.MovementWorker.moveToThread(self.worker_thread)
-        self.trigger_worker.connect(self.MovementWorker.fct().startMovement)# type: ignore
-        self.trigger_pause.connect(self.MovementWorker.fct().is_paused) # type: ignore
-        self.MovementWorker.fct().finished.connect(self.on_fct_worker_finished)
-        self.MovementWorker.fct().progress.connect(self.on_fct_worker_progress)
-        
-        self.worker_thread.start()
-        self.MovementWorker.fct().clear()
-        
-        print("[MainProgram] MovementWorker initialized.")
-        return 1
 
     def updateWindowTimerCallback(self):
         self._update_windows_timer = QTimer()                                           # creo l'oggetto
@@ -328,7 +297,9 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
 
     def clbk_STOPtrainig(self):   
         if self.ROS_active:
-            self.MovementWorker.fct().stop() 
+            client = roslibpy.Service(self.ros_client, "/tecnobody_workbench_utils/stop_movement", "std_srvs/Trigger")
+            req = roslibpy.ServiceRequest()
+            client.call(req)
             for iProgBar in self.progressBarPhases:
                 iProgBar = 0
             self.pushButton_PAUSEtrainig.enablePushButton(0)
@@ -362,12 +333,13 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
             self.progressBarPhases[19].setValue(100)
             self.clbk_STOPtrainig()
         
-    def on_fct_worker_finished(self):
+    def on_fct_worker_finished(self, request, response):
         self.iPhase += 1
         self.movement_completed = True
+        response['success'] = True
     
-    def on_fct_worker_progress(self,value):
-        self.execution_time_percentage = int(value)  # Get the progress percentage from the worker
+    def on_fct_worker_progress(self,request, response):
+        self.execution_time_percentage = int(request['progress'])  # Get the progress percentage from the worker
 
     def clbk_spinBox_MaxVel(self):
         speed_ovr_Value = self.spinBox_MaxVel.value()
@@ -436,7 +408,11 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.movement_completed = False
         self._home_status = 0 # GoalStatus.STATUS_UNKNOWN # TODO: implement goal status with roslibpy
         self._home_goal_sent = False
-        self.trigger_worker.emit(default_speed_override)  # Trigger the worker to start the movement
+        client = roslibpy.Service(self.ros_client, "/tecnobody_workbench_utils/start_movement", "tecnobody_msgs/StartMovement")
+        req = roslibpy.ServiceRequest({
+            'speed_ovr': default_speed_override
+        })
+        client.call(req)  # Trigger the worker to start the movement
         
     def clbk_ApproachPoint(self, point):
         if self.ROS_active:
@@ -471,7 +447,13 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
             TrjYamlData = self.uiMovementWindow.TrjYamlData
             self.CartesianPositions = TrjYamlData.get("cart_trj3").get("cart_positions")
             self.TimeFromStart = TrjYamlData.get("cart_trj3").get("time_from_start")
-            self.MovementWorker.fct().set(self.CartesianPositions, self.TimeFromStart)  # type: ignore    
+            client = roslibpy.Service(self.ros_client, "/tecnobody_workbench_utils/set_trajectory", "tecnobody_msgs/SetTrajectory")
+            req = roslibpy.ServiceRequest({
+                'cartesian_positions': [
+                    {'point': self.CartesianPositions[idx], 'time_from_start' : self.TimeFromStart[idx]} for idx in enumerate(self.TimeFromStart)
+                ]
+            })
+            client.call(req)  # type: ignore    
 
         
 def main(args=None):

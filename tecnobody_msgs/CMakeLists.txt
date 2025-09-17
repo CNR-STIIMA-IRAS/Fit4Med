@@ -15,6 +15,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/CartesianPoint.msg"
   "srv/SetTrajectory.srv"
   "srv/StartMovement.srv"
+  "srv/MovementProgress.srv"
 )
 
 if(BUILD_TESTING)

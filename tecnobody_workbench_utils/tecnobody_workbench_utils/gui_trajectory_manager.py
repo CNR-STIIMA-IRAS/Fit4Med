@@ -8,14 +8,17 @@ from scipy.interpolate import CubicSpline
 #MC Classes/methods
 
 #ROS
+import rclpy
 from rclpy.node import Node
 from builtin_interfaces.msg import Duration
 from rclpy.action import ActionClient
+from rclpy.client import Client
 from control_msgs.action import FollowJointTrajectory
 from trajectory_msgs.msg import JointTrajectoryPoint
 from ethercat_controller_msgs.action import SetModesOfOperationAction
-from tecnobody_msgs.srv import SetTrajectory, StartMovement
+from tecnobody_msgs.srv import SetTrajectory, StartMovement, MovementProgress
 from action_msgs.msg import GoalStatus
+from std_srvs.srv import Trigger
 
 class FollowJointTrajectoryActionManager(Node):
 
@@ -35,6 +38,11 @@ class FollowJointTrajectoryActionManager(Node):
             StartMovement,
             "/tecnobody_workbench_utils/start_movement",
             self.startMovement
+        )
+        self.stop_movement_server = self.create_service(
+            Trigger,
+            "/tecnobody_workbench_utils/stop_movement",
+            self.stop
         )
             
     def clear(self):
@@ -152,7 +160,11 @@ class FollowJointTrajectoryActionManager(Node):
     
     def on_done(self, future):
         try:
-            self.finished.emit()
+            client : Client = self.create_client(self, Trigger, '/rehab_gui/fct_finished')
+            if not client.wait_for_service(timeout_sec=5.0):
+                print('Trajectory DONE server is not available.')
+            req = Trigger.Request()               
+            client.call_async(req)                
             self.timer.cancel()
             self._goal_handle = None
         except Exception as e:
@@ -165,10 +177,10 @@ class FollowJointTrajectoryActionManager(Node):
     
         old_status = self._goal_status
         self._goal_status = self._goal_handle.status
-        if old_status != self._goal_status:
-            old_status_string = get_status_string(old_status)
-            status_string = get_status_string(self._goal_status)
-            print(f'Action transition from {old_status_string} to {status_string}')
+        # if old_status != self._goal_status:
+        #     old_status_string = get_status_string(old_status)
+        #     status_string = get_status_string(self._goal_status)
+        #     print(f'Action transition from {old_status_string} to {status_string}')
     
         actual_time = time.time()
         effective_time = actual_time - self._init_time_s - self._paused_duration
@@ -176,7 +188,10 @@ class FollowJointTrajectoryActionManager(Node):
         actual_time_from_start_percentage = (effective_time / total_scaled_time) * 100
         actual_time_from_start_percentage = min(actual_time_from_start_percentage, 100.0)
     
-        self.progress.emit(int(actual_time_from_start_percentage))
+        client = self.create_client(self, MovementProgress, "/rehab_gui/fct_progress")
+        req = MovementProgress.Request()
+        req.progress = int(actual_time_from_start_percentage)
+        client.call_async(req)
         self._last_actual_time_pct = int(actual_time_from_start_percentage)
     
     def on_cancelled(self, future):
@@ -185,12 +200,36 @@ class FollowJointTrajectoryActionManager(Node):
         else:
             print('Goal cancelled without result')
         self.clear()
-        self.stopped.emit()
         self.goal_handle = None
     
-    def stop(self):
+    def stop(self, request, response):
         if hasattr(self, '_goal_handle') and self._goal_handle is not None:
             cancel_future = self._goal_handle.cancel_goal_async()
             cancel_future.add_done_callback(self.on_cancelled)
+            response.success = True
         else:
             print('goal handle has not been created yet')
+            response.success = False
+
+def main(args=None):
+    rclpy.init(args=args)
+
+    import os
+    os.sched_setaffinity(0, {6})
+
+    node = FollowJointTrajectoryActionManager()
+
+    try:
+        while not rclpy.ok():
+            rclpy.spin_once()
+            time.sleep(0.01)
+            
+        node.get_logger().info('^^^^^^^^^^^^^^^^^ Shutting down...')
+    except KeyboardInterrupt:
+        node.get_logger().info('Keyboard interrupt, shutting down.\n')
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
