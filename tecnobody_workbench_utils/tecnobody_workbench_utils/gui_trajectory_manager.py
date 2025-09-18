@@ -20,6 +20,9 @@ from tecnobody_msgs.srv import SetTrajectory, StartMovement, MovementProgress
 from action_msgs.msg import GoalStatus
 from std_srvs.srv import Trigger
 
+from rich.traceback import install
+install(show_locals=True)
+
 class FollowJointTrajectoryActionManager(Node):
 
     def __init__(self, controller_name='joint_trajectory_controller'):
@@ -82,6 +85,7 @@ class FollowJointTrajectoryActionManager(Node):
         if self.client.wait_for_server(timeout_sec=5.0):
             print('Follow Joint Trajectory Action server is available.')
         response.success = True
+        return response
     
     def setSpeedOverride(self, speed_ovr : int = 100):
         self.speed_scale = speed_ovr / 100.0
@@ -132,6 +136,7 @@ class FollowJointTrajectoryActionManager(Node):
         self._send_goal_future = self.client.send_goal_async(self.goalFCT)
         self._send_goal_future.add_done_callback(self.on_goal_accepted)
         response.success = True
+        return response
     
     # def is_paused(self, trigger_pause):
     #     if trigger_pause:
@@ -152,7 +157,7 @@ class FollowJointTrajectoryActionManager(Node):
         if not self._goal_handle.accepted:
             print('Goal rejected!!')
             return
-        print('Goal accepted')
+        print('Goal accepted!!!!!!')
         self._get_goal_result_future = self._goal_handle.get_result_async()
         self._get_goal_result_future.add_done_callback(self.on_done)
         self._goal_status = GoalStatus.STATUS_UNKNOWN
@@ -160,7 +165,7 @@ class FollowJointTrajectoryActionManager(Node):
     
     def on_done(self, future):
         try:
-            client : Client = self.create_client(self, Trigger, '/rehab_gui/fct_finished')
+            client : Client = self.create_client(Trigger, '/rehab_gui/fct_finished')
             if not client.wait_for_service(timeout_sec=5.0):
                 print('Trajectory DONE server is not available.')
             req = Trigger.Request()               
@@ -188,9 +193,10 @@ class FollowJointTrajectoryActionManager(Node):
         actual_time_from_start_percentage = (effective_time / total_scaled_time) * 100
         actual_time_from_start_percentage = min(actual_time_from_start_percentage, 100.0)
     
-        client = self.create_client(self, MovementProgress, "/rehab_gui/fct_progress")
+        client = self.create_client(MovementProgress, "/rehab_gui/fct_progress")
+
         req = MovementProgress.Request()
-        req.progress = int(actual_time_from_start_percentage)
+        req.progress = actual_time_from_start_percentage
         client.call_async(req)
         self._last_actual_time_pct = int(actual_time_from_start_percentage)
     
@@ -210,6 +216,7 @@ class FollowJointTrajectoryActionManager(Node):
         else:
             print('goal handle has not been created yet')
             response.success = False
+        return response
 
 def main(args=None):
     rclpy.init(args=args)
