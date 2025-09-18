@@ -22,13 +22,13 @@ from std_srvs.srv import Trigger
 
 class FollowJointTrajectoryActionManager(Node):
 
-    def __init__(self, joint_names : list, controller_name='joint_trajectory_controller'):
+    def __init__(self, controller_name='joint_trajectory_controller'):
         super().__init__("fct_manager_node") # type: ignore
         self._init_time_s = 0
         self._is_paused = False
         self._pause_start_time = None
         self._paused_duration = 0.0
-        self._joint_names = joint_names
+        self._joint_names = ['joint_x', 'joint_y', 'joint_z']
         self.set_trajectory_server = self.create_service(
             SetTrajectory,
             "/tecnobody_workbench_utils/set_trajectory",
@@ -220,8 +220,8 @@ def main(args=None):
     node = FollowJointTrajectoryActionManager()
 
     try:
-        while not rclpy.ok():
-            rclpy.spin_once()
+        while rclpy.ok():
+            rclpy.spin_once(node)
             time.sleep(0.01)
             
         node.get_logger().info('^^^^^^^^^^^^^^^^^ Shutting down...')

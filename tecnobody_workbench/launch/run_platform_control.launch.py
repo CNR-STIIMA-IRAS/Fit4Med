@@ -217,6 +217,11 @@ def generate_launch_description():
             on_exit=[homing, jsb, fsb],
         )
     )
+
+    fct_manager_node = Node(
+        package='tecnobody_workbench_utils',
+        executable='fct_manager_node'
+    )
     
     group1 = GroupAction(
                 actions=[
@@ -280,4 +285,5 @@ def generate_launch_description():
     ld.add_action(controllers_launcher)
     ld.add_action(controller_unspawner)
     ld.add_action(controllers_launcher_no_homing)
+    ld.add_action(fct_manager_node)
     return ld

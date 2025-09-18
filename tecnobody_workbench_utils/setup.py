@@ -37,6 +37,7 @@ setup(
             'launch_status_publisher = tecnobody_workbench_utils.launch_status_publisher',
             'apriltag_azure_detector = tecnobody_workbench_utils.apriltag_azure_detector:main',
             'extract_bags = tecnobody_workbench_utils.extract_bags:main',
+            'fct_manager_node = tecnobody_workbench_utils.gui_trajectory_manager:main'
         ],
     },
 )
