@@ -165,7 +165,7 @@ class PLCControllerInterface(Node):
                         try:
                             # _ = subprocess.check_output(["pgrep", "-f", "ros2 run rehab"])
                             self.client.send(b"STOP")
-                            timeout = time.time() + 15  # 15 seconds timeout
+                            timeout = time.time() + 10
                             data, addr = self.client.receive()
                             while data != b"STOPPED":
                                 time.sleep(0.5)

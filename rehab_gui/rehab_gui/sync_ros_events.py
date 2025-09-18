@@ -35,11 +35,18 @@ class SyncRosManager:
         self.tool_subscriber.subscribe(self.getToolPosition)
         self.fault_state_subscriber = roslibpy.Topic(self.ros_client, '/ethercat_checker/drive_state_flags',
                                                      'ethercat_controller_msgs/msg/DriveStateFlags')
-        #  publisher
+        
+        #  publishers
         self.pub_speed_ovr = roslibpy.Topic(self.ros_client, '/speed_ovr', 'std_msgs/msg/Int16')
         self.jog_cmd_publisher = roslibpy.Topic(self.ros_client,
                                                 f'/{self.forward_command_controller}/commands',
                                                 'std_msgs/msg/Float64MultiArray')
+        self.plc_command_publisher = roslibpy.Topic(
+            self.ros_client,
+            '/PLC_controller/plc_commands',
+            'tecnobody_msgs/msg/PlcController'
+        )
+
         # soft stop variables
         self._soft_transition_values = []
         self._soft_start_timer = QTimer()
@@ -352,10 +359,11 @@ class SyncRosManager:
             self._soft_start_timer.deleteLater()
 
         # Null out handles to publishers, services, etc.
-        self.speed_ovr_publisher = None
-        self.jog_publisher = None
-        self.list_controllers_cli = None
-        self.switch_controller_cli = None
+        self.pub_speed_ovr = None
+        self.jog_cmd_publisher = None
+        self.plc_command_publisher = None
+        self.list_controllers_client = None
+        self.switch_controller_client = None
         self.reset_fault_cli = None
         self.try_turn_on_cli = None
         self.try_turn_off_cli = None
