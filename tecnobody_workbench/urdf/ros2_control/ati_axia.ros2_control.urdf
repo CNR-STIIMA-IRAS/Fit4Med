@@ -4,7 +4,7 @@
     <ros2_control name="tecnobody" type="system">
         <hardware>
             <plugin>ethercat_driver/EthercatDriver</plugin>
-            <param name="master_id">0</param>
+            <param name="master_id">1</param>
             <param name="control_frequency">1000</param>
         </hardware>
         
@@ -22,7 +22,7 @@
             <ec_module name="AtiAxia90">
                 <plugin>ethercat_generic_plugins/GenericEcSlave</plugin>
                 <param name="alias">0</param>
-                <param name="position">0</param>
+                <param name="position">4</param>
                 <param name="slave_config">$(find tecnobody_workbench)/config/axia90.yaml</param>
             </ec_module>
         </sensor>
