@@ -187,7 +187,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
     def definePaths(self):
         self.FMRR_Paths = dict() 
         current_directory = os.path.dirname(os.path.abspath(__file__))  # Get the current file's directory
-        parent_directory = '/home/fit4med/fit4med_ws/src/Fit4Med/rehab_gui'  # Step to the parent folder
+        parent_directory = os.path.join(current_directory, '..')  # Step to the parent folder
         self.FMRR_Paths['Root'] = os.getcwd()
         self.FMRR_Paths['Protocols'] = parent_directory + '/Protocols'
         self.FMRR_Paths['Movements'] = parent_directory + '/Movements'  
@@ -450,7 +450,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
             client = roslibpy.Service(self.ros_client, "/tecnobody_workbench_utils/set_trajectory", "tecnobody_msgs/SetTrajectory")
             req = roslibpy.ServiceRequest({
                 'cartesian_positions': [
-                    {'point': self.CartesianPositions[idx], 'time_from_start' : self.TimeFromStart[idx]} for idx in enumerate(self.TimeFromStart)
+                    {'point': self.CartesianPositions[idx], 'time_from_start' : self.TimeFromStart[idx][0]} for idx,val in enumerate(self.TimeFromStart)
                 ]
             })
             client.call(req)  # type: ignore    
