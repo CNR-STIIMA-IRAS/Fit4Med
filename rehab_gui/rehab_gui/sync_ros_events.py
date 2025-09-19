@@ -1,4 +1,4 @@
-from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import QTimer, pyqtSignal
 import time
 import threading
 
@@ -17,6 +17,7 @@ class SyncRosManager:
     admittance_controller = 'admittance_controller'
     current_controller = None
     jog_cmd_pos = []
+    plc_states = []
 
     def __init__(self, joint_names: list, ros_client: roslibpy.Ros):
         self._controller_timer = QTimer()
@@ -35,12 +36,20 @@ class SyncRosManager:
         self.tool_subscriber.subscribe(self.getToolPosition)
         self.fault_state_subscriber = roslibpy.Topic(self.ros_client, '/ethercat_checker/drive_state_flags',
                                                      'ethercat_controller_msgs/msg/DriveStateFlags')
-        
+        self.plc_states_subscriber = roslibpy.Topic(
+            self.ros_client,
+            '/PLC_controller/plc_states',
+            'tecnobody_msgs/msg/PlcStates'
+        )
+        self.plc_states_subscriber.subscribe(self.getPLCStates)
+
         #  publishers
         self.pub_speed_ovr = roslibpy.Topic(self.ros_client, '/speed_ovr', 'std_msgs/msg/Int16')
-        self.jog_cmd_publisher = roslibpy.Topic(self.ros_client,
-                                                f'/{self.forward_command_controller}/commands',
-                                                'std_msgs/msg/Float64MultiArray')
+        self.jog_cmd_publisher = roslibpy.Topic(
+            self.ros_client,
+            f'/{self.forward_command_controller}/commands',
+            'std_msgs/msg/Float64MultiArray'
+        )
         self.plc_command_publisher = roslibpy.Topic(
             self.ros_client,
             '/PLC_controller/plc_commands',
@@ -85,6 +94,7 @@ class SyncRosManager:
         # check if clients are being destroyed
         self.destroy_clients_init = False
         self.lock = threading.Lock()
+
         print('SyncRosManager class correctly initialized.')
 
     def trigger_soft_stop(self, start_value: float, steps: int = 10, target='speed_ovr', jog_joint_idx=None):
@@ -211,6 +221,16 @@ class SyncRosManager:
         print('All service clients correctly initialized.')
         return True
 
+    def publish_plc_command(self, name, value):
+        command_msg = roslibpy.Message({
+            'interface_names' : name,
+            'values' : value
+        })
+        timeout = time.time() + 1
+        while time.time() < timeout:
+            self.plc_command_publisher.publish(command_msg)
+
+
     def getJointState(self, data):
         if not set(self._joint_names).issubset(data['name']):
             print(
@@ -232,6 +252,9 @@ class SyncRosManager:
         self.HandlePosition = [
             name_to_position[joint] for joint in self._joint_names if joint in name_to_position
         ]
+
+    def getPLCStates(self, data):
+        self.plc_states = dict(zip(data['interface_names'], data['values']))
 
     def list_active_controllers(self):
         with self.lock:
@@ -362,6 +385,7 @@ class SyncRosManager:
         self.pub_speed_ovr = None
         self.jog_cmd_publisher = None
         self.plc_command_publisher = None
+        self.plc_states_subscriber = None
         self.list_controllers_client = None
         self.switch_controller_client = None
         self.reset_fault_cli = None
@@ -511,7 +535,10 @@ class SyncRosManager:
         if self.try_turn_on_in_execution:
             print('Try turn on already in execution, skipping...')
             return
+
         self.try_turn_on_in_execution = True
+
+        # turn on the motors
         print('Turning on drives...')
         request = roslibpy.ServiceRequest()
         result = self.motors_on_client.call(request)
@@ -523,6 +550,7 @@ class SyncRosManager:
             print('Try turn off already in execution, skipping...')
             return
         self.try_turn_off_in_execution = True
+
         print('Turning off drives...')
         request = roslibpy.ServiceRequest()
         result = self.motors_off_client.call(request)

@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import QMessageBox
 from RobotWindow import Ui_RobotWindow

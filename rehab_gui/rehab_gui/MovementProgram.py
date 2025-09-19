@@ -9,6 +9,7 @@
 from json import load
 import os
 import sys
+import time
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import QMessageBox, QDialog, QLabel, QPushButton, QHBoxLayout, QVBoxLayout, QApplication
@@ -607,25 +608,20 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         self.DialogFMRRMainWindow.show()
         self.DialogMovementWindow.hide()
 
-
     def clbk_BtnGOtoRobotMovement(self):
         self.ui_FMRRMainWindow.DialogRobotWindow.show()
         self.DialogMovementWindow.hide()
 
-
     def setupUi_MovementWindow(self, MovementWindow):
         Ui_MovementWindow.setupUi(self, MovementWindow)
         MovementWindow.IsMovementReady = 0
-                
-                
+
     def retranslateUi_MovementWindow(self, MovementWindow):
         _translate = QtCore.QCoreApplication.translate
         MovementWindow.setWindowTitle(_translate("MovementWindow", "Movement Window"))
         self.lineEdit.MovementIsLoaded = 0
-
 ############################      Modify LCDs
 ######
-      
         LcdWidgets  = [self.lcdNumber_EndPos_X, self.lcdNumber_EndPos_Y, self.lcdNumber_EndPos_Z ]
 
         for iWidget in LcdWidgets:

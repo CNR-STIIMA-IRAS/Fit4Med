@@ -40,7 +40,6 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
     _update_TrainingTime = 20
     _toolPosCovFact = 100 # to display coordinatates in centimeters (are given in meters in the yaml files) (used in MovementWindow to display data)
     _jointPosConvFact = 180/np.pi # conversion from radiants to degrees (used in MovementWindow to display data)
-    trigger_worker = pyqtSignal(int) 
     trigger_pause = pyqtSignal(bool) # signal to pause the worker thread
 
     def __init__(self):
@@ -308,10 +307,18 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
     
     def clbk_StartMotors(self):
         if self.ROS_active:
-            self.ROS.turn_on_motors()
+            if self.ROS.plc_states['manual_switch_pressed']:
+                # set manual mode during movement
+                self.ROS.publish_plc_command(['PLC_node/manual_mode'], [1])
+                self.ROS.turn_on_motors()
+            else:
+                QMessageBox.warning(self.DialogRobotWindow, "Warning",
+                                    "Please hold the manual mode emergency button before moving the robot!")
 
     def clbk_StopMotors(self):
         if self.ROS_active:
+            # set automatic mode after movement
+            self.ROS.publish_plc_command(['PLC_node/manual_mode'], [0])
             self.ROS.turn_off_motors()
 
     def clbk_BtnResetFaults(self):
