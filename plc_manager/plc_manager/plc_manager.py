@@ -3,7 +3,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
-from tecnobody_msgs.msg import PlcController
+from tecnobody_msgs.msg import PlcController, PlcStates
 from controller_manager_msgs.srv import ListControllers, UnloadController, SwitchController
 from std_srvs.srv import Trigger
 from std_msgs.msg import Bool
@@ -71,7 +71,7 @@ class PLCControllerInterface(Node):
         # Subscriber to the PLC controller state interface
         self.state_subscriber_callback_running = False
         self.state_subscriber = self.create_subscription(
-            PlcController,
+            PlcStates,
             '/PLC_controller/plc_states',
             self.state_callback,
             10,
@@ -186,8 +186,10 @@ class PLCControllerInterface(Node):
                         pass
 
                     elif self.state_values[int_idx] == 1 and self.ESTOP  == 1:
-                        self.get_logger().info(f"[UdpClient] Sending message to {self.client.target_ip}:{self.client.target_port}: RUNNING", throttle_duration_sec=5.0)
-                        self.client.send(b"RUNNING")
+                        try:
+                            self.client.send(b"RUNNING")
+                        except Exception as e:
+                            self.get_logger().error(f"Exception when sending message to UDP Server: {e}")                            
                         pass
                     self.ESTOP = self.state_values[int_idx]
                 

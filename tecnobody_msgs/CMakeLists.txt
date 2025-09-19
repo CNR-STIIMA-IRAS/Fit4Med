@@ -12,6 +12,7 @@ find_package(rosidl_default_generators REQUIRED)
 # generate messages in the 'msg' folder
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/PlcController.msg"
+  "msg/PlcStates.msg"
   "msg/CartesianPoint.msg"
   "srv/SetTrajectory.srv"
   "srv/StartMovement.srv"
