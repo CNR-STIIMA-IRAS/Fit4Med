@@ -24,7 +24,7 @@ PLC_controller:
           - s_input.0        
           - estop
           - reset
-          - s_input.4
+          - manual_switch_pressed
           - s_input.5
           - s_input.6
           - s_input.7

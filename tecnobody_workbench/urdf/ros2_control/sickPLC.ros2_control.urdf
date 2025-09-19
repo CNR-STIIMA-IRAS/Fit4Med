@@ -21,7 +21,7 @@
             <state_interface name="s_input.0"/>
             <state_interface name="estop"/>
             <state_interface name="reset"/>
-            <state_interface name="s_input.4"/>
+            <state_interface name="manual_switch_pressed"/>
             <state_interface name="s_input.5"/>
             <state_interface name="s_input.6"/>
             <state_interface name="s_input.7"/>

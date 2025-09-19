@@ -261,8 +261,8 @@ void PLCController::initialize_plc_state_msg()
   auto & plc_state_msg = realtime_plc_state_publisher_->msg_;
   const auto gpio_name = params_.gpios.front();
   plc_state_msg.interface_names = get_plc_state_interfaces_names(gpio_name);
-  plc_state_msg.values = std::vector<uint8_t>(
-    plc_state_msg.interface_names.size(),std::numeric_limits<uint8_t>::quiet_NaN());
+  plc_state_msg.values = std::vector<bool>(
+    plc_state_msg.interface_names.size(),std::numeric_limits<bool>::quiet_NaN());
 }
 
 
