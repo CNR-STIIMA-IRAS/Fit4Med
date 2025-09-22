@@ -261,6 +261,13 @@ def generate_launch_description():
         )
     )
 
+    fct_manager_launcher = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=joint_controller_node,
+            on_exit=[fct_manager_node],
+        )
+    )
+
     node_names_launcher = RegisterEventHandler(
         OnProcessExit(
             target_action=joint_controller_node,
@@ -285,5 +292,5 @@ def generate_launch_description():
     ld.add_action(controllers_launcher)
     ld.add_action(controller_unspawner)
     ld.add_action(controllers_launcher_no_homing)
-    ld.add_action(fct_manager_node)
+    ld.add_action(fct_manager_launcher)
     return ld

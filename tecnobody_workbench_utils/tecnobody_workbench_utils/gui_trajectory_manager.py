@@ -47,6 +47,9 @@ class FollowJointTrajectoryActionManager(Node):
             "/tecnobody_workbench_utils/stop_movement",
             self.stop
         )
+        self.client = ActionClient(self, FollowJointTrajectory, '/joint_trajectory_controller/follow_joint_trajectory')
+        if self.client.wait_for_server(timeout_sec=5.0):
+            self.get_logger().info('Follow Joint Trajectory Action server is available.')
             
     def clear(self):
         self.goalFCT = FollowJointTrajectory.Goal()
@@ -81,9 +84,7 @@ class FollowJointTrajectoryActionManager(Node):
             self._time_from_start_duration[iPoint] = Duration(sec=int(t_iPoint),nanosec=int((t_iPoint - int(t_iPoint)) * 1e9))
             self._point_velocities[iPoint] = vel
             self.addPoint(pos, vel, acc, t_iPoint)
-        self.client = ActionClient(self, FollowJointTrajectory, '/joint_trajectory_controller/follow_joint_trajectory')
-        if self.client.wait_for_server(timeout_sec=5.0):
-            print('Follow Joint Trajectory Action server is available.')
+        self.go_home_mode = False
         response.success = True
         return response
     
@@ -107,13 +108,13 @@ class FollowJointTrajectoryActionManager(Node):
                         if abs(vel_scaled[iPoint][dof]) < 1e-3:
                             vel_scaled[iPoint][dof] = 0.0
                         else:
-                            print(f"Warning: Velocity at point {iPoint} is not zero, but it should be. Vel: {vel_scaled[iPoint]}")
+                            self.get_logger().info(f"Warning: Velocity at point {iPoint} is not zero, but it should be. Vel: {vel_scaled[iPoint]}")
                 if acc_scaled[iPoint].any() != 0:
                     for dof in range(len(acc_scaled[iPoint])):
                         if abs(vel_scaled[iPoint][dof]) < 1e-3:
                             acc_scaled[iPoint][dof] = 0.0
                         else:
-                            print(f"Warning: Acceleration at point {iPoint} is not zero, but it should be. Acc: {vel_scaled[iPoint]}")
+                            self.get_logger().info(f"Warning: Acceleration at point {iPoint} is not zero, but it should be. Acc: {vel_scaled[iPoint]}")
     
     def addPoint(self, positions, velocities, accelerations, time):
         point=JointTrajectoryPoint()
@@ -135,6 +136,7 @@ class FollowJointTrajectoryActionManager(Node):
         self.goalFCT.trajectory.header.stamp = self.get_clock().now().to_msg()
         self._send_goal_future = self.client.send_goal_async(self.goalFCT)
         self._send_goal_future.add_done_callback(self.on_goal_accepted)
+        self.go_home_mode = False
         response.success = True
         return response
     
@@ -143,21 +145,21 @@ class FollowJointTrajectoryActionManager(Node):
     #         if not self._is_paused:
     #             self._pause_start_time = time.time()
     #         self._is_paused = True
-    #         print("⏸️ Paused movement")
+    #         self.get_logger().info("⏸️ Paused movement")
     #     else:
     #         if self._is_paused and self._pause_start_time is not None:
     #             pause_duration = time.time() - self._pause_start_time
     #             self._paused_duration += pause_duration
-    #             print(f"▶️ Resumed movement after {pause_duration:.2f}s pause")
+    #             self.get_logger().info(f"▶️ Resumed movement after {pause_duration:.2f}s pause")
     #             self._pause_start_time = None
     #         self._is_paused = False
     
     def on_goal_accepted(self, future):
         self._goal_handle = future.result()
         if not self._goal_handle.accepted:
-            print('Goal rejected!!')
+            self.get_logger().info('Goal rejected!!')
             return
-        print('Goal accepted!!!!!!')
+        self.get_logger().info('Goal accepted!!!!!!')
         self._get_goal_result_future = self._goal_handle.get_result_async()
         self._get_goal_result_future.add_done_callback(self.on_done)
         self._goal_status = GoalStatus.STATUS_UNKNOWN
@@ -167,13 +169,15 @@ class FollowJointTrajectoryActionManager(Node):
         try:
             client : Client = self.create_client(Trigger, '/rehab_gui/fct_finished')
             if not client.wait_for_service(timeout_sec=5.0):
-                print('Trajectory DONE server is not available.')
+                self.get_logger().info('Trajectory DONE server is not available.')
             req = Trigger.Request()               
-            client.call_async(req)                
-            self.timer.cancel()
+            client.call_async(req)
+            self.get_logger().info('Trajectory DONE sent to GUI')                
             self._goal_handle = None
+            if hasattr(self, 'timer'):
+                self.timer.cancel()
         except Exception as e:
-            print(f'Exception in on_done: {e}')
+            self.get_logger().info(f'Exception in on_done: {e}')
     
     def check_status(self):
         if self._is_paused:
@@ -185,7 +189,7 @@ class FollowJointTrajectoryActionManager(Node):
         # if old_status != self._goal_status:
         #     old_status_string = get_status_string(old_status)
         #     status_string = get_status_string(self._goal_status)
-        #     print(f'Action transition from {old_status_string} to {status_string}')
+        #     self.get_logger().info(f'Action transition from {old_status_string} to {status_string}')
     
         actual_time = time.time()
         effective_time = actual_time - self._init_time_s - self._paused_duration
@@ -202,9 +206,9 @@ class FollowJointTrajectoryActionManager(Node):
     
     def on_cancelled(self, future):
         if future.result() is not None:
-            print(f'Goal cancelled: {future.result()}')
+            self.get_logger().info(f'Goal cancelled: {future.result()}')
         else:
-            print('Goal cancelled without result')
+            self.get_logger().info('Goal cancelled without result')
         self.clear()
         self.goal_handle = None
     
@@ -214,9 +218,10 @@ class FollowJointTrajectoryActionManager(Node):
             cancel_future.add_done_callback(self.on_cancelled)
             response.success = True
         else:
-            print('goal handle has not been created yet')
+            self.get_logger().info('goal handle has not been created yet')
             response.success = False
         return response
+
 
 def main(args=None):
     rclpy.init(args=args)
