@@ -15,21 +15,25 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
 
     ###### Callback of buttons to Joint Approach with trajectory controller (TODO)
     def clbk_JointApproach(self, JointNr):
-        if self.ui_FMRRMainWindow.ROS.current_controller != self.ui_FMRRMainWindow.ROS.trajectory_controller_name:
-            print(f"Switching to position mode of operation and loading {self.ui_FMRRMainWindow.ROS.trajectory_controller_name}")
-            if not self.ui_FMRRMainWindow.ROS.controller_and_op_mode_switch(8, self.ui_FMRRMainWindow.ROS.trajectory_controller_name):
-                QMessageBox.warning(self.DialogRobotWindow, "Warning", "Failed to switch to trajectory controller. Please check the controller configuration.")
-                return
-        ActualRobotConfiguration  = deepcopy( self.ui_FMRRMainWindow.ROS.HandlePosition )
+        ActualRobotConfiguration  = deepcopy( self.ui_FMRRMainWindow.ROS.HandlePosition)
         print('The current joint configuration is: %s' % ActualRobotConfiguration)
         NewRobotConfiguration = ActualRobotConfiguration
         JointTargetPosition = (float(self.doubleSpin_Joint1_Value.value()), float(self.doubleSpin_Joint2_Value.value()), float(self.doubleSpin_Joint3_Value.value()))
+        if any(abs(JointTargetPosition[idx]) > 0.5 for idx in range(len(self.ui_FMRRMainWindow.ROS._joint_names))):
+            QMessageBox.warning(self.DialogRobotWindow, "Warning", f"Joint target position is out of range. Please set a value between -0.5 and 0.5.")
+            return
         if JointNr == 3:
             NewRobotConfiguration = JointTargetPosition
         else:
             NewRobotConfiguration[JointNr] = JointTargetPosition[JointNr]
         print(f'The new RobotConfiguration is: {NewRobotConfiguration}')
-        
+        target_time = max(abs(NewRobotConfiguration[i]) for i in range(len(self.ui_FMRRMainWindow.ROS._joint_names)))/0.1
+        print(f"Moving to the new position in {target_time} seconds")
+        if not self.ui_FMRRMainWindow.ROS.are_motors_on:
+            QMessageBox.warning(self.DialogRobotWindow, "Warning", "Motors are OFF. Please turn them ON before moving the robot.")
+            return
+        self.ui_FMRRMainWindow.clbk_ApproachPoint(NewRobotConfiguration, target_time)
+
     def clbk_StartMoveRobotManually(self):
         self.pushButton_StartMoveRobotManually.enablePushButton(0)
         self.pushButton_StopMoveRobotManually.enablePushButton(1)

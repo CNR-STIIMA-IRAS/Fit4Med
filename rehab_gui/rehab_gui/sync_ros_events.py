@@ -537,11 +537,12 @@ class SyncRosManager:
             return
 
         self.try_turn_on_in_execution = True
-
         # turn on the motors
         print('Turning on drives...')
         request = roslibpy.ServiceRequest()
-        result = self.motors_on_client.call(request)
+        result = self.motors_on_client.call(request, callback=self._turn_on_done)
+
+    def _turn_on_done(self, result):
         self.try_turn_on_in_execution = False
         return result  # type: ignore
 
@@ -553,9 +554,11 @@ class SyncRosManager:
 
         print('Turning off drives...')
         request = roslibpy.ServiceRequest()
-        result = self.motors_off_client.call(request)
+        self.motors_off_client.call(request, callback=self._turn_off_done)
+
+    def _turn_off_done(self, result):
+        print("Motors off result:", result)
         self.try_turn_off_in_execution = False
-        return result  # type: ignore
 
     def reset_fault(self):
         if self.fault_reset_in_execution:

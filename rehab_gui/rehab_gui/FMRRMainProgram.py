@@ -64,6 +64,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.udp_thread.start()
 
         self.first_time = True
+        self.Training_ON = False
         print("FMRR cell node started.")
 
     def check_ros_status(self):
@@ -98,7 +99,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.on_fct_progress_server = roslibpy.Service(self.ros_client, "/rehab_gui/fct_progress", "tecnobody_msgs/MovementProgress")
         self.on_fct_progress_server.advertise(self.on_fct_worker_progress)
         self.first_time = False
-        return True  # self.initializeMovementWorker() return TODO: implement movement worker with roslibpy
+        return True
 
     def udp_request_received(self, data):
         if data == b'STOP':
@@ -259,10 +260,10 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
 
     def clbk_STARTtrainig(self):
         if self.ROS_active:
+            self.Training_ON = True
             self.ActualTrainingTime = 0
             self.movement_completed = False
             self.iPhase = 0
-            self._home_goal_sent = False
             if not self.ROS.are_motors_on:
                 self.ROS.turn_on_motors()
             if self.ROS.current_controller != self.ROS.trajectory_controller_name:
@@ -304,6 +305,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
             self.pushButton_PAUSEtrainig.enablePushButton(0)
             self.pushButton_STOPtrainig.enablePushButton(0)
             self._update_TrainingTimer.stop()
+            self.Training_ON = False
     
     def clbk_StartMotors(self):
         if self.ROS_active:
@@ -341,11 +343,16 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
             self.clbk_STOPtrainig()
         
     def on_fct_worker_finished(self, request, response):
-        self.iPhase += 1
-        self.movement_completed = True
+        if self.Training_ON:
+            self.iPhase += 1
+            self.movement_completed = True
+        else:
+            self.ROS.turn_off_motors()
+            self.ROS.publish_plc_command(['PLC_node/manual_mode'], [0])
         response['success'] = True
+        return response
     
-    def on_fct_worker_progress(self,request, response):
+    def on_fct_worker_progress(self, request, response):
         self.execution_time_percentage = int(request['progress'])  # Get the progress percentage from the worker
 
     def clbk_spinBox_MaxVel(self):
@@ -413,41 +420,38 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
 
     def startMovementFCT(self, default_speed_override=100):
         self.movement_completed = False
-        self._home_status = 0 # GoalStatus.STATUS_UNKNOWN # TODO: implement goal status with roslibpy
-        self._home_goal_sent = False
         client = roslibpy.Service(self.ros_client, "/tecnobody_workbench_utils/start_movement", "tecnobody_msgs/StartMovement")
         req = roslibpy.ServiceRequest({
             'speed_ovr': default_speed_override
         })
         client.call(req)  # Trigger the worker to start the movement
         
-    def clbk_ApproachPoint(self, point):
+    def clbk_ApproachPoint(self, target_point, end_time):
         if self.ROS_active:
-            print("TODO: follow joint trajectory to approach point not implemented yet with roslibpy.")
-            # print("Approaching desired position...")
-            # approach_point_goal = FollowJointTrajectory.Goal()
-            # approach_point_goal.trajectory.joint_names = JOINT_NAMES
-            #
-            # init_point = JointTrajectoryPoint()
-            # init_point.positions = self.ROS.RobotJointPosition
-            # init_point.velocities = [0.0] * len(JOINT_NAMES)
-            # init_point.accelerations = [0.0] * len(JOINT_NAMES)
-            # init_point.effort = []
-            # init_point.time_from_start = Duration(sec=0, nanosec=0)
-            # approach_point_goal.trajectory.points.append(init_point)  # type: ignore
-            #
-            # final_point = JointTrajectoryPoint()
-            # final_point.positions = point
-            # final_point.velocities = [0.0] * len(JOINT_NAMES)
-            # final_point.accelerations = [0.0] * len(JOINT_NAMES)
-            # final_point.effort = []
-            # final_point.time_from_start = Duration(sec=3, nanosec=0)
-            # approach_point_goal.trajectory.points.append(final_point) # type: ignore
-            #
-            # approach_point_goal.trajectory.header.stamp = self._ros_node.get_clock().now().to_msg()
-            # home_future = self.MovementWorker.fct().client.send_goal_async(approach_point_goal)
-            #home_future.add_done_callback(self.home_cancel_callback)
-        return True
+            try:
+                client = roslibpy.Service(self.ros_client, "/tecnobody_workbench_utils/set_trajectory",
+                                          "tecnobody_msgs/SetTrajectory")
+                points = []
+                times = []
+                points.append(self.ROS.RobotJointPosition)
+                times.append(0.0)
+                points.append(target_point)
+                times.append(end_time)
+                req = roslibpy.ServiceRequest({
+                    'cartesian_positions': [
+                        {'point': points[idx], 'time_from_start': times[idx]} for idx in range(len(times))
+                    ]
+                })
+                if not self.ROS.are_motors_on:
+                    self.ROS.turn_on_motors()
+                time.sleep(0.2)
+                response = client.call(req)
+                if not response['success']:
+                    print("Failed to approach point!")
+                else:
+                    self.startMovementFCT()
+            except Exception as e:
+                print(f"Exception during go home service call: {e}")
 
     def sendTrajectoryFCT(self):       
         if self.ROS_active:
@@ -460,7 +464,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
                     {'point': self.CartesianPositions[idx], 'time_from_start' : self.TimeFromStart[idx][0]} for idx,val in enumerate(self.TimeFromStart)
                 ]
             })
-            client.call(req)  # type: ignore    
+            client.call(req)  # type: ignore
 
         
 def main(args=None):
