@@ -16,7 +16,7 @@ PLC_controller:
           - s_output.4
           - estop
           - manual_mode
-          - s_output.7
+          - force_sensors_pwr
           - s_output.8
     state_interfaces:
       PLC_node:

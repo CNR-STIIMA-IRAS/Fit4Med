@@ -5,7 +5,8 @@ from launch_ros.substitutions import FindPackageShare
 from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch.event_handlers import OnProcessExit, OnShutdown
-from launch.actions import RegisterEventHandler, LogInfo, OpaqueFunction, DeclareLaunchArgument, GroupAction
+from launch.actions import RegisterEventHandler, LogInfo, OpaqueFunction, DeclareLaunchArgument, GroupAction, IncludeLaunchDescription
+from launch.launch_description_sources import AnyLaunchDescriptionSource
 import threading
 
 import os
@@ -268,6 +269,13 @@ def generate_launch_description():
         )
     )
 
+    rosbridge_pkg = FindPackageShare('rosbridge_server').find('rosbridge_server')
+    xml_launch = os.path.join(rosbridge_pkg, 'launch', 'rosbridge_websocket_launch.xml')
+
+    rosbridge_launch = IncludeLaunchDescription(
+        AnyLaunchDescriptionSource(xml_launch)
+    )
+
     node_names_launcher = RegisterEventHandler(
         OnProcessExit(
             target_action=joint_controller_node,
@@ -293,4 +301,5 @@ def generate_launch_description():
     ld.add_action(controller_unspawner)
     ld.add_action(controllers_launcher_no_homing)
     ld.add_action(fct_manager_launcher)
+    ld.add_action(rosbridge_launch)
     return ld

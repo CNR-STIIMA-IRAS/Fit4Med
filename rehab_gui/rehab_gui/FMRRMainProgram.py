@@ -106,11 +106,33 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
             print("UDP STOP request received.")
             if self.ROS_active and not self.ROS_is_quitting:
                 print("Stopping ROS processes...")
+                if hasattr(self, "_udp_timeout_timer") and self._udp_timeout_timer.isActive():
+                    self._udp_timeout_timer.stop()
                 self.stopRosProcesses()
+
         elif data == b'RUNNING':
             if not hasattr(self, 'ROS') or self.ROS is None:
                 print("Starting ROS processes...")
                 self.initializeRosProcesses()
+
+            # reset ok safety timer
+            if hasattr(self, "_udp_timeout_timer") and self._udp_timeout_timer.isActive():
+                self._udp_timeout_timer.stop()
+
+            # Timer singleShot of 5 seconds to check if RUNNING messages are received
+            self._udp_timeout_timer = QTimer(self)
+            self._udp_timeout_timer.setSingleShot(True)
+            self._udp_timeout_timer.timeout.connect(
+                lambda: (
+                    print("No RUNNING received for 5s → stopping ROS processes..."),
+                    self.stopRosProcesses()
+                )
+            )
+            self._udp_timeout_timer.start(5000)
+
+        else:
+            print(f"Unknown UDP packet: {data}")
+
 
     def stopRosProcesses(self):
         if self.ROS_is_quitting:

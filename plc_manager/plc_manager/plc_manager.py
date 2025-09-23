@@ -4,16 +4,12 @@ from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from tecnobody_msgs.msg import PlcController, PlcStates
-from controller_manager_msgs.srv import ListControllers, UnloadController, SwitchController
-from std_srvs.srv import Trigger
-from std_msgs.msg import Bool
 import sys
 import subprocess
 import threading
 import os
 import signal
 import socket
-
 import socket
 
 class UdpClient:
@@ -82,7 +78,7 @@ class PLCControllerInterface(Node):
         self.command_publisher = self.create_publisher(
             PlcController,
             '/PLC_controller/plc_commands',
-            10
+            10,
         )
 
         # Internal storage for PLC interfaces names and values
@@ -99,8 +95,8 @@ class PLCControllerInterface(Node):
                                             'PLC_node/sonar_teach', 
                                             'PLC_node/s_output.4', 
                                             'PLC_node/estop', 
-                                            'PLC_node/s_output.6', 
-                                            'PLC_node/s_output.7', 
+                                            'PLC_node/manual_mode', 
+                                            'PLC_node/force_sensors_pwr', 
                                             'PLC_node/s_output.8' ]
         
         # Check if the ros2 controllers are launched
@@ -108,7 +104,11 @@ class PLCControllerInterface(Node):
         self.ros_launched_prev = False    
         self.check_ros_status_timer = self.create_timer(1.0, self.check_ros_launch_status, timer_group)
         self.FIRST_TIME = False
+
+        time.sleep(2)
+
         self.publish_command('PLC_node/estop', 1)
+        self.publish_command('PLC_node/force_sensors_pwr', 1)
 
         # UDP client to send status messages
         self.client = UdpClient(target_ip, 5005) #10.2.16.43
@@ -130,6 +130,7 @@ class PLCControllerInterface(Node):
                     self.get_logger().info('Call a SW ESTOP!', throttle_duration_sec=5.0)
                     # open the emergency => emergency status will become 0
                     self.publish_command('PLC_node/estop', 0)
+                    self.publish_command('PLC_node/manual_mode', 0)
                     time.sleep(0.05)
                     self.publish_command('PLC_node/estop', 1)
             self.ros_launched_prev = self.ros_launched
@@ -187,7 +188,9 @@ class PLCControllerInterface(Node):
 
                     elif self.state_values[int_idx] == 1 and self.ESTOP  == 1:
                         try:
-                            self.client.send(b"RUNNING")
+                            node_list = self.get_node_names()
+                            if 'tecnobody_ethercat_checker_node' in node_list:
+                                self.client.send(b"RUNNING")
                         except Exception as e:
                             self.get_logger().error(f"Exception when sending message to UDP Server: {e}")                            
                         pass
