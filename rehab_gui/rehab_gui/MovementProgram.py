@@ -6,13 +6,9 @@
 #
 # WARNING! All changes made in this file will be lost!
 
-from json import load
-import os
 import sys
-import time
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import QMessageBox, QDialog, QLabel, QPushButton, QHBoxLayout, QVBoxLayout, QApplication
+from PyQt5.QtWidgets import QMessageBox, QPushButton
 from MovementWindow import Ui_MovementWindow
 import yaml
 from yaml.loader import SafeLoader
@@ -22,70 +18,6 @@ from copy import deepcopy
 import roslibpy
 #MC Classes/methods
 import MC_Tools
-
-class ManualGuidanceDialog(QtWidgets.QDialog):
-    finish_pressed = pyqtSignal()
-    
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Manual Guidance")
-        self.setModal(True)
-
-        self.label = QLabel("Go to the desired final position")
-        self.label.setAlignment(Qt.AlignCenter)
-
-        self.start_button = QPushButton("Start")
-        self.start_button.setStyleSheet("background-color: green; color: white;")
-
-        self.stop_button = QPushButton("Stop")
-        self.stop_button.setStyleSheet("background-color: grey; color: white;")
-        self.stop_button.setEnabled(False)
-
-        self.finish_button = QPushButton("Finish")
-        self.finish_button.setStyleSheet("background-color: grey; color: white;")
-        self.finish_button.setEnabled(False)
-
-        # Layout
-        button_layout = QHBoxLayout()
-        button_layout.addWidget(self.start_button)
-        button_layout.addWidget(self.stop_button)
-        button_layout.addWidget(self.finish_button)
-
-        main_layout = QVBoxLayout()
-        main_layout.addWidget(self.label)
-        main_layout.addLayout(button_layout)
-        self.setLayout(main_layout)
-
-        # Connect
-        self.start_button.clicked.connect(self.on_start)
-        self.stop_button.clicked.connect(self.on_stop)
-        self.finish_button.clicked.connect(self.on_finish)
-        
-    def on_start(self):
-        print("[ManualGuidance] Start pressed")
-        self.start_button.setEnabled(False)
-        self.start_button.setStyleSheet("background-color: grey; color: white;")
-        self.finish_button.setEnabled(False)
-        self.finish_button.setStyleSheet("background-color: grey; color: white;")
-        self.stop_button.setEnabled(True)
-        self.stop_button.setStyleSheet("background-color: red; color: white;")
-        # Avvia Admittance controller se serve
-
-    def on_stop(self):
-        print("[ManualGuidance] Stop pressed")
-        self.stop_button.setEnabled(False)
-        self.stop_button.setStyleSheet("background-color: grey; color: white;")
-        self.start_button.setEnabled(True)
-        self.start_button.setStyleSheet("background-color: green; color: white;")
-        self.finish_button.setEnabled(True)
-        self.finish_button.setStyleSheet("background-color: blue; color: white;")
-        # Ferma controller, salva posizione, ecc.
-        
-    def on_finish(self):
-        print("[ManualGuidance] Finish pressed")
-        self.finish_pressed.emit()
-        self.close()
-
 
 class FMRR_Ui_MovementWindow(Ui_MovementWindow):
     def __init__(self) -> None:
@@ -387,7 +319,6 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
                 self.pushButton_CREATEMovement.enablePushButton(0)
                 print('No proper filename was selected. Create movemement again or use the SaveMovement button')
                     
-                    
     def clbk_BtnSAVEMovement(self):
         MovementsPath = self.ui_FMRRMainWindow.FMRR_Paths['Movements']
         NewFilename = QtWidgets.QFileDialog.getSaveFileName(None, "Save new movement as:", MovementsPath, "*.yaml")            
@@ -397,15 +328,12 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             print(NewFilename[0])
             self.SaveNewFile(self.TrjYamlData, NewFilename[0])
 
-    
     def SaveNewFile(self, Data, NewFilename):
         print('This is the new file.yaml:')
         print(NewFilename)
         yaml.Dumper.ignore_aliases = lambda *args : True
         with open(NewFilename, 'w') as outfile:
-#            outfile.write(self._comment)
             yaml.dump(Data, outfile , default_flow_style=False)
-# To change name in edit line
         FMRR_RootPath = self.ui_FMRRMainWindow.FMRR_Paths['Root']
         MovementsPath = self.ui_FMRRMainWindow.FMRR_Paths['Movements']
         MovementName = NewFilename [len(FMRR_RootPath+MovementsPath)+2:-5 ] # +2 for the / symbols
@@ -414,8 +342,6 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         print('MovementName: ')
         print(MovementName)
 
-  
-  
     def clbk_BtnLoadMovementData(self):
         FMRR_RootPath = self.ui_FMRRMainWindow.FMRR_Paths['Root']
         MovementsPath = self.ui_FMRRMainWindow.FMRR_Paths['Movements']
@@ -433,13 +359,12 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             self.pushButton_SAVEMovement.enablePushButton(1)
  
 
-##############################################################################################################
-#####                                                                                                    #####  
-#####        Here after all parameters to create the movement are set and dispalyed in the GUI           ##### 
-#####                                                                                                    #####
-#####                                                                                                    #####
-##############################################################################################################
-#   
+            ##############################################################################################################
+            #####                                                                                                    #####  
+            #####        Here after all parameters to create the movement are set and dispalyed in the GUI           ##### 
+            #####                                                                                                    #####
+            #####                                                                                                    #####
+            ############################################################################################################## 
 
             self.TypeOfMovement = self.TrjYamlData.get("a_movement_definition").get("type")[0]           
             self.SideOfMovement = self.TrjYamlData.get("a_movement_definition").get("side")[0]
@@ -448,11 +373,6 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
 
             self.ui_FMRRMainWindow.PhaseDuration = 2* MovTime
 
-#            print('TypeOfMovement[0]')
-#            print(TypeOfMovement[0])
-#            print('TypeOfMovement[0][0]')
-#            print(TypeOfMovement[0][0])            
-#           Checkbox type of moevement 
             if self.TypeOfMovement == 1:
                 self.radioButton_TypeOfExercise_Reaching.setChecked(True)
                 print('Type of movements is ''Reaching'' ')
@@ -464,7 +384,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             else:
                 print('No type of movement is selected!')
                 
-#           Checkbox side (left or right) 
+            # Checkbox side (left or right) 
             if self.SideOfMovement == 1:
                 self.radioButton_SideLeft.setChecked(True)
                 print('Selected side is ''left'' ')
@@ -476,7 +396,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             else:
                 print('No side is selected!')  
 
-#           Checkbox Velocity profile  (Constant or Bell Shaped) 
+            #Checkbox Velocity profile  (Constant or Bell Shaped) 
             if self.vel_profile == 1:
                 self.radioButton_VelocityProfileConstant.setChecked(True)
                 print('Velocity is constant')
@@ -488,7 +408,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             else:
                 print('No Velocity profile is selected!')                
 
-#           START and END positions are converted from meters to cm and further displayed
+            #START and END positions are converted from meters to cm and further displayed
             
             _toolPosCovFact = self.ui_FMRRMainWindow._toolPosCovFact
             
@@ -504,16 +424,16 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
                 print("Start position is not zero, it is: ", StartPos)
                 return -1
             
-#           Spin values of Joint approachconfiguration are loaded, converted in degrees nbd displayed
+            #Spin values of Joint approachconfiguration are loaded, converted in degrees nbd displayed
 
             JointData = self.TrjYamlData.get("a_movement_definition").get("end_config") [0]
             self.JointTargetPosition = JointData
             JointTargetPositions = [0, 0, 0]
-# 
+
             for iJoint in range(0,3):
                 JointTargetPositions[iJoint]= JointData[iJoint]*180/np.pi
 
-##### Start and End positions needed to create a new movement            
+            # Start and End positions needed to create a new movement            
             self.Start_HandlePosition = deepcopy( self.TrjYamlData.get("a_movement_definition").get("begin_config")[0] )
             self.End_HandlePosition = deepcopy( self.TrjYamlData.get("a_movement_definition").get("end_config")[0] )
             self.Start_RobotJointPosition  = deepcopy( self.TrjYamlData.get("a_movement_definition").get("begin_joint_config") [0] )
@@ -525,8 +445,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
 
             self.lcdNumber_EndPos_X.display( int( JointTargetPositions[0] ) )
             self.lcdNumber_EndPos_Y.display( int( JointTargetPositions[1] ) )
-            self.lcdNumber_EndPos_Z.display( int( JointTargetPositions[2] ) )
-#            
+            self.lcdNumber_EndPos_Z.display( int( JointTargetPositions[2] ) )           
 
         else:
             print('No file was selected!')
@@ -538,6 +457,11 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
 #####                                                 callbacks                                          #####
 #####                                                                                                    #####
 ##############################################################################################################    
+    def updateMovementWindow(self, MovementWindow: QtWidgets.QDialog):
+        if self.ui_FMRRMainWindow.ROS.is_in_fault_state:
+            self.frame_FaultDetected.setStyleSheet("background-color: red; border-radius: 10px;")
+        else:
+            self.frame_FaultDetected.setStyleSheet("background-color: green; border-radius: 10px;")
 
     def clbk_pushButton_SetCurrentPos(self):
         _toolPosCovFact = self.ui_FMRRMainWindow._toolPosCovFact        
@@ -555,12 +479,11 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         self.lcdNumber_EndPos_Z.display( int( HandlePosition[2] ) )
         self.pushButton_CREATEMovement.enablePushButton(1)
 
-        end_msg = roslibpy.Message({
-            'x': HandlePosition[0]/100.0,
-            'y': HandlePosition[1]/100.0,
-            'z': HandlePosition[2]/100.0})
-        # self.ui_FMRRMainWindow.pub_end_point.publish(end_msg)        
-
+    def clbk_BtnGOtoStartPosition(self):
+        if not self.ui_FMRRMainWindow.ROS.are_motors_on:
+            QMessageBox.warning(self.DialogRobotWindow, "Warning", "Motors are OFF. Please turn them ON before moving the robot.")
+            return
+        self.ui_FMRRMainWindow.clbk_ApproachPoint([0.0, 0.0, 0.0], 3.0)
 
     def clbk_BtnGOtoTraining(self):
         if self.lineEdit.MovementIsLoaded:
@@ -571,11 +494,9 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             print('side of movement1:')
             print(self.SideOfMovement)
             self.ui_FMRRMainWindow.radioButton_SideLeft.setChecked(True)
-#            self.ui_FMRRMainWindow.radioButton_SideRight.setChecked(False)
         elif self.SideOfMovement == 2: #Right
             print('side of movement2:')
             print(self.SideOfMovement)
-#            self.ui_FMRRMainWindow.radioButton_SideLeft.setChecked(False)
             self.ui_FMRRMainWindow.radioButton_SideRight.setChecked(True)
         else:
             print('No MOVEMENT TYPE selected - this is weird, it should never happen but at the start')
@@ -583,18 +504,14 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             self.ui_FMRRMainWindow.radioButton_SideRight.setChecked(False)
         if self.TypeOfMovement == 1: # Reaching 
             self.ui_FMRRMainWindow.radioButton_TypeOfExercise_Reaching.setChecked(True)
-#            self.ui_FMRRMainWindow.radioButton_TypeOfExercise_HandtoMouth.setChecked(False)
         elif self.TypeOfMovement == 2: # HtMM
-#            self.ui_FMRRMainWindow.radioButton_TypeOfExercise_Reaching.setChecked(False)
             self.ui_FMRRMainWindow.radioButton_TypeOfExercise_HandtoMouth.setChecked(True)
         else:
             self.ui_FMRRMainWindow.radioButton_TypeOfExercise_Reaching.setChecked(False)
             self.ui_FMRRMainWindow.radioButton_TypeOfExercise_HandtoMouth.setChecked(False)
         if self.vel_profile == 1: # Reaching 
             self.radioButton_VelocityProfileConstant.setChecked(True)
-#            self.ui_FMRRMainWindow.radioButton_TypeOfExercise_HandtoMouth.setChecked(False)
         elif self.vel_profile == 2: # HtMM
-#            self.ui_FMRRMainWindow.radioButton_TypeOfExercise_Reaching.setChecked(False)
             self.radioButton_VelocityProfileBellshaped.setChecked(True) 
         else:
             self.radioButton_VelocityProfileConstant.setChecked(False)
@@ -620,42 +537,23 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         _translate = QtCore.QCoreApplication.translate
         MovementWindow.setWindowTitle(_translate("MovementWindow", "Movement Window"))
         self.lineEdit.MovementIsLoaded = 0
-############################      Modify LCDs
-######
+        
+        ######## Modify LCDs
         LcdWidgets  = [self.lcdNumber_EndPos_X, self.lcdNumber_EndPos_Y, self.lcdNumber_EndPos_Z ]
-
         for iWidget in LcdWidgets:
             iWidget.setSegmentStyle(QtWidgets.QLCDNumber.Flat)
             iWidget.setDigitCount(4)
         
-#        LcdWidgetsSartEndposition = [ self.lcdNumber_StartPos_X, self.lcdNumber_StartPos_Y , self.lcdNumber_StartPos_Z ,
-#                                   self.lcdNumber_EndPos_X, self.lcdNumber_EndPos_Y, self.lcdNumber_EndPos_Z ]
-#        
-#        for iWidgetES in LcdWidgetsSartEndposition:
-#           iWidgetES.setDigitCount(6)
-
-
-#####
-##############################################################################################
-
-        
-        ##############################################################################################
-        #####                                                                                    #####  
-        #####                               ENABLE/DISABLE BUTTONS                               ##### 
-        #####                               (In MAIN add this line ...                           #####
-        #####                  "QPushButton.enablePushButton = MC_Tools.enablePushButton"        #####
-        #####                                                                                    #####
-        #####                                                                                    #####
-        ##############################################################################################        
-        
-# ENABLE or DISABLE buttons in MovementWindow
+        # ENABLE or DISABLE buttons in MovementWindow
         self.pushButton_LOADMovement.enablePushButton(1)
         self.pushButton_GOtoTraining.enablePushButton(1)
         self.pushButton_GOtoRobotMovement.enablePushButton(1)
         self.pushButton_SetCurrentPos_2.enablePushButton(1)    
-        self.pushButton_GOtoZERO.enablePushButton(1)  
+        self.pushButton_GOtoZERO.enablePushButton(1)
+        self.pushButton_StartMotors.enablePushButton(1)
         self.pushButton_CREATEMovement.enablePushButton(0)
         self.pushButton_SAVEMovement.enablePushButton(0)
+        self.pushButton_StopMotors.enablePushButton(0)
         
         ##############################################################################################
         #####                                                                                    #####  
@@ -668,7 +566,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         self.pushButton_CREATEMovement.clicked.connect(lambda: self.clbk_BtnCreateMovementData())
         self.pushButton_SetCurrentPos_2.clicked.connect(lambda: self.clbk_pushButton_SetCurrentPos())
         self.pushButton_SAVEMovement.clicked.connect(lambda: self.clbk_BtnSAVEMovement())
-        self.pushButton_GOtoZERO.clicked.connect(lambda: self.ui_FMRRMainWindow.clbk_ApproachPoint([0.0, 0.0, 0.0], 3.0))
+        self.pushButton_GOtoZERO.clicked.connect(lambda: self.clbk_BtnGOtoStartPosition())
 
         ##############################################################################################
         #####                                                                                    #####  
@@ -679,6 +577,13 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
 
         self.pushButton_GOtoTraining.clicked.connect(lambda: self.clbk_BtnGOtoTraining())
         self.pushButton_GOtoRobotMovement.clicked.connect(lambda: self.clbk_BtnGOtoRobotMovement())
+
+        self.comboBox_ResetFaults.currentIndexChanged.connect(self.ui_FMRRMainWindow.ROS.reset_mode_changed)
+        self.pushButton_ResetFaults.clicked.connect(self.ui_FMRRMainWindow.clbk_BtnResetFaults)
+
+        self.pushButton_StartMotors.clicked.connect(self.ui_FMRRMainWindow.clbk_StartMotors)
+        self.pushButton_StopMotors.clicked.connect(self.ui_FMRRMainWindow.clbk_StopMotors)
+
         MovementWindow.adjustSize()
         
 

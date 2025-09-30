@@ -1,4 +1,4 @@
-from PyQt5.QtCore import QTimer, pyqtSignal
+from PyQt5.QtCore import QTimer
 import time
 import threading
 
@@ -94,7 +94,6 @@ class SyncRosManager:
         # check if clients are being destroyed
         self.destroy_clients_init = False
         self.lock = threading.Lock()
-
         print('SyncRosManager class correctly initialized.')
 
     def trigger_soft_stop(self, start_value: float, steps: int = 10, target='speed_ovr', jog_joint_idx=None):

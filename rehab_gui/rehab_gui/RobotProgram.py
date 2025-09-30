@@ -1,11 +1,8 @@
 import os
 import sys
-import time
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import QMessageBox
 from RobotWindow import Ui_RobotWindow
-import yaml
-from yaml.loader import SafeLoader
 from copy import deepcopy
 
 
@@ -96,9 +93,9 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
     #######################à######################################################################  
     def updateRobotWindow(self, RobotWindow: QtWidgets.QDialog):
         if self.ui_FMRRMainWindow.ROS_active:
-    #       Joint and tool postions are converted and displayed 
-    #       conversion factors (fromm RAD to Degree and from meters to centimeteres are declared at the beginning od the FMRRMainProgram class    
-    #       Joints lcd 
+            # Joint and tool postions are converted and displayed 
+            # conversion factors (fromm RAD to Degree and from meters to centimeteres are declared at the beginning od the FMRRMainProgram class    
+            # Joints lcd 
             _jointPosConvFact = self.ui_FMRRMainWindow._jointPosConvFact #
             try:
                 RobotJointPosition = self.ui_FMRRMainWindow.ROS.RobotJointPosition
@@ -106,25 +103,16 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
                 return
             RobotJointPosition = [Ji_position * _jointPosConvFact for Ji_position in RobotJointPosition]
             
-            ##       Handle lcd 
+            # Handle lcd 
             _toolPosCovFact = self.ui_FMRRMainWindow._toolPosCovFact
             try:
                 HandlePosition = self.ui_FMRRMainWindow.ROS.HandlePosition
             except:
                 return
             HandlePosition[:] = [i_position * _toolPosCovFact for i_position in HandlePosition]
-
             CurrentDisplayedHandlePos = [self.lcdNumber_X, self.lcdNumber_Y, self.lcdNumber_Z]
             for iCoord in range(0,3):
                 CurrentDisplayedHandlePos[iCoord].display( int(HandlePosition[iCoord]) )         
-
-            # Goal Frame settings
-            file_path = '/tmp/relative_homing_performed'
-            if os.path.exists(file_path):
-                self.frame_GoalPosition.setEnabled(True)
-            else:
-                self.lineEdit_MoveRobotPosition_GoalPosition.setText( "Goal Position (!!! DEFINE A ZERO!!!)" ) # type: ignore
-                self.frame_GoalPosition.setEnabled(False)
 
             self.frame_JOG.setEnabled(self.ui_FMRRMainWindow.ROS.enable_jog_buttons)
             self.frame_ManualGuide.setEnabled(self.ui_FMRRMainWindow.ROS.enable_manual_guidance)
@@ -225,16 +213,11 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
     def retranslateUi_RobotWindow(self, RobotWindow):
         _translate = QtCore.QCoreApplication.translate
         RobotWindow.setWindowTitle(_translate("RobotWindow", "Movement Window"))
-        
         LcdWidgets  = [ self.lcdNumber_X, self.lcdNumber_Y, self.lcdNumber_Z]
 
         for iWidget in LcdWidgets:
             iWidget.setSegmentStyle(QtWidgets.QLCDNumber.Flat)
             iWidget.setDigitCount(4)
-        
-
-##############################################################################################
-
         
         ##############################################################################################
         #####                                                                                    #####  
@@ -245,8 +228,7 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
         #####                                                                                    #####
         ##############################################################################################        
         
-# ENABLE
-
+        # ENABLE
         self.pushButton_Xminus.enablePushButton(1)
         self.pushButton_Yminus.enablePushButton(1)
         self.pushButton_Zminus.enablePushButton(1)
@@ -260,18 +242,14 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
         self.pushButton_StartMoveRobotManually.enablePushButton(1)
         self.pushButton_StartMotors.enablePushButton(1)
         self.pushButton_ResetFaults.enablePushButton(1)
-            
-# DISABLE        
-        self.pushButton_StopMoveRobotManually.enablePushButton(0)
-        self.pushButton_StopMotors.enablePushButton(0)
-        
         self.pushButton_Approach_Joint1.enablePushButton(1)
         self.pushButton_Approach_Joint2.enablePushButton(1)
         self.pushButton_Approach_Joint3.enablePushButton(1)
-        # self.pushButton_Approach_Joint4.enablePushButton(0)
-        # self.pushButton_Approach_Joint5.enablePushButton(0)
-        # self.pushButton_Approach_Joint6.enablePushButton(0)
         self.pushButton_ApproachAllJoint.enablePushButton(1)
+            
+        # DISABLE        
+        self.pushButton_StopMoveRobotManually.enablePushButton(0)
+        self.pushButton_StopMotors.enablePushButton(0)
 
         ##############################################################################################
         #####                                                                                    #####  
@@ -279,6 +257,7 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
         #####                                      Connections                                   #####
         #####                                                                                    #####
         ##############################################################################################
+
         self.pushButton_RelativeHoming.clicked.connect(self.clbk_BtnRelativeHoming)
         self.pushButton_StartMoveRobotManually.clicked.connect(self.clbk_StartMoveRobotManually)
         self.pushButton_StopMoveRobotManually.clicked.connect(self.clbk_StopMoveRobotManually)

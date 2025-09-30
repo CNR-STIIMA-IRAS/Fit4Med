@@ -24,7 +24,6 @@ from yaml.loader import SafeLoader
 
 #ROS
 import roslibpy
-from async_ros_events import ASyncRosManager
 from sync_ros_events import SyncRosManager
 from ros_network_checker import WaitingDialog
 from RosReadyUDPServer import UdpServer
@@ -61,6 +60,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.server.moveToThread(self.udp_thread)
         self.udp_thread.started.connect(self.server.start)
         self.server.message_received.connect(lambda d,a : self.udp_request_received(d))
+        self.server.client_disconnected.connect(lambda: self.stopRosProcesses())
         self.udp_thread.start()
 
         self.first_time = True
@@ -90,10 +90,12 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         else:
             self.uiRobotWindow.reconnect_ROS_callbacks()
         self._update_robot_window_callback = partial(self.uiRobotWindow.updateRobotWindow, self.DialogRobotWindow)
+        self._update_movement_window_callback = partial(self.uiMovementWindow.updateMovementWindow, self.DialogMovementWindow)
         self.comboBox_ResetFaults.currentIndexChanged.connect(self.ROS.reset_mode_changed)
         self.ros_waiting_dialog.hide()
         self.ROS_active = True
         self._update_windows_timer.timeout.connect(self._update_robot_window_callback)
+        self._update_windows_timer.timeout.connect(self._update_movement_window_callback)
         self.on_fct_finished_server = roslibpy.Service(self.ros_client, "/rehab_gui/fct_finished", "std_srvs/Trigger")
         self.on_fct_finished_server.advertise(self.on_fct_worker_finished)
         self.on_fct_progress_server = roslibpy.Service(self.ros_client, "/rehab_gui/fct_progress", "tecnobody_msgs/MovementProgress")
@@ -103,35 +105,16 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
 
     def udp_request_received(self, data):
         if data == b'STOP':
-            print("UDP STOP request received.")
+            print("[UdpServer] UDP STOP request received.")
             if self.ROS_active and not self.ROS_is_quitting:
-                print("Stopping ROS processes...")
-                if hasattr(self, "_udp_timeout_timer") and self._udp_timeout_timer.isActive():
-                    self._udp_timeout_timer.stop()
+                print("[UdpServer] Processing request to stop ROS processes.")
                 self.stopRosProcesses()
-
         elif data == b'RUNNING':
             if not hasattr(self, 'ROS') or self.ROS is None:
-                print("Starting ROS processes...")
+                print("[UdpServer] Starting ROS processes...")
                 self.initializeRosProcesses()
-
-            # reset ok safety timer
-            if hasattr(self, "_udp_timeout_timer") and self._udp_timeout_timer.isActive():
-                self._udp_timeout_timer.stop()
-
-            # Timer singleShot of 5 seconds to check if RUNNING messages are received
-            self._udp_timeout_timer = QTimer(self)
-            self._udp_timeout_timer.setSingleShot(True)
-            self._udp_timeout_timer.timeout.connect(
-                lambda: (
-                    print("No RUNNING received for 5s → stopping ROS processes..."),
-                    self.stopRosProcesses()
-                )
-            )
-            self._udp_timeout_timer.start(5000)
-
         else:
-            print(f"Unknown UDP packet: {data}")
+            print(f"[UdpServer] Unknown UDP packet received from UDP client: {data}")
 
 
     def stopRosProcesses(self):
@@ -139,6 +122,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
             print('Already stopping ROS objects, waiting for completion...')
             return 0
         
+        print("Stopping ROS processes...")
         self.ROS_is_quitting = True
         self.ROS_active = False
 
@@ -161,6 +145,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
 
             try:
                 self._update_windows_timer.timeout.disconnect(self._update_robot_window_callback)
+                self._update_windows_timer.timeout.disconnect(self._update_movement_window_callback)
             except (TypeError, RuntimeError, AttributeError):
                 print("Error disconnecting robot window updating timer.")
                 pass
@@ -464,9 +449,6 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
                         {'point': points[idx], 'time_from_start': times[idx]} for idx in range(len(times))
                     ]
                 })
-                if not self.ROS.are_motors_on:
-                    self.ROS.turn_on_motors()
-                time.sleep(0.2)
                 response = client.call(req)
                 if not response['success']:
                     print("Failed to approach point!")
