@@ -68,6 +68,13 @@ def generate_launch_description():
         )
     )
 
+    sonar_teach_node = Node(
+        package='tecnobody_workbench_utils',
+        executable='sonar_teach_node',
+        name='sonar_teach_node',
+        output='screen',
+    )
+
     # Create the launch description and populate
     ld = LaunchDescription()
 
@@ -76,6 +83,7 @@ def generate_launch_description():
     ld.add_action(rsp)
     ld.add_action(plc_controller_spawner)
     ld.add_action(plc_manager_launcher)
+    ld.add_action(sonar_teach_node)
     return ld
 
 
