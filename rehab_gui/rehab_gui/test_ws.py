@@ -40,7 +40,7 @@ JOINT_NAMES = [
 req = roslibpy.ServiceRequest({
             'dof_names': JOINT_NAMES
         })
-print('>>>>>>>>>>>>>>>>>>>>>>> Calling service...')
+print('>>>>>>>>>>>>>>>>>>>>>>> Calling service [1]...')
 result = get_op_mode_client.call(req)
 print(f'Service response: {result}')
 print(f'Service response: {result["values"]}')
@@ -52,7 +52,7 @@ print(f'Service response: {results_int}')
 client.close()
 
 # del client
-time.sleep(1)
+time.sleep(5)
 
 #SECOND TIME--------------------------------------------------------------------
 # client = roslibpy.Ros(host='10.2.15.249', port=9090)
@@ -60,11 +60,12 @@ client.connect()
 service = roslibpy.Service(client, '/controller_manager/list_controllers',
                                                           'controller_manager_msgs/srv/ListControllers')
 request = roslibpy.ServiceRequest()
-print('>>>>>>>>>>>>>>>>>>>>>>>>> Calling service...')
-result = service.call(request)
-print(f'Service response:')
-for ctrl in result['controller']:
-    print(f"Controller: {ctrl['name']} - Type: {ctrl['type']} - State: {ctrl['state']}")
+print('>>>>>>>>>>>>>>>>>>>>>>>>> Calling service [2]...')
+if client.is_connected:
+    result = service.call(request)
+    print(f'Service response:')
+    for ctrl in result['controller']:
+        print(f"Controller: {ctrl['name']} - Type: {ctrl['type']} - State: {ctrl['state']}")
 
 # ACTION CLIENT EXAMPLE
 # print(f'Creating the action client')

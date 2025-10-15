@@ -185,8 +185,8 @@ def generate_launch_description():
         package='controller_manager',
         executable='spawner',
         arguments=[
-            'joint_trajectory_controller'
-            # 'scaled_trajectory_controller'
+            # 'joint_trajectory_controller'
+            'scaled_trajectory_controller'
         ],
         output='screen',
     )
@@ -221,7 +221,8 @@ def generate_launch_description():
 
     fct_manager_node = Node(
         package='tecnobody_workbench_utils',
-        executable='fct_manager_node'
+        executable='fct_manager_node',
+        arguments=['scaled_trajectory_controller']
     )
     
     group1 = GroupAction(

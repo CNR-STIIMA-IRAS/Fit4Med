@@ -60,7 +60,6 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         self.server.moveToThread(self.udp_thread)
         self.udp_thread.started.connect(self.server.start)
         self.server.message_received.connect(lambda d,a : self.udp_request_received(d))
-        self.server.client_disconnected.connect(lambda: self.stopRosProcesses())
         self.udp_thread.start()
 
         self.first_time = True
@@ -79,7 +78,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
             return 0
         # Initialize ROS client
         if self.first_time:
-            self.ros_client = roslibpy.Ros(host='10.2.15.249', port=9090)
+            self.ros_client = roslibpy.Ros(host='127.0.0.1', port=9090)
             self.ros_client.run()
         else:
             self.ros_client.connect()

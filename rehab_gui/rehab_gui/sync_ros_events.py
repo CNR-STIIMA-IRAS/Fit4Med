@@ -12,7 +12,7 @@ import roslibpy
 class SyncRosManager:
     _ros_period = 1
     _controller_list_period = 50  # milliseconds
-    trajectory_controller_name = 'joint_trajectory_controller'
+    trajectory_controller_name = 'scaled_trajectory_controller'
     forward_command_controller = 'forward_velocity_controller'
     admittance_controller = 'admittance_controller'
     current_controller = None
@@ -90,7 +90,7 @@ class SyncRosManager:
         # check if ros env is correctly launched 
         self._ros_ready_timer = QTimer()
         self._ros_ready_timer.timeout.connect(self.check_ros_ready)
-        self._ros_ready_timer.start(100)
+        self._ros_ready_timer.start(5000)
         # check if clients are being destroyed
         self.destroy_clients_init = False
         self.lock = threading.Lock()
@@ -180,14 +180,11 @@ class SyncRosManager:
     ##############################################################################################
 
     def check_ros_ready(self):
-        if not self.ros_client.is_connected:
-            print("ROS not connected yet...")
-        else:
-            self.trajectory_controller_name = 'joint_trajectory_controller'
-            if self.init_service_clients():
-                self._controller_timer.start(self._controller_list_period)
-                self._ros_ready_timer.stop()
-                print('ROS class correctly started!')
+        self.trajectory_controller_name = 'scaled_trajectory_controller'
+        if self.init_service_clients():
+            self._controller_timer.start(self._controller_list_period)
+            self._ros_ready_timer.stop()
+            print('ROS class correctly started!')
 
     def init_service_clients(self):
         self.current_controller_client = roslibpy.Service(self.ros_client, '/controller_manager/list_controllers',
