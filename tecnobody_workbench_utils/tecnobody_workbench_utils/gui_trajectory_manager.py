@@ -25,7 +25,7 @@ install(show_locals=True)
 
 class FollowJointTrajectoryActionManager(Node):
 
-    def __init__(self, controller_name='joint_trajectory_controller'):
+    def __init__(self, controller_name):
         super().__init__("fct_manager_node") # type: ignore
         self._init_time_s = 0
         self._is_paused = False
@@ -47,9 +47,11 @@ class FollowJointTrajectoryActionManager(Node):
             "/tecnobody_workbench_utils/stop_movement",
             self.stop
         )
-        self.client = ActionClient(self, FollowJointTrajectory, '/joint_trajectory_controller/follow_joint_trajectory')
+
+        self.get_logger().info(f"Connecting to: /{controller_name}/follow_joint_trajectory")
+        self.client = ActionClient(self, FollowJointTrajectory, f"/{controller_name}/follow_joint_trajectory")
         if self.client.wait_for_server(timeout_sec=5.0):
-            self.get_logger().info('Follow Joint Trajectory Action server is available.')
+            self.get_logger().info('Follow Joint Trajectory Action server is not available.')
             
     def clear(self):
         self.goalFCT = FollowJointTrajectory.Goal()
@@ -229,7 +231,9 @@ def main(args=None):
     import os
     os.sched_setaffinity(0, {6})
 
-    node = FollowJointTrajectoryActionManager()
+    input_controller = sys.argv[1] if len(sys.argv) > 1 else "joint_trajectory_controller"
+
+    node = FollowJointTrajectoryActionManager(controller_name=input_controller)
 
     try:
         while rclpy.ok():
