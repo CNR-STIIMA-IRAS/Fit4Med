@@ -1,111 +1,95 @@
 import time
 import rclpy
 from rclpy.node import Node
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from tecnobody_msgs.msg import PlcController
 from std_srvs.srv import Trigger
-from std_msgs.msg import Bool
+
+_shutdown_request = False
 
 class SonarTeachNode(Node):
     def __init__(self):
         super().__init__('sonar_teach_node')
 
-        self.sonar_teach_enable_sub = self.create_subscription(
-            Bool,
-            '/sonar_teach/enable',
-            self.sonar_teach_enable_callback,
-            10
-        )
-
+        self.service_group = MutuallyExclusiveCallbackGroup()
+        self.timer_group = MutuallyExclusiveCallbackGroup()
 
         # Publisher to the PLC controller command interface
         self.command_publisher = self.create_publisher(
             PlcController,
             '/PLC_controller/plc_commands',
-            10,
+            10
         )
 
-        self.command_msg = PlcController()
-        self.command_msg.values = [0] * 8
-        self.command_msg.interface_names = [ 'PLC_node/mode_of_operation', 
-                                            'PLC_node/power_cutoff', 
-                                            'PLC_node/sonar_teach', 
-                                            'PLC_node/s_output.4', 
-                                            'PLC_node/estop', 
-                                            'PLC_node/manual_mode', 
-                                            'PLC_node/force_sensors_pwr', 
-                                            'PLC_node/s_output.8' ]
+        self.trigger_teach_service = self.create_service(
+            Trigger,
+            "/sonar_teach_node/enable_sonar_teach", 
+            self.sonar_teach_enable_callback,
+            callback_group=self.service_group
+        )
 
-        # self.trigger_teach_service = self.create_service(
-        #     Trigger,
-        #     "/ethercat_checker/request_shutdown", lambda req, resp: self.start_sonar_teach()
-        # )
+        self.shutdown_service = self.create_service(
+            Trigger,
+            "/sonar_teach_node/request_shutdown", self.shutdown_node
+        )
+        self.stay_awake_timer = self.create_timer(10.0, lambda: True, self.timer_group)
+        self.get_logger().info("class correctly initialized.")
 
-        self.start_time = -999.0
-        self.sonar_teach_active = False
-        self.sonar_teach_completed = False
-        self.sonar_teach_enabled = False
-
-    def sonar_teach_enable_callback(self, msg):
-        self.sonar_teach_enabled = msg.data
-
+    def sonar_teach_enable_callback(self, request, response):
+        self.get_logger().info("Received sonar teach request")
+        self.start_sonar_teach()
+        response.success = True
+        return response
 
     def publish_command(self, n, v):
-        if n in self.command_msg.interface_names:
-            idx = self.command_msg.interface_names.index(n)
-            self.command_msg.values[idx] = v
-            self.command_publisher.publish(self.command_msg)
-            self.get_logger().info(f"Published command message: {self.command_msg.values}")
-        else:
-            self.get_logger().warn(f"FUNCTION publish_command Interface name '{n}' not found in command message.")
+        command_msg = PlcController()
+        command_msg.interface_names = [n]
+        command_msg.values = [v]
+        self.command_publisher.publish(command_msg)
+        self.get_logger().info(f"Published command message: {command_msg.values}")
 
-    def start_sonar_teach(self, start_time):
+    def start_sonar_teach(self):
+        self.get_logger().info("Starting sonar teach process")
         self.sonar_teach_active = True
+        start_time = self.get_clock().now()
+        self.teach_timer = self.create_timer(0.05, lambda s = start_time : self.teach_progress(s), callback_group=self.timer_group)
 
-        if not self.sonar_teach_completed:
-            self.get_logger().info(f"[Sonar Teach] time since start: {time.time() - start_time} secs")
+    def teach_progress(self, start_time): 
+            current_time = self.get_clock().now()
+            elapsed_time = (current_time - start_time).nanoseconds / 1e9
+
             # Sonar teaching logic
-            if time.time()- start_time < 3.0: 
+            if elapsed_time < 3.0: 
                 self.publish_command('PLC_node/sonar_teach', 1)
-            elif time.time() - start_time > 3.0 and time.time() - start_time < 4.0:
+            elif elapsed_time > 3.0 and elapsed_time < 3.1:
                 self.publish_command('PLC_node/sonar_teach', 0)
-            elif time.time() - start_time > 4.0 and time.time() - start_time < 5.0:
+            elif elapsed_time > 3.1 and elapsed_time < 5.0:
                 self.publish_command('PLC_node/sonar_teach', 1)
             else:
-                self.sonar_teach_completed = True
+                self.publish_command('PLC_node/sonar_teach', 0)
+                self.get_logger().info("Teaching process completed.", once=True)
+                self.teach_timer.cancel()
+
+    def shutdown_node(self, request, response):
+        global _shutdown_request
+        _shutdown_request = True
+        response.success = True
+        return response
 
 
 def main(args=None):
     rclpy.init(args=args)
-
     node = SonarTeachNode()
 
-    try:
-        while rclpy.ok():
-            rclpy.spin_once(node)
-            if node.sonar_teach_enabled and not node.sonar_teach_active and not node.sonar_teach_completed:
-                node.get_logger().info("Starting sonar teach process.")
-                node.start_time = time.time()
-                node.sonar_teach_completed = False
-                node.start_sonar_teach(node.start_time)
-            elif node.sonar_teach_enabled and node.sonar_teach_active and not node.sonar_teach_completed:
-                if node.start_time > 0:
-                    node.start_sonar_teach(node.start_time)
-                else:
-                    node.get_logger().warn("Sonar teach process active but start time not set.")
-            elif not node.sonar_teach_enabled and node.sonar_teach_active and not node.sonar_teach_completed:
-                node.get_logger().info("Sonar teach process disabled.", once= True)
-                node.publish_command('PLC_node/sonar_teach', 0)
-            elif node.sonar_teach_enabled and node.sonar_teach_active and node.sonar_teach_completed:
-                node.get_logger().info("Sonar teach process finished!", once= True)
-                node.publish_command('PLC_node/sonar_teach', 0)
-            elif not node.sonar_teach_enabled and node.sonar_teach_active and node.sonar_teach_completed:
-                node.sonar_teach_active = False
-                node.sonar_teach_completed = False
-            else:
-                pass
+    executor = MultiThreadedExecutor(2)
+    executor.add_node(node)
 
+    try:
+        while rclpy.ok() and not _shutdown_request:
+            executor.spin_once()
     except KeyboardInterrupt:
-        node.get_logger().info("Shutting down PLC Controller Interface node.")
+        node.get_logger().info("Shutting down sonar teaching node.")
     finally:
         node.destroy_node()
         rclpy.shutdown()
