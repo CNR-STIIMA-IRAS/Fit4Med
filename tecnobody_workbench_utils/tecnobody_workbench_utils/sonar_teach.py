@@ -58,13 +58,12 @@ class SonarTeachNode(Node):
     def teach_progress(self, start_time): 
             current_time = self.get_clock().now()
             elapsed_time = (current_time - start_time).nanoseconds / 1e9
-
             # Sonar teaching logic
             if elapsed_time < 3.0: 
                 self.publish_command('PLC_node/sonar_teach', 1)
-            elif elapsed_time > 3.0 and elapsed_time < 3.1:
+            elif elapsed_time > 3.0 and elapsed_time < 5.0:
                 self.publish_command('PLC_node/sonar_teach', 0)
-            elif elapsed_time > 3.1 and elapsed_time < 5.0:
+            elif elapsed_time > 5.0 and elapsed_time < 8.0:
                 self.publish_command('PLC_node/sonar_teach', 1)
             else:
                 self.publish_command('PLC_node/sonar_teach', 0)
