@@ -327,6 +327,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         if self.ROS_active:
             # set automatic mode after movement
             self.ROS.publish_plc_command(['PLC_node/manual_mode'], [0])
+            self.ROS.publish_plc_command(['PLC_node/brake_disable'], [0])
             self.ROS.turn_off_motors()
 
     def clbk_BtnResetFaults(self):
@@ -360,6 +361,8 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
     
     def on_fct_worker_progress(self, request, response):
         self.execution_time_percentage = int(request['progress'])  # Get the progress percentage from the worker
+        response = True
+        return response
 
     def clbk_spinBox_MaxVel(self):
         speed_ovr_Value = self.spinBox_MaxVel.value()

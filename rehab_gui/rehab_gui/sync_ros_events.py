@@ -540,6 +540,7 @@ class SyncRosManager:
 
     def _turn_on_done(self, result):
         self.try_turn_on_in_execution = False
+        self.publish_plc_command(['PLC_node/brake_disable'], [1])
         return result  # type: ignore
 
     def turn_off_motors(self):

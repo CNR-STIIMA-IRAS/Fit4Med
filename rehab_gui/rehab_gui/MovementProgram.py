@@ -481,7 +481,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
 
     def clbk_BtnGOtoStartPosition(self):
         if not self.ui_FMRRMainWindow.ROS.are_motors_on:
-            QMessageBox.warning(self.DialogRobotWindow, "Warning", "Motors are OFF. Please turn them ON before moving the robot.")
+            QMessageBox.warning(self.DialogMovementWindow, "Warning", "Motors are OFF. Please turn them ON before moving the robot.")
             return
         self.ui_FMRRMainWindow.clbk_ApproachPoint([0.0, 0.0, 0.0], 3.0)
 
@@ -519,6 +519,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         
         # check that position is zero before going to training
         if any(abs(self.ui_FMRRMainWindow.ROS.HandlePosition[idx]) > 1e-3 for idx in range(3)):
+            print(f"[Movement Program] Handle position is not zero, detected states: [{self.ROS.HandlePosition[0]}, {self.ROS.HandlePosition[1]}, {self.ROS.HandlePosition[2]}]")
             QMessageBox.warning(self.DialogMovementWindow, "Warning", "Handle position is not zero, please set it to zero before going to training")
             return
 
