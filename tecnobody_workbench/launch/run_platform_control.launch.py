@@ -58,8 +58,8 @@ def clean_shutdown():
         package='controller_manager',
         executable='unspawner',
         arguments=[
-            #"joint_trajectory_controller"
-            'scaled_joint_trajectory_controller'
+            "joint_trajectory_controller"
+            # 'scaled_joint_trajectory_controller'
         ],
     )
     forward_pos_controller_unspawner = Node(

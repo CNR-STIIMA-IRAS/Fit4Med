@@ -16,7 +16,7 @@
             <command_interface name="estop"/>
             <command_interface name="manual_mode"/>
             <command_interface name="force_sensors_pwr"/>
-            <command_interface name="s_output.8"/>
+            <command_interface name="brake_disable"/>
             <state_interface name="s_msg"/>
             <state_interface name="s_input.0"/>
             <state_interface name="estop"/>

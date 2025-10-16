@@ -9,6 +9,7 @@ from launch.event_handlers import OnProcessExit
 def generate_launch_description():
     controllers_file = 'plc_controller.yaml'
     description_package = 'tecnobody_workbench'
+    
     DeclareLaunchArgument(
             'gui_ip',
             default_value='127.0.0.0',

@@ -17,7 +17,7 @@ PLC_controller:
           - estop
           - manual_mode
           - force_sensors_pwr
-          - s_output.8
+          - brake_disable
     state_interfaces:
       PLC_node:
         - interfaces:

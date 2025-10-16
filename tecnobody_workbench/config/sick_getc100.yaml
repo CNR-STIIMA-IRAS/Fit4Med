@@ -12,7 +12,7 @@ rpdo:  # RxPDO
     - {index: 0x2001, sub_index: 5, type: uint8, command_interface: estop}
     - {index: 0x2001, sub_index: 6, type: uint8, command_interface: manual_mode}
     - {index: 0x2001, sub_index: 7, type: uint8, command_interface: force_sensors_pwr}
-    - {index: 0x2001, sub_index: 8, type: uint8, command_interface: s_output.8}
+    - {index: 0x2001, sub_index: 8, type: uint8, command_interface: brake_disable}
     - {index: 0x2001, sub_index: 9, type: uint8, command_interface: s_output.9}
     - {index: 0x2001, sub_index: 10, type: uint8, command_interface: s_output.10}
 tpdo:  # TxPDO
