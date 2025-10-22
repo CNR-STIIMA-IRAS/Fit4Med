@@ -8,6 +8,7 @@ from ethercat_controller_msgs.msg import Cia402DriveStates, DriveStateFlags
 from ethercat_controller_msgs.srv import GetModesOfOperation, GetDriveStates
 from std_msgs.msg import Bool
 from std_srvs.srv import SetBool, Trigger
+from tecnobody_msgs.msg import PlcController
 
 _shutdown_request = False
 
@@ -19,21 +20,37 @@ class EthercatCheckerNode(Node):
         # Define callback groups
         driver_group = MutuallyExclusiveCallbackGroup()
         service_group = MutuallyExclusiveCallbackGroup()
+        timer_group = MutuallyExclusiveCallbackGroup()
         
         # Subscription to drive status updates
         self.subscription = self.create_subscription(Cia402DriveStates, '/state_controller/drive_states', self.handle_drive_status, qos_profile=10, callback_group=driver_group)
+        self.plc_command_publisher = self.create_publisher(PlcController, '/PLC_controller/plc_commands', 10)
+
 
         # Service Servers
         self.enable_error_check_srv = self.create_service(
             SetBool,
             '/ethercat_checker/enable_error_checking',
-            self.enable_error_checking_callback
+            self.enable_error_checking_callback,
+            callback_group=service_group
         )
 
         self.get_mode_of_op_srv = self.create_service(
             GetModesOfOperation,
             '/ethercat_checker/get_drive_mode_of_operation',
             self.get_modes_callback,
+            callback_group=service_group
+        )
+
+        self.start_motors_service = self.create_service(
+            Trigger,
+            "/ethercat_checker/start_motors", self.start_motors_callback,
+            callback_group=service_group
+        )
+
+        self.stop_motors_service = self.create_service(
+            Trigger,
+            "/ethercat_checker/stop_motors", self.stop_motors_callback,
             callback_group=service_group
         )
 
@@ -45,7 +62,14 @@ class EthercatCheckerNode(Node):
 
         self.shutdown_service = self.create_service(
             Trigger,
-            "/ethercat_checker/request_shutdown", self.shutdown_node
+            "/ethercat_checker/request_shutdown", self.shutdown_node,
+            callback_group=driver_group
+        )
+
+        self.check_states_timer = self.create_timer(
+            0.004, 
+            self.check_states,
+            callback_group=timer_group
         )
 
         self.error_auto_reset_enabled = False
@@ -109,11 +133,39 @@ class EthercatCheckerNode(Node):
                 self.reset_fault()
         else:
             self.fault_present = False
-        if all(state in ['STATE_SWITCH_ON_ENABLED', 'STATE_SWITCH_ON', 'STATE_OPERATION_ENABLED'] for state in self.state.values()):
+        if all([state in ['STATE_OPERATION_ENABLED'] for state in self.state.values()]):
             self.motors_on = True
         else:
             self.motors_on = False
 
+    def start_motors_callback(self, request, response):
+        self.try_turn_on()
+        time.sleep(0.2)
+        if self.motors_on:
+            if not any([self.mode[dof] == 'MODE_HOMING' for dof in self.dof_names]):
+                self.publish_plc_command(['PLC_node/brake_disable'], [1])
+            response.success = True
+        else:
+            self.get_logger().error('Motors failed to turn on')
+            response.success = False
+        return response
+    
+    def stop_motors_callback(self, request, response):
+        self.publish_plc_command(['PLC_node/brake_disable'], [0])
+        time.sleep(0.2)
+        self.try_turn_off()
+        response.success = True
+        return response
+
+    def publish_plc_command(self, name, value):
+        command_msg = PlcController()
+        command_msg.interface_names = name
+        command_msg.values = value
+
+        timeout = time.time() + 1
+        while time.time() < timeout:
+            self.plc_command_publisher.publish(command_msg)
+        
     def reset_fault(self):
         if self.fault_reset_in_execution:
             self.get_logger().warn('Fault reset already in execution, skipping...', throttle_duration_sec=1)
@@ -212,6 +264,7 @@ class EthercatCheckerNode(Node):
     def shutdown_node(self, request, response):
         global _shutdown_request
         _shutdown_request = True
+        # self.check_states_timer.cancel()
         response.success = True
         return response
 
@@ -229,13 +282,13 @@ def main(args=None):
 
     try:
         while not _shutdown_request:
-            executor.spin_once()
-            node.check_states()
+            executor.spin_once()    
             
         node.get_logger().info('^^^^^^^^^^^^^^^^^ Shutting down...')
     except KeyboardInterrupt:
         node.get_logger().info('Keyboard interrupt, shutting down.\n')
         executor.shutdown()
+        # node.check_states_timer.cancel()
         node.destroy_node()
 
 

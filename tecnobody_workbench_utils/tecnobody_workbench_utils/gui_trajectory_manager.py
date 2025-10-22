@@ -37,11 +37,6 @@ class FollowJointTrajectoryActionManager(Node):
             "/tecnobody_workbench_utils/set_trajectory",
             self.set
         )
-        self.start_movement_server = self.create_service(
-            StartMovement,
-            "/tecnobody_workbench_utils/start_movement",
-            self.startMovement
-        )
         self.stop_movement_server = self.create_service(
             Trigger,
             "/tecnobody_workbench_utils/stop_movement",
@@ -58,21 +53,27 @@ class FollowJointTrajectoryActionManager(Node):
         self.goalFCT.trajectory.joint_names = self._joint_names
     
     def set(self, request, response):
+        self.movement_execution_cnt = 0
+
         cartesian_positions = [r.point for r in request.cartesian_positions]
         time_from_start = [r.time_from_start for r in request.cartesian_positions]
-        # Called only at the beginning
+
         self.clear()
+
         self._total_time_s = (time_from_start[-1] - time_from_start[0])
         if self._total_time_s <= 0:
             self._total_time_s = 1.0
+
         _numSample = len(time_from_start)
-        t_spl = np.zeros(_numSample)
-        self._time_from_start_duration = [0] * _numSample
         self._point_velocities = [0.0] * _numSample
         self._point_accelerations= [0.0] * _numSample
+
+        t_spl = np.zeros(_numSample)
+        self._time_from_start_duration = [0] * _numSample
         for iPoint in range(0, _numSample):
             _time_from_start_s = time_from_start[iPoint]
             t_spl[iPoint] = float(_time_from_start_s)
+
         # Interpolate trajectory and calculate velocities and accelerations
         P = np.array(cartesian_positions)
         # Set bc_type so that velocity is zero at start and end
@@ -86,6 +87,10 @@ class FollowJointTrajectoryActionManager(Node):
             self._time_from_start_duration[iPoint] = Duration(sec=int(t_iPoint),nanosec=int((t_iPoint - int(t_iPoint)) * 1e9))
             self._point_velocities[iPoint] = vel
             self.addPoint(pos, vel, acc, t_iPoint)
+        
+        self.repetition_ovrs = request.repetition_ovrs
+        response.success = self.sendFCTGoal()        
+
         self.go_home_mode = False
         response.success = True
         return response
@@ -127,10 +132,9 @@ class FollowJointTrajectoryActionManager(Node):
         point.time_from_start = time
         self.goalFCT.trajectory.points.append(point)
     
-    def startMovement(self, request, response):
+    def sendFCTGoal(self):
     # Called at the beginning of each movement
-        default_speed_ovr = request.speed_ovr
-        self.setSpeedOverride(default_speed_ovr)
+        self.setSpeedOverride(self.repetition_ovrs[self.movement_execution_cnt])
         self._init_time_s = time.time()
         self._paused_duration = 0.0
         self._last_actual_time_pct = 0.0
@@ -139,8 +143,8 @@ class FollowJointTrajectoryActionManager(Node):
         self._send_goal_future = self.client.send_goal_async(self.goalFCT)
         self._send_goal_future.add_done_callback(self.on_goal_accepted)
         self.go_home_mode = False
-        response.success = True
-        return response
+        self.movement_execution_cnt = self.movement_execution_cnt+1
+        return True
     
     # def is_paused(self, trigger_pause):
     #     if trigger_pause:
@@ -165,19 +169,26 @@ class FollowJointTrajectoryActionManager(Node):
         self._get_goal_result_future = self._goal_handle.get_result_async()
         self._get_goal_result_future.add_done_callback(self.on_done)
         self._goal_status = GoalStatus.STATUS_UNKNOWN
-        self.timer = self.create_timer(0.02, lambda: self.check_status())
+        if len(self.goalFCT.trajectory.points)>2:
+            self.timer = self.create_timer(0.02, lambda: self.check_status())
     
     def on_done(self, future):
         try:
             client : Client = self.create_client(Trigger, '/rehab_gui/fct_finished')
             if not client.wait_for_service(timeout_sec=5.0):
                 self.get_logger().info('Trajectory DONE server is not available.')
-            req = Trigger.Request()               
-            client.call_async(req)
-            self.get_logger().info('Trajectory DONE sent to GUI')                
-            self._goal_handle = None
-            if hasattr(self, 'timer'):
-                self.timer.cancel()
+
+            self.get_logger().info(f'repetition_ovrs: {self.repetition_ovrs}')
+            if self.movement_execution_cnt<len(self.repetition_ovrs):
+                self.get_logger().info(f'Starting repetition n {self.movement_execution_cnt+1} of {len(self.repetition_ovrs)}')               
+                req = Trigger.Request()               
+                client.call_async(req)
+                self.get_logger().info('Trajectory DONE sent to GUI')                
+                self._goal_handle = None
+                # time.sleep(0.2)
+                self.sendFCTGoal()
+                if hasattr(self, 'timer'):
+                    self.timer.cancel()
         except Exception as e:
             self.get_logger().info(f'Exception in on_done: {e}')
     
@@ -203,9 +214,13 @@ class FollowJointTrajectoryActionManager(Node):
 
         req = MovementProgress.Request()
         req.progress = actual_time_from_start_percentage
-        client.call_async(req)
+        future = client.call_async(req)
+        future.add_done_callback(self.on_progress_response)
         self._last_actual_time_pct = int(actual_time_from_start_percentage)
     
+    def on_progress_response(self, future):
+        self.repetition_ovrs = future.result().repetition_ovrs
+
     def on_cancelled(self, future):
         if future.result() is not None:
             self.get_logger().info(f'Goal cancelled: {future.result()}')
@@ -215,6 +230,7 @@ class FollowJointTrajectoryActionManager(Node):
         self.goal_handle = None
     
     def stop(self, request, response):
+        self.repetition_ovrs = []
         if hasattr(self, '_goal_handle') and self._goal_handle is not None:
             cancel_future = self._goal_handle.cancel_goal_async()
             cancel_future.add_done_callback(self.on_cancelled)

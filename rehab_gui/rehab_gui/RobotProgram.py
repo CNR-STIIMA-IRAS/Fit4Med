@@ -25,6 +25,8 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
             NewRobotConfiguration[JointNr] = JointTargetPosition[JointNr]
         print(f'The new RobotConfiguration is: {NewRobotConfiguration}')
         target_time = max(abs(NewRobotConfiguration[i]) for i in range(len(self.ui_FMRRMainWindow.ROS._joint_names)))/0.1
+        if target_time < 1.0:
+            target_time = 1.0
         print(f"Moving to the new position in {target_time} seconds")
         if not self.ui_FMRRMainWindow.ROS.are_motors_on:
             QMessageBox.warning(self.DialogRobotWindow, "Warning", "Motors are OFF. Please turn them ON before moving the robot.")
@@ -178,8 +180,8 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
         self.pushButton_RelativeHoming.clicked.connect(self.clbk_BtnRelativeHoming)
         self.pushButton_StartMoveRobotManually.clicked.connect(self.clbk_StartMoveRobotManually)
         self.pushButton_StopMoveRobotManually.clicked.connect(self.clbk_StopMoveRobotManually)
-        self.pushButton_StartMotors.clicked.connect(self.ui_FMRRMainWindow.clbk_StartMotors)
-        self.pushButton_StopMotors.clicked.connect(self.ui_FMRRMainWindow.clbk_StopMotors)
+        self.pushButton_StartMotors.clicked.connect(lambda: self.ui_FMRRMainWindow.clbk_StartMotors())
+        self.pushButton_StopMotors.clicked.connect(lambda: self.ui_FMRRMainWindow.clbk_StopMotors())
         self.radioButton_EnableHoming.setCheckable(True)
         self.radioButton_EnableHoming.clicked.connect(self.ui_FMRRMainWindow.ROS.zeroing_enable)
         self.pushButton_JOG.setCheckable(True)
@@ -199,7 +201,7 @@ class FMRR_Ui_RobotWindow(Ui_RobotWindow):
         self.pushButton_Zminus.released.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(0, 2))
         self.pushButton_Zplus.released.connect(lambda: self.ui_FMRRMainWindow.ROS.jog_command(0, 2))
         self.comboBox_ResetFaults.currentIndexChanged.connect(self.ui_FMRRMainWindow.ROS.reset_mode_changed)
-        self.pushButton_ResetFaults.clicked.connect(self.ui_FMRRMainWindow.clbk_BtnResetFaults)
+        self.pushButton_ResetFaults.clicked.connect(lambda: self.ui_FMRRMainWindow.clbk_BtnResetFaults())
         self.pushButton_Approach_Joint1.clicked.connect(lambda: self.clbk_JointApproach(0))
         self.pushButton_Approach_Joint2.clicked.connect(lambda: self.clbk_JointApproach(1))
         self.pushButton_Approach_Joint3.clicked.connect(lambda: self.clbk_JointApproach(2))

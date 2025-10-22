@@ -9,7 +9,7 @@ controller_manager:
       type: joint_trajectory_controller/JointTrajectoryController
 
     scaled_trajectory_controller:
-      type: cnr_joint_trajectory_controller/JointTrajectoryController
+      type: scaled_fjt_controller/ScaledFjtController
 
     state_controller:
       type: ethercat_controllers/CiA402Controller
@@ -17,47 +17,14 @@ controller_manager:
     ft_sensor_command_broadcaster:
       type: force_torque_sensor_broadcaster/ForceTorqueSensorBroadcaster
 
-    gpio_command_controller:
-      type: "gpio_controllers/GpioCommandController"
-
     admittance_controller:
         type: "cnr_admittance_controller/AdmittanceController"
-
-    PLC_controller:
-      type: plc_controller/PLCController
 
     forward_position_controller:
       type: position_controllers/JointGroupPositionController
 
     forward_velocity_controller:
       type: velocity_controllers/JointGroupVelocityController
-
-PLC_controller:
-  ros__parameters:
-    gpios:
-      - PLC_node
-    command_interfaces:
-      PLC_node:
-        - interfaces:
-          - mode_of_operation
-          - power_cutoff
-          - sonar_teach
-          - s_output.4
-          - s_output.5
-          - s_output.6
-          - s_output.7
-          - s_output.8
-    state_interfaces:
-      PLC_node:
-        - interfaces:
-          - s_input.0        
-          - estop
-          - reset
-          - s_input.4
-          - s_input.5
-          - s_input.6
-          - s_input.7
-          - s_input.8
 
 ft_sensor_command_broadcaster:
   ros__parameters:
@@ -115,7 +82,7 @@ scaled_trajectory_controller:
     - joint_z
     command_interfaces:
     - position
-    - offset_velocity
+    - acceleration
     state_interfaces:
     - position
     - velocity
@@ -130,20 +97,6 @@ state_controller:
       - joint_x
       - joint_y
       - joint_z
-
-gpio_command_controller:
-  ros__parameters:
-    gpios:
-      - safe_output
-      - safe_input
-    command_interfaces:
-      safe_output:
-        - interfaces:
-          - d_output.1
-    state_interfaces:
-      safe_input:
-        - interfaces:
-          - d_input.1
 
 admittance_controller:
   ros__parameters:

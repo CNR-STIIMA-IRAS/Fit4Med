@@ -458,6 +458,9 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
 #####                                                                                                    #####
 ##############################################################################################################    
     def updateMovementWindow(self, MovementWindow: QtWidgets.QDialog):
+        self.pushButton_ResetFaults.setEnabled(self.ui_FMRRMainWindow.ROS.manual_reset_faults)
+        self.pushButton_StartMotors.setEnabled(not self.ui_FMRRMainWindow.ROS.are_motors_on)
+        self.pushButton_StopMotors.setEnabled(self.ui_FMRRMainWindow.ROS.are_motors_on)
         if self.ui_FMRRMainWindow.ROS.is_in_fault_state:
             self.frame_FaultDetected.setStyleSheet("background-color: red; border-radius: 10px;")
         else:
@@ -518,8 +521,8 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
             self.radioButton_VelocityProfileBellshaped.setChecked(False)
         
         # check that position is zero before going to training
-        if any(abs(self.ui_FMRRMainWindow.ROS.HandlePosition[idx]) > 1e-3 for idx in range(3)):
-            print(f"[Movement Program] Handle position is not zero, detected states: [{self.ROS.HandlePosition[0]}, {self.ROS.HandlePosition[1]}, {self.ROS.HandlePosition[2]}]")
+        if any([abs(self.ui_FMRRMainWindow.ROS.HandlePosition[idx]) > 3e-3 for idx in range(3)]):
+            print(f"[Movement Program] Handle position is not zero, detected states: [{self.ui_FMRRMainWindow.ROS.HandlePosition[0]}, {self.ui_FMRRMainWindow.ROS.HandlePosition[1]}, {self.ui_FMRRMainWindow.ROS.HandlePosition[2]}]")
             QMessageBox.warning(self.DialogMovementWindow, "Warning", "Handle position is not zero, please set it to zero before going to training")
             return
 
@@ -580,10 +583,10 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         self.pushButton_GOtoRobotMovement.clicked.connect(lambda: self.clbk_BtnGOtoRobotMovement())
 
         self.comboBox_ResetFaults.currentIndexChanged.connect(self.ui_FMRRMainWindow.ROS.reset_mode_changed)
-        self.pushButton_ResetFaults.clicked.connect(self.ui_FMRRMainWindow.clbk_BtnResetFaults)
+        self.pushButton_ResetFaults.clicked.connect(lambda: self.ui_FMRRMainWindow.clbk_BtnResetFaults())
 
-        self.pushButton_StartMotors.clicked.connect(self.ui_FMRRMainWindow.clbk_StartMotors)
-        self.pushButton_StopMotors.clicked.connect(self.ui_FMRRMainWindow.clbk_StopMotors)
+        self.pushButton_StartMotors.clicked.connect(lambda: self.ui_FMRRMainWindow.clbk_StartMotors())
+        self.pushButton_StopMotors.clicked.connect(lambda: self.ui_FMRRMainWindow.clbk_StopMotors())
 
         MovementWindow.adjustSize()
         

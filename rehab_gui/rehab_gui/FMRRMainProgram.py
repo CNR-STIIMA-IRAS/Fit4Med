@@ -279,8 +279,8 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
             self.sendTrajectoryFCT()
             self.updateTrainingTimer()
             self.ModalityActualValue = self.Modalities[0]
-            print(f'------------------------------------------{self.spinBoxSpeedOvr[0].value()}')
-            self.startMovementFCT(self.spinBoxSpeedOvr[0].value()) # type: ignore
+            # print(f'------------------------------------------{self.spinBoxSpeedOvr[0].value()}')
+            # self.startMovementFCT(self.spinBoxSpeedOvr[0].value())
             self.pushButton_PAUSEtrainig.enablePushButton(1)
             self.pushButton_STOPtrainig.enablePushButton(1)
     
@@ -303,6 +303,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
 
     def clbk_STOPtrainig(self):   
         if self.ROS_active:
+            self.Training_ON = False
             client = roslibpy.Service(self.ros_client, "/tecnobody_workbench_utils/stop_movement", "std_srvs/Trigger")
             req = roslibpy.ServiceRequest()
             client.call(req)
@@ -311,8 +312,9 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
             self.pushButton_PAUSEtrainig.enablePushButton(0)
             self.pushButton_STOPtrainig.enablePushButton(0)
             self._update_TrainingTimer.stop()
-            self.Training_ON = False
-    
+            self.ROS.publish_plc_command(['PLC_node/manual_mode'], [0])
+            self.ROS.turn_off_motors()            
+            
     def clbk_StartMotors(self):
         if self.ROS_active:
             if self.ROS.plc_states['manual_switch_pressed']:
@@ -327,7 +329,6 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         if self.ROS_active:
             # set automatic mode after movement
             self.ROS.publish_plc_command(['PLC_node/manual_mode'], [0])
-            self.ROS.publish_plc_command(['PLC_node/brake_disable'], [0])
             self.ROS.turn_off_motors()
 
     def clbk_BtnResetFaults(self):
@@ -343,7 +344,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
                 self.ModalityActualValue = self.Modalities[self.iPhase] # change here the modality 
                 self.NumberExecMovements += 1
                 print(f'Number of movements: {self.NumberExecMovements} - Ovr: {self.spinBoxSpeedOvr[self.iPhase].value()}')
-                self.startMovementFCT(self.spinBoxSpeedOvr[self.iPhase].value())
+                # self.startMovementFCT(self.spinBoxSpeedOvr[self.iPhase].value())
                 self.spinBoxSpeedOvr[self.iPhase].enabled = False
         else:            
             self.progressBarPhases[19].setValue(100)
@@ -353,16 +354,13 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         if self.Training_ON:
             self.iPhase += 1
             self.movement_completed = True
-        else:
-            self.ROS.turn_off_motors()
-            self.ROS.publish_plc_command(['PLC_node/manual_mode'], [0])
         response['success'] = True
-        return response
+        return True
     
     def on_fct_worker_progress(self, request, response):
         self.execution_time_percentage = int(request['progress'])  # Get the progress percentage from the worker
-        response = True
-        return response
+        response['repetition_ovrs'] =  [sp.value() for sp in self.spinBoxSpeedOvr]
+        return True
 
     def clbk_spinBox_MaxVel(self):
         speed_ovr_Value = self.spinBox_MaxVel.value()
@@ -448,14 +446,12 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
                 times.append(end_time)
                 req = roslibpy.ServiceRequest({
                     'cartesian_positions': [
-                        {'point': points[idx], 'time_from_start': times[idx]} for idx in range(len(times))
-                    ]
+                        {'point': points[idx], 'time_from_start': times[idx]} for idx in range(len(times))],
+                        'repetition_ovrs': [50]
                 })
                 response = client.call(req)
                 if not response['success']:
                     print("Failed to approach point!")
-                else:
-                    self.startMovementFCT()
             except Exception as e:
                 print(f"Exception during go home service call: {e}")
 
@@ -467,8 +463,8 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
             client = roslibpy.Service(self.ros_client, "/tecnobody_workbench_utils/set_trajectory", "tecnobody_msgs/SetTrajectory")
             req = roslibpy.ServiceRequest({
                 'cartesian_positions': [
-                    {'point': self.CartesianPositions[idx], 'time_from_start' : self.TimeFromStart[idx][0]} for idx,val in enumerate(self.TimeFromStart)
-                ]
+                    {'point': self.CartesianPositions[idx], 'time_from_start' : self.TimeFromStart[idx][0]} for idx,val in enumerate(self.TimeFromStart)], 
+                    'repetition_ovrs': [ sp.value() for sp in self.spinBoxSpeedOvr]
             })
             client.call(req)  # type: ignore
 

@@ -72,6 +72,7 @@ class SyncRosManager:
         self.manual_guidance_enabled = False
         self.manual_guidance_enabled_pressed = False
         # Enable zeroing
+        self.homing_process_started = False
         self.homing_check_enabled_pressed = False
         # Buttons to enalbe according to active controller name and active mode of operation
         self.enable_jog_buttons = False
@@ -193,10 +194,10 @@ class SyncRosManager:
         self.switch_controller_client = roslibpy.Service(self.ros_client, '/controller_manager/switch_controller',
                                                          'controller_manager_msgs/srv/SwitchController')
 
-        self.motors_on_client = roslibpy.Service(self.ros_client, '/state_controller/try_turn_on',
+        self.motors_on_client = roslibpy.Service(self.ros_client, '/ethercat_checker/start_motors',
                                                  'std_srvs/srv/Trigger')
 
-        self.motors_off_client = roslibpy.Service(self.ros_client, '/state_controller/try_turn_off',
+        self.motors_off_client = roslibpy.Service(self.ros_client, '/ethercat_checker/stop_motors',
                                                   'std_srvs/srv/Trigger')
 
         self.reset_fault_client = roslibpy.Service(self.ros_client, '/state_controller/reset_fault',
@@ -268,12 +269,12 @@ class SyncRosManager:
                 except Exception:
                     return False
 
-                is_csv_mode = (len(op_response_str['dof_names']) == len(self._joint_names)) and all(
-                    op_response[j] == 9 for j in range(len(self._joint_names)))
-                is_csp_mode = (len(op_response_str['dof_names']) == len(self._joint_names)) and all(
-                    op_response[j] == 8 for j in range(len(self._joint_names)))
-                is_hmg_mode = (len(op_response_str['dof_names']) == len(self._joint_names)) and all(
-                    op_response[j] == 6 for j in range(len(self._joint_names)))
+                is_csv_mode = (len(op_response_str['dof_names']) == len(self._joint_names)) and all([
+                    op_response[j] == 9 for j in range(len(self._joint_names))])
+                is_csp_mode = (len(op_response_str['dof_names']) == len(self._joint_names)) and all([
+                    op_response[j] == 8 for j in range(len(self._joint_names))])
+                is_hmg_mode = (len(op_response_str['dof_names']) == len(self._joint_names)) and all([
+                    op_response[j] == 6 for j in range(len(self._joint_names))])
 
                 state_flags_response = self.get_drive_states()
                 self.is_in_fault_state = state_flags_response['fault_present']
@@ -447,7 +448,6 @@ class SyncRosManager:
             return self.set_mode_of_operation(mode_value)
 
     def perform_homing(self):
-        self.homing_process_started = True
         print('--------------->Performing Homing for all three joints')
         client = roslibpy.Service(self.ros_client, '/state_controller/perform_homing', 'std_srvs/srv/Trigger')
         request = roslibpy.ServiceRequest()
@@ -534,14 +534,11 @@ class SyncRosManager:
 
         self.try_turn_on_in_execution = True
         # turn on the motors
-        print('Turning on drives...')
+        print('Sending request to turn on drives...')
         request = roslibpy.ServiceRequest()
-        result = self.motors_on_client.call(request, callback=self._turn_on_done)
-
-    def _turn_on_done(self, result):
+        result = self.motors_on_client.call(request)
         self.try_turn_on_in_execution = False
-        self.publish_plc_command(['PLC_node/brake_disable'], [1])
-        return result  # type: ignore
+        return result
 
     def turn_off_motors(self):
         if self.try_turn_off_in_execution:
@@ -549,13 +546,11 @@ class SyncRosManager:
             return
         self.try_turn_off_in_execution = True
 
-        print('Turning off drives...')
+        print('Sending request to turn off drives...')
         request = roslibpy.ServiceRequest()
-        self.motors_off_client.call(request, callback=self._turn_off_done)
-
-    def _turn_off_done(self, result):
-        print("Motors off result:", result)
+        result = self.motors_off_client.call(request)
         self.try_turn_off_in_execution = False
+        return result 
 
     def reset_fault(self):
         if self.fault_reset_in_execution:
@@ -586,9 +581,9 @@ class SyncRosManager:
         if self.homing_check_enabled_pressed == pressed:
             return
         self.homing_check_enabled_pressed = pressed
+        self.homing_process_started = True
         if pressed:
-            self.turn_on_motors()
-            if not self.controller_and_op_mode_switch(6, None):
+            if not self.turn_on_motors() or not self.controller_and_op_mode_switch(6, None):
                 print(f"❌ Failed to set homing mode!")
                 return
         else:
