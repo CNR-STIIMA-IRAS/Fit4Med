@@ -35,6 +35,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
 #
     def clbk_BtnCreateMovementData(self):
         MovementsPath = self.ui_FMRRMainWindow.FMRR_Paths['Movements']
+        update_rate = 250
         
         if self.radioButton_SideLeft.isChecked() == True:
             self.SideOfMovement = 1
@@ -69,7 +70,7 @@ class FMRR_Ui_MovementWindow(Ui_MovementWindow):
         x2 = x12; y2 = y12; z2 = z12
 
         T = self.doubleSpinBox_MoveTime.value() # total movement time in sec 
-        t_sample = 1/self.ui_FMRRMainWindow.ROS.update_rate # sampling time in sec
+        t_sample = 1/update_rate # sampling time in sec
         _time = np.linspace(0, T, int(T/t_sample)+1, endpoint = True) # To satisfy Beschi's condition of having steps = 8ms
         print("_time")
         print(_time[0:4])
