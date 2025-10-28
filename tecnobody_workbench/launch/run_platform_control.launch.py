@@ -123,6 +123,7 @@ def generate_launch_description():
         package='controller_manager',
         executable='ros2_control_node',
         parameters=[initial_joint_controllers],
+        # prefix=['xterm -e gdb -ex run --args'],
         output='screen',
     )
 
@@ -185,8 +186,17 @@ def generate_launch_description():
         package='controller_manager',
         executable='spawner',
         arguments=[
-            # 'joint_trajectory_controller'
-            'scaled_trajectory_controller'
+            'joint_trajectory_controller'
+            #'scaled_trajectory_controller'
+        ],
+        output='screen',
+    )
+
+    remapping_controller_node = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=[
+            'remapping_controller'
         ],
         output='screen',
     )
@@ -222,11 +232,12 @@ def generate_launch_description():
     fct_manager_node = Node(
         package='tecnobody_workbench_utils',
         executable='fct_manager_node',
-        arguments=['scaled_trajectory_controller']
+        arguments=['joint_trajectory_controller']
     )
     
     group1 = GroupAction(
                 actions=[
+                    # remapping_controller_node,
                     joint_controller_node,
                     forward_controller_node,
                     forward_pos_controller_node,
@@ -239,6 +250,7 @@ def generate_launch_description():
     
     group2 = GroupAction(
                 actions=[
+                    # remapping_controller_node,
                     joint_controller_node,
                     forward_controller_node,
                     forward_pos_controller_node,
@@ -260,6 +272,13 @@ def generate_launch_description():
         event_handler=OnProcessExit(
             target_action=ssb,
             on_exit=[group2],
+        )
+    )
+
+    joint_controller_launcher = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=remapping_controller_node,
+            on_exit=[joint_controller_node],
         )
     )
 
@@ -302,5 +321,6 @@ def generate_launch_description():
     ld.add_action(controller_unspawner)
     ld.add_action(controllers_launcher_no_homing)
     ld.add_action(fct_manager_launcher)
+    # ld.add_action(joint_controller_launcher)
     ld.add_action(rosbridge_launch)
     return ld

@@ -1,0 +1,21 @@
+remapping_controller:
+  joints:
+    type: string_array
+    description: "List of joints controlled by this controller."
+    read_only: true
+
+  input_command_interfaces:
+    type: string_array
+    description: "Input command interfaces to read from (e.g. ['position', 'velocity'])."
+    read_only: true
+
+  output_command_interfaces:
+    type: string_array
+    description: "Output interfaces to map commands into. Must have same size as input_command_interfaces."
+    read_only: true
+
+  chainable_command_interfaces:
+    type: string_array
+    default_value: ["position", "velocity"]
+    description: "Interfaces that this controller exports for chaining."
+    read_only: true

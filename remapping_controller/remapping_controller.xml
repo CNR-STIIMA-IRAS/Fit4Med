@@ -1,0 +1,8 @@
+<library path="remapping_controller">
+  <class
+    name="remapping_controller/RemappingController"
+    type="remapping_controller::RemappingController"
+    base_class_type="controller_interface::ChainableControllerInterface">
+    <description>Simple remapping chainable controller that forwards input command interfaces to remapped output interfaces.</description>
+  </class>
+</library>

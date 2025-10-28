@@ -83,8 +83,8 @@ def generate_launch_description():
     ld.add_action(ros2_control_node)
     ld.add_action(rsp)
     ld.add_action(plc_controller_spawner)
-    ld.add_action(plc_manager_launcher)
-    ld.add_action(sonar_teach_node)
+    # ld.add_action(plc_manager_launcher)
+    # ld.add_action(sonar_teach_node)
     return ld
 
 

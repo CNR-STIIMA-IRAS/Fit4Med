@@ -8,9 +8,9 @@ controller_manager:
     joint_trajectory_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
-    scaled_trajectory_controller:
-      type: scaled_fjt_controller/ScaledFjtController
-
+    #scaled_trajectory_controller:
+    #  type: scaled_fjt_controller/ScaledFjtController
+      
     state_controller:
       type: ethercat_controllers/CiA402Controller
 
@@ -25,6 +25,9 @@ controller_manager:
 
     forward_velocity_controller:
       type: velocity_controllers/JointGroupVelocityController
+
+    remapping_controller:
+      type: "remapping_controller/RemappingController"
 
 ft_sensor_command_broadcaster:
   ros__parameters:
@@ -69,27 +72,48 @@ joint_trajectory_controller:
 
     command_interfaces:
       - position
+      - velocity
 
     state_interfaces:
       - position
       - velocity
 
-scaled_trajectory_controller:
-  ros__parameters:
-    joints:
-    - joint_x
-    - joint_y
-    - joint_z
-    command_interfaces:
-    - position
-    - acceleration
-    state_interfaces:
-    - position
-    - velocity
-    open_loop_control: true
-    constraints:
-      goal_time: 0.0
-    spline_order: 2
+    command_joints:
+      - remapping_controller/joint_z
+      - remapping_controller/joint_y
+      - remapping_controller/joint_x
+
+    speed_scaling:
+      initial_scaling_factor: 1.0
+      filter_coefficient: 0.9
+      policy: "MINIMUM"
+      subscribed_topics: 
+        - "~/speed_scaling_input"
+
+
+# scaled_trajectory_controller:
+#   ros__parameters:
+#     joints:
+#     - joint_x
+#     - joint_y
+#     - joint_z
+#     speed_scaling:
+#       initial_scaling_factor: 1.0
+#       filter_coefficient: 0.9
+#       policy: "MINIMUM"
+#       subscribed_topics: 
+#         - "~/speed_scaling_input"
+
+#     command_interfaces:
+#     - position
+#     - velocity
+#     state_interfaces:
+#     - position
+#     - velocity
+#     open_loop_control: true
+#     constraints:
+#       goal_time: 0.0
+#     spline_order: 2
 
 state_controller:
   ros__parameters:
@@ -145,3 +169,16 @@ admittance_controller:
       CoG:
         pos: [ 0.01, 0.01, 0.01 ]
         force: 0.01
+
+remapping_controller:
+  ros__parameters:
+    joints: 
+      - joint_x
+      - joint_y
+      - joint_z
+    input_command_interfaces: 
+      - position
+      - velocity
+    output_command_interfaces: 
+      - position
+      - offset_velocity

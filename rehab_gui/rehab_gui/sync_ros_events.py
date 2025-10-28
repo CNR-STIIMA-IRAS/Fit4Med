@@ -12,7 +12,7 @@ import roslibpy
 class SyncRosManager:
     _ros_period = 1
     _controller_list_period = 50  # milliseconds
-    trajectory_controller_name = 'scaled_trajectory_controller'
+    trajectory_controller_name = 'joint_trajectory_controller'
     forward_command_controller = 'forward_velocity_controller'
     admittance_controller = 'admittance_controller'
     current_controller = None
@@ -181,7 +181,7 @@ class SyncRosManager:
     ##############################################################################################
 
     def check_ros_ready(self):
-        self.trajectory_controller_name = 'scaled_trajectory_controller'
+        self.trajectory_controller_name = 'joint_trajectory_controller'
         if self.init_service_clients():
             self._controller_timer.start(self._controller_list_period)
             self._ros_ready_timer.stop()

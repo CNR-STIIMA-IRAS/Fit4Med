@@ -18,7 +18,7 @@ rpdo:  # RxPDO = receive PDO Mapping
       # - {index: 0x6071, sub_index: 0, type: int16, default: 0}  # Target torque
       - {index: 0x6060, sub_index: 0, type: int8, command_interface: mode_of_operation} # , default: 8}  # Mode of operation
       # - {index: 0x60b0, sub_index: 0, type: int32, default: 0}  # Offset position
-      - {index: 0x60b1, sub_index: 0, type: int32, command_interface: acceleration, factor: 39374.5, default: 0}  # Offset velocity
+      - {index: 0x60b1, sub_index: 0, type: int32, command_interface: offset_velocity, factor: 39374.5, default: 0}  # Offset velocity
       # - {index: 0x60b2, sub_index: 0, type: int16, default: 0}  # Offset torque
       # - {index: 0x2078, sub_index: 1, type: uint16, default: 0}  # Digital Output Functionalities
       # - {index: 0x60b8, sub_index: 0, type: uint16, default: 0}  # Touch Probe Function
