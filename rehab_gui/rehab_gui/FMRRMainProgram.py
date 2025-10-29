@@ -113,7 +113,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         elif data == b'RUNNING':
             if not hasattr(self, 'ROS') or self.ROS is None:
                 print("[UdpServer] Starting ROS processes...")
-                self.initializeRosProcesses(self.remote_ip)
+                self.initializeRosProcesses()
         else:
             print(f"[UdpServer] Unknown UDP packet received from UDP client: {data}")
 
