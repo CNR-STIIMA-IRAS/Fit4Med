@@ -41,8 +41,10 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
     _jointPosConvFact = 180/np.pi # conversion from radiants to degrees (used in MovementWindow to display data)
     trigger_pause = pyqtSignal(bool) # signal to pause the worker thread
 
-    def __init__(self):
+    def __init__(self, remote_ip):
         QtCore.QObject.__init__(self)
+
+        self.remote_ip = remote_ip
         self.DialogMovementWindow = QtWidgets.QDialog()
         self.DialogRobotWindow = QtWidgets.QDialog()
         self.FMRRMainWindow = QtWidgets.QMainWindow()
@@ -78,7 +80,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
             return 0
         # Initialize ROS client
         if self.first_time:
-            self.ros_client = roslibpy.Ros(host='127.0.0.1', port=9090)
+            self.ros_client = roslibpy.Ros(host=self.remote_ip, port=9090)
             self.ros_client.run()
         else:
             self.ros_client.connect()
@@ -111,7 +113,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
         elif data == b'RUNNING':
             if not hasattr(self, 'ROS') or self.ROS is None:
                 print("[UdpServer] Starting ROS processes...")
-                self.initializeRosProcesses()
+                self.initializeRosProcesses(self.remote_ip)
         else:
             print(f"[UdpServer] Unknown UDP packet received from UDP client: {data}")
 
@@ -471,9 +473,17 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
 
         
 def main(args=None):
+
+    if len(sys.argv) != 2:
+        print("Usage: python FMRRMainProgram.py <REMOTE MACHINE IP>")
+        print("----- We will use localhost (127.0.0.1) as default -----")
+        remote_ip = '127.0.0.1'
+    else:
+        remote_ip = sys.argv[1]
+
     QPushButton.enablePushButton = MC_Tools.enablePushButton #Adding a new method defined in MC_Tools file
     app = QtWidgets.QApplication(sys.argv)
-    ui = MainProgram()
+    ui = MainProgram(remote_ip)
     ui.setupUi_MainWindow()
     ui.retranslateUi_MainWindow(app)
     ui.definePaths()
