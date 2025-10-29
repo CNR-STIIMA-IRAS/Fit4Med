@@ -45,8 +45,6 @@ class FollowJointTrajectoryActionManager(Node):
 
         self.get_logger().info(f"Connecting to: /{controller_name}/follow_joint_trajectory")
         self.client = ActionClient(self, FollowJointTrajectory, f"/{controller_name}/follow_joint_trajectory")
-        if self.client.wait_for_server(timeout_sec=5.0):
-            self.get_logger().info('Follow Joint Trajectory Action server is not available.')
             
     def clear(self):
         self.goalFCT = FollowJointTrajectory.Goal()
@@ -58,59 +56,93 @@ class FollowJointTrajectoryActionManager(Node):
         cartesian_positions = [r.point for r in request.cartesian_positions]
         time_from_start = [r.time_from_start for r in request.cartesian_positions]
 
+        self.get_logger().info(f"Received trajectory with {len(cartesian_positions)} points.")
+
         self.clear()
-
-        self._total_time_s = (time_from_start[-1] - time_from_start[0])
-        if self._total_time_s <= 0:
-            self._total_time_s = 1.0
-
+        
         _numSample = len(time_from_start)
-        self._point_velocities = [0.0] * _numSample
-        self._point_accelerations= [0.0] * _numSample
 
         t_spl = np.zeros(_numSample)
-        self._time_from_start_duration = [0] * _numSample
         for iPoint in range(0, _numSample):
             _time_from_start_s = time_from_start[iPoint]
             t_spl[iPoint] = float(_time_from_start_s)
 
         # Interpolate trajectory and calculate velocities and accelerations
         P = np.array(cartesian_positions)
+
         # Set bc_type so that velocity is zero at start and end
         bc_type = ((1, 0.0), (1, 0.0))  # Only first derivative (velocity) = 0 at both ends
         splines = [CubicSpline(t_spl, P[:, i], bc_type=bc_type) for i in range(3)]
-        for iPoint in range(_numSample):
-            t_iPoint = t_spl[iPoint]
-            pos = np.array([s(t_iPoint) for s in splines])
-            vel = np.array([s.derivative(1)(t_iPoint) for s in splines])
-            acc = np.array([s.derivative(2)(t_iPoint) for s in splines])
-            self._time_from_start_duration[iPoint] = Duration(sec=int(t_iPoint),nanosec=int((t_iPoint - int(t_iPoint)) * 1e9))
-            self._point_velocities[iPoint] = vel
-            self.addPoint(pos, vel, acc, t_iPoint)
-        
-        self.repetition_ovrs = request.repetition_ovrs
-        response.success = self.sendFCTGoal()        
 
-        self.go_home_mode = False
-        response.success = True
+        num_repetitions = int(60/time_from_start[-1])
+        _numSample_complete = len(time_from_start) * num_repetitions
+        self._point_velocities = [0.0] * _numSample_complete
+        self._point_accelerations = [0.0] * _numSample_complete
+        self._total_time_s = (time_from_start[-1] - time_from_start[0])*num_repetitions
+        if self._total_time_s <= 0:
+            self._total_time_s = 1.0
+
+        # Compute total duration of one repetition
+        T_single = t_spl[-1]
+        num_repetitions = int(60 / T_single)
+        self._total_time_s = num_repetitions * T_single
+        self._time_from_start_duration = [Duration(sec=0, nanosec=0)] * _numSample_complete
+
+        # Fix new sampling frequency
+        sample_dt = 0.1
+        num_samples_dt = int(self._total_time_s / sample_dt)
+
+        # Generate time vector
+        t_full = np.linspace(0, self._total_time_s, num_samples_dt)
+
+        # Time module vector for single repetition
+        t_mod = np.mod(t_full, T_single)
+
+        # Compute positions, velocities, accelerations
+        P_pos = np.stack([s(t_mod) for s in splines], axis=1)
+        P_vel = np.stack([s.derivative(1)(t_mod) for s in splines], axis=1)
+        P_acc = np.stack([s.derivative(2)(t_mod) for s in splines], axis=1)
+
+        # Add points
+        for i, t in enumerate(t_full):
+            pos = P_pos[i]
+            vel = P_vel[i]
+            acc = P_acc[i]
+            self._point_velocities[i] = vel
+            self._point_accelerations[i] = acc
+            self._time_from_start_duration[i] = Duration(sec=int(t), nanosec=int((t - int(t)) * 1e9))
+            self.addPoint(pos, vel, acc, self._time_from_start_duration[i])
+
+        self.get_logger().info(f"Subsampled at {1/sample_dt:.1f} Hz -> {len(t_full)} total points.")
+        self.get_logger().info(f'Goal has {len(self.goalFCT.trajectory.points)} points.')
+
+        self.repetition_ovrs = request.repetition_ovrs 
+        response.success = self.sendFCTGoal() 
+        self.get_logger().info(f"Trajectory sento to FCT with result: {response.success}") 
+        self.go_home_mode = False 
+        response.success = True 
         return response
     
     def setSpeedOverride(self, speed_ovr : int = 100):
         self.speed_scale = speed_ovr / 100.0
         vel_scaled = [v * self.speed_scale for v in self._point_velocities]
-        acc_scaled = [a * self.speed_scale*self.speed_scale for a in self._point_velocities]
+        acc_scaled = [a * self.speed_scale*self.speed_scale for a in self._point_accelerations]
+
         for iPoint in range(len(self.goalFCT.trajectory.points)):
+
             _d = self._time_from_start_duration[iPoint]
+
             _time_from_start_s = (_d.sec + (_d.nanosec / 1e9)) / self.speed_scale
-    
             self.goalFCT.trajectory.points[iPoint].time_from_start = Duration(
                 sec=int(_time_from_start_s),
                 nanosec=int((_time_from_start_s - int(_time_from_start_s)) * 1e9)
             )
             self.goalFCT.trajectory.points[iPoint].velocities = vel_scaled[iPoint]
             self.goalFCT.trajectory.points[iPoint].accelerations = acc_scaled[iPoint]
+
             if iPoint==0 or iPoint==len(self.goalFCT.trajectory.points):
                 if vel_scaled[iPoint].any() != 0:
+
                     for dof in range(len(vel_scaled[iPoint])):
                         if abs(vel_scaled[iPoint][dof]) < 1e-3:
                             vel_scaled[iPoint][dof] = 0.0
@@ -122,6 +154,7 @@ class FollowJointTrajectoryActionManager(Node):
                             acc_scaled[iPoint][dof] = 0.0
                         else:
                             self.get_logger().info(f"Warning: Acceleration at point {iPoint} is not zero, but it should be. Acc: {vel_scaled[iPoint]}")
+
     
     def addPoint(self, positions, velocities, accelerations, time):
         point=JointTrajectoryPoint()
@@ -134,12 +167,16 @@ class FollowJointTrajectoryActionManager(Node):
     
     def sendFCTGoal(self):
     # Called at the beginning of each movement
+        self.get_logger().info("sending FCT goal")
         self.setSpeedOverride(self.repetition_ovrs[self.movement_execution_cnt])
+        self.get_logger().info("set speed override")
+
         self._init_time_s = time.time()
         self._paused_duration = 0.0
         self._last_actual_time_pct = 0.0
         self._pause_start_time = None
         self.goalFCT.trajectory.header.stamp = self.get_clock().now().to_msg()
+        self.get_logger().info("sending goal to FCT server")
         self._send_goal_future = self.client.send_goal_async(self.goalFCT)
         self._send_goal_future.add_done_callback(self.on_goal_accepted)
         self.go_home_mode = False
@@ -231,6 +268,7 @@ class FollowJointTrajectoryActionManager(Node):
     
     def stop(self, request, response):
         self.repetition_ovrs = []
+        self.timer.cancel()
         if hasattr(self, '_goal_handle') and self._goal_handle is not None:
             cancel_future = self._goal_handle.cancel_goal_async()
             cancel_future.add_done_callback(self.on_cancelled)
@@ -259,7 +297,6 @@ def main(args=None):
         node.get_logger().info('Keyboard interrupt, shutting down.\n')
     finally:
         node.destroy_node()
-        rclpy.shutdown()
 
 
 if __name__ == '__main__':

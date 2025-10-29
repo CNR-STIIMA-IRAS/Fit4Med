@@ -5,7 +5,7 @@
         <hardware>
             <plugin>ethercat_driver/EthercatDriver</plugin>
             <param name="master_id">0</param>
-            <param name="control_frequency">250</param>
+            <param name="control_frequency">500</param>
         </hardware>
 
         <gpio name="PLC_node">

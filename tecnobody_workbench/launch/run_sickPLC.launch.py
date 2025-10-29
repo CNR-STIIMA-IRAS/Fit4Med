@@ -6,6 +6,10 @@ from launch.actions import RegisterEventHandler, DeclareLaunchArgument, IncludeL
 from launch.event_handlers import OnProcessExit
 # os.environ['RCUTILS_CONSOLE_OUTPUT_FORMAT']="[{severity}] [{name}]: {message} ({function_name}() at {file_name}:{line_number})"
 
+
+import os
+os.sched_setaffinity(0, {2})
+
 def generate_launch_description():
     controllers_file = 'plc_controller.yaml'
     description_package = 'tecnobody_workbench'
@@ -83,8 +87,8 @@ def generate_launch_description():
     ld.add_action(ros2_control_node)
     ld.add_action(rsp)
     ld.add_action(plc_controller_spawner)
-    # ld.add_action(plc_manager_launcher)
-    # ld.add_action(sonar_teach_node)
+    ld.add_action(plc_manager_launcher)
+    ld.add_action(sonar_teach_node)
     return ld
 
 

@@ -237,8 +237,7 @@ def generate_launch_description():
     
     group1 = GroupAction(
                 actions=[
-                    # remapping_controller_node,
-                    joint_controller_node,
+                    remapping_controller_node,
                     forward_controller_node,
                     forward_pos_controller_node,
                     admittance_controller_node,
@@ -250,8 +249,7 @@ def generate_launch_description():
     
     group2 = GroupAction(
                 actions=[
-                    # remapping_controller_node,
-                    joint_controller_node,
+                    remapping_controller_node,
                     forward_controller_node,
                     forward_pos_controller_node,
                     admittance_controller_node,
@@ -289,7 +287,7 @@ def generate_launch_description():
         )
     )
 
-    rosbridge_pkg = FindPackageShare('rosbridge_server').find('rosbridge_server')
+    rosbridge_pkg = FindPackageShare('tecnobody_workbench').find('tecnobody_workbench')
     xml_launch = os.path.join(rosbridge_pkg, 'launch', 'rosbridge_websocket_launch.xml')
 
     rosbridge_launch = IncludeLaunchDescription(
@@ -321,6 +319,6 @@ def generate_launch_description():
     ld.add_action(controller_unspawner)
     ld.add_action(controllers_launcher_no_homing)
     ld.add_action(fct_manager_launcher)
-    # ld.add_action(joint_controller_launcher)
+    ld.add_action(joint_controller_launcher)
     ld.add_action(rosbridge_launch)
     return ld

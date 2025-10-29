@@ -25,4 +25,4 @@ while :; do
     shift
 done
 
-ros2 launch tecnobody_workbench run_platform_control.launch.py perform_homing:=$perform_homing
+ros2 launch tecnobody_workbench run_platform_control.launch.py perform_homing:=$perform_homing 

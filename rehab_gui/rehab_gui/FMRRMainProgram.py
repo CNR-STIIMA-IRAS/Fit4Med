@@ -304,6 +304,7 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
     def clbk_STOPtrainig(self):   
         if self.ROS_active:
             self.Training_ON = False
+            self._update_TrainingTimer.stop()
             client = roslibpy.Service(self.ros_client, "/tecnobody_workbench_utils/stop_movement", "std_srvs/Trigger")
             req = roslibpy.ServiceRequest()
             client.call(req)
@@ -311,7 +312,6 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
                 iProgBar = 0
             self.pushButton_PAUSEtrainig.enablePushButton(0)
             self.pushButton_STOPtrainig.enablePushButton(0)
-            self._update_TrainingTimer.stop()
             self.ROS.publish_plc_command(['PLC_node/manual_mode'], [0])
             self.ROS.turn_off_motors()            
             
@@ -466,7 +466,8 @@ class MainProgram(Ui_FMRRMainWindow, QtCore.QObject):
                     {'point': self.CartesianPositions[idx], 'time_from_start' : self.TimeFromStart[idx][0]} for idx,val in enumerate(self.TimeFromStart)], 
                     'repetition_ovrs': [ sp.value() for sp in self.spinBoxSpeedOvr]
             })
-            client.call(req)  # type: ignore
+            client.call(req, callback = lambda r : print(f'Trajectory sent to FCT: {r["success"]}'))  # type: ignore
+            
 
         
 def main(args=None):

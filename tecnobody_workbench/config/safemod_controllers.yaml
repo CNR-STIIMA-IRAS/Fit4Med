@@ -83,12 +83,24 @@ joint_trajectory_controller:
       - remapping_controller/joint_y
       - remapping_controller/joint_x
 
+    set_last_command_interface_value_as_state_on_activation: false
     speed_scaling:
       initial_scaling_factor: 1.0
       filter_coefficient: 0.9
       policy: "MINIMUM"
       subscribed_topics: 
         - "~/speed_scaling_input"
+    
+    constraints:
+      joint_x:
+        trajectory: 0.05
+        goal: 0.005
+      joint_y:
+        trajectory: 0.05
+        goal: 0.005
+      joint_z:
+        trajectory: 0.05
+        goal: 0.005
 
 
 # scaled_trajectory_controller:
