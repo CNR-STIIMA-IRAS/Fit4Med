@@ -1,0 +1,4 @@
+float64 amplitude
+float64 time_constant
+string target
+int8 jog_joint_idx

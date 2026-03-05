@@ -23,16 +23,14 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'homing_node = tecnobody_workbench_utils.homing:main',
             'boot_hw = tecnobody_workbench_utils.boot_hw:main',
             'ethercat_checker_node = tecnobody_workbench_utils.eth_checker:main',
             'homing_completion_publisher = tecnobody_workbench_utils.homing_completion_publisher:main',
             'trajectory_action_client = tecnobody_workbench_utils.send_trajectory:main',
             'ft_offset_updater = tecnobody_workbench_utils.ft_offset_updater:main',
-            'gpio_command_publisher = tecnobody_workbench_utils.gpio_command:main',
-            'ros_controllers_checker = tecnobody_workbench_utils.check_active_controllers:main',
             'launch_status_publisher = tecnobody_workbench_utils.launch_status_publisher',
             'fct_manager_node = tecnobody_workbench_utils.gui_trajectory_manager:main',
+            'filter_commands_node = tecnobody_workbench_utils.filter_commands:main',
             'sonar_teach_node = tecnobody_workbench_utils.sonar_teach:main'
         ],
     },

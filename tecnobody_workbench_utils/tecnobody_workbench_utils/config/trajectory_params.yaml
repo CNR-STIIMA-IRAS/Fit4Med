@@ -1,15 +1,4 @@
-cart_coordinates:
-- [-0.4, 0.2, -0.1]
-- [ 0.0, 0.0, 0.0 ] #Always end with home position
-
-velocities:
-- [ 0.0, 0.0, 0.0 ]
-- [ 0.0, 0.0, 0.0 ]
-
-accelerations:
-- [ 0.0, 0.0, 0.0 ]
-- [ 0.0, 0.0, 0.0 ]
-
-durations:
-- 2.0
-- 4.0
+# Trajectory endpoint and nominal duration
+target_position: [ 0.3, -0.3, 0.0 ] # Final cartesian position [m]
+nominal_duration: 2.0 # Time to reach target [s]
+num_waypoints: 10 # Number of intermediate waypoints to generate

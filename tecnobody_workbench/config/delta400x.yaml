@@ -25,7 +25,7 @@ tpdo:  # TxPDO = transmit PDO Mapping
       - {index: 0x6041, sub_index: 0, type: uint16, state_interface: status_word}  # Status word
       - {index: 0x6064, sub_index: 0, type: int32, state_interface: position, factor: 0.00000002380734375}  # Position actual value   - factor 2 * pi/(2^17)
       - {index: 0x606c, sub_index: 0, type: int32, state_interface: velocity, factor: 0.00005079}  # Velocity actual value   - factor 2 * pi/(2^17)
-      # - {index: 0x6077, sub_index: 0, type: int16, state_interface: effort}  # Torque actual value
+      - {index: 0x6077, sub_index: 0, type: int16, state_interface: effort}  # Torque actual value
       - {index: 0x6061, sub_index: 0, type: int8, state_interface: mode_of_operation}  # Mode of operation display
       # - {index: 0x2071, sub_index: 1, type: int16}  # Digital Input Functionalities State
       # - {index: 0x60b9, sub_index: 0, type: int16}  # Touch Probe Status

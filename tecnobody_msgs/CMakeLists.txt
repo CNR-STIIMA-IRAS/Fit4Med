@@ -14,9 +14,12 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/PlcController.msg"
   "msg/PlcStates.msg"
   "msg/CartesianPoint.msg"
+  "msg/SoftStartStop.msg"
   "srv/SetTrajectory.srv"
-  "srv/StartMovement.srv"
+  "srv/SetExercise.srv"
+  #"srv/StartMovement.srv"
   "srv/MovementProgress.srv"
+  "srv/SoftMovement.srv"
 )
 
 if(BUILD_TESTING)

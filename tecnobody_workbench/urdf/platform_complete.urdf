@@ -201,7 +201,7 @@
     <child link="link1"/>
     <origin xyz="0 ${-beam_lenght/2} ${col_height/2}" rpy="${-PI/2.0} 0 ${PI}"/>
     <axis xyz="0 0 -1"/>
-    <limit lower="${-beam_lenght/2+2*radius}" upper="${beam_lenght/2-2*radius}" effort="1000" velocity="1"/>
+    <limit lower="${-beam_lenght/2+2*radius}" upper="${beam_lenght/2-2*radius}" effort="1000" velocity="1" acceleration="0.5"/>
   </joint>
 
   <joint name="joint_y_fixed" type="fixed">
@@ -215,7 +215,7 @@
     <child link="link2"/>
     <origin xyz="0 0 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
-    <limit lower="${-beam_lenght/2+2*radius}" upper="${beam_lenght/2-2*radius}" effort="1000" velocity="1"/>
+    <limit lower="${-beam_lenght/2+2*radius}" upper="${beam_lenght/2-2*radius}" effort="1000" velocity="1" acceleration="0.5"/>
   </joint>
 
   <joint name="joint_z" type="prismatic">
@@ -223,7 +223,7 @@
     <child link="link3"/>
     <origin xyz="0 0 0" rpy="-${PI/2.0} 0 0"/>
     <axis xyz="0 0 1"/>
-    <limit lower="${-z_height/2}" upper="${z_height/2}" effort="1000" velocity="1"/>
+    <limit lower="${-z_height/2}" upper="${z_height/2}" effort="1000" velocity="1" acceleration="0.5"/>
   </joint>
 
   <joint name="flange_joint" type="fixed">

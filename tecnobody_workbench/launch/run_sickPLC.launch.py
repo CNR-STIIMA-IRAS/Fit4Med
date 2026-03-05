@@ -1,15 +1,38 @@
+from typing import List
+import subprocess
+
 from launch import LaunchDescription
 from launch.substitutions import PathJoinSubstitution, Command, FindExecutable, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
-from launch.actions import RegisterEventHandler, DeclareLaunchArgument, IncludeLaunchDescription
-from launch.event_handlers import OnProcessExit
-# os.environ['RCUTILS_CONSOLE_OUTPUT_FORMAT']="[{severity}] [{name}]: {message} ({function_name}() at {file_name}:{line_number})"
+from launch.actions import RegisterEventHandler, DeclareLaunchArgument, IncludeLaunchDescription, ExecuteProcess, EmitEvent, RegisterEventHandler, LogInfo, OpaqueFunction
+from launch.event_handlers import OnProcessExit, OnShutdown
+from launch.events import Shutdown
 
+
+
+# os.environ['RCUTILS_CONSOLE_OUTPUT_FORMAT']="[{severity}] [{name}]: {message} ({function_name}() at {file_name}:{line_number})"
 
 import os
 os.sched_setaffinity(0, {2})
 
+plc_controller_manager_node_name="plc_controller_manager"
+
+def clean_shutdown(event, context):
+    import os
+    nodes_names = ['robot_state_publisher', 'plc_manager_node', 'sonar_teach_node', 'ros2_control_node']
+    for nm in nodes_names:
+        _nm = nm[0:15] if len(nm)>15  else nm
+        if event.reason == "ctrl-c (SIGINT)":
+            os.system(f'pkill -SIGINT {_nm}')
+        elif event.reason == "ctrl-z (SIGTERM)":
+            os.system(f'pkill -SIGTERM {_nm}')
+        else:
+            os.system(f'pkill -SIGTERM {_nm}')
+    return [
+        LogInfo(msg=f'Shutdown Callback "{event.reason}" forwarded to {nodes_names}'),
+    ]
+    
 def generate_launch_description():
     controllers_file = 'plc_controller.yaml'
     description_package = 'tecnobody_workbench'
@@ -36,7 +59,7 @@ def generate_launch_description():
     ros2_control_node = Node(
         package='controller_manager',
         executable='ros2_control_node',
-        name='plc_controller_manager',
+        name=f'{plc_controller_manager_node_name}',
         remappings=[('robot_description', 'plc_robot_description')],
         arguments=[],
         parameters=[initial_joint_controllers],
@@ -55,7 +78,7 @@ def generate_launch_description():
     plc_controller_spawner = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['PLC_controller', '-c', '/plc_controller_manager'],
+        arguments=['PLC_controller', '-c', f'/{plc_controller_manager_node_name}'],
         output='screen',
     )
 
@@ -80,6 +103,13 @@ def generate_launch_description():
         output='screen',
     )
 
+    nodes_killer = RegisterEventHandler(
+        event_handler=OnShutdown(
+            on_shutdown=clean_shutdown # type: ignore
+        )
+    )
+
+
     # Create the launch description and populate
     ld = LaunchDescription()
 
@@ -89,6 +119,7 @@ def generate_launch_description():
     ld.add_action(plc_controller_spawner)
     ld.add_action(plc_manager_launcher)
     ld.add_action(sonar_teach_node)
+    ld.add_action(nodes_killer)
     return ld
 
 

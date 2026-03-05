@@ -25,7 +25,7 @@ def generate_launch_description():
         [
             PathJoinSubstitution([FindExecutable(name='xacro')]),
             ' ',
-            PathJoinSubstitution([FindPackageShare(moveit_config_package), "urdf", 'tecnobody.urdf.xacro']),
+            PathJoinSubstitution([FindPackageShare(moveit_config_package), "config", 'tecnobody.urdf.xacro']),
             
         ]
     )
@@ -36,7 +36,7 @@ def generate_launch_description():
         [
             PathJoinSubstitution([FindExecutable(name="xacro")]),
             " ",
-            PathJoinSubstitution([FindPackageShare(moveit_config_package), "urdf", "tecnobody.srdf"]),
+            PathJoinSubstitution([FindPackageShare(moveit_config_package), "config", "tecnobody.srdf"]),
         ]
     )
     robot_description_semantic = {"robot_description_semantic": ParameterValue(robot_description_semantic_content, value_type=str)}
@@ -52,7 +52,7 @@ def generate_launch_description():
         description="ROS 2 control hardware interface type to use for the launch file -- possible values: [mock_components, isaac]",
     )
     initial_joint_controllers = PathJoinSubstitution(
-        [FindPackageShare(moveit_config_package), "config", 'ros2_controllers.yaml']
+        [FindPackageShare(moveit_config_package), "config", 'ros2_fake_controllers.yaml']
     )
     
     ros2_control_node = Node(
@@ -78,7 +78,7 @@ def generate_launch_description():
     ros2_controller = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['fmrrehab_controller'],
+        arguments=['joint_trajectory_controller'],
         output='screen',
     )
 
@@ -86,14 +86,14 @@ def generate_launch_description():
     moveit_config = (
         MoveItConfigsBuilder("fmrrehab")
         .robot_description(
-            file_path="urdf/tecnobody_real.urdf.xacro",
+            file_path="config/tecnobody_real.urdf.xacro",
             mappings={
                 "ros2_control_hardware_type": LaunchConfiguration(
                     "ros2_control_hardware_type"
                 )
             },
         )
-        .robot_description_semantic(file_path="urdf/tecnobody.srdf")
+        .robot_description_semantic(file_path="config/tecnobody.srdf")
         .planning_scene_monitor(
             publish_robot_description=True, publish_robot_description_semantic=True
         )

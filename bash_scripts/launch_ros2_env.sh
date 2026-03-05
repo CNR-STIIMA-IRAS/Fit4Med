@@ -1,5 +1,5 @@
 #!/bin/bash
-source ~/fit4med_ws/install/setup.bash
+source /home/fit4med/fit4med_ws/install/setup.bash
 
 perform_homing=false
 while :; do

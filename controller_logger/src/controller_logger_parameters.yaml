@@ -1,3 +1,0 @@
-controller_logger:
-  joints: { type: string_array, default_value: [], description: "Name of the joints to control" }
-  interfaces: { type: string_array, default_value: [], description: "Name of the interface to command" }

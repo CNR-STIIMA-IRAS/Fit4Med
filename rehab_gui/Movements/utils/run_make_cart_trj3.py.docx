@@ -1,0 +1,14 @@
+
+from make_cart_trj3_module import make_cart_trj3_from_points
+
+if __name__ == "__main__":
+
+    P = [
+        [0,0,0],
+        [0.02,0.10,0.25],
+        [0.05,0.18,0.40],
+        [0.0165,0.2599,0.5650]
+    ]
+
+    output = make_cart_trj3_from_points(P, "out.yaml")
+    print("YAML generated:", output)

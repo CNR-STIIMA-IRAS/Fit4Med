@@ -83,14 +83,16 @@ def clean_shutdown():
             "admittance_controller"
         ],
     )
+
+
     return LaunchDescription([
         joint_state_broadcaster_unspawner,
         state_controller_unspawner,
         force_torque_sensor_broadcaster_unspawner,
-        joint_controller_unspawner,
         forward_pos_controller_unspawner,
         forward_vel_controller_unspawner,
-        admittance_controller_unspawner
+        admittance_controller_unspawner,
+        joint_controller_unspawner,
     ])
 
 
@@ -234,7 +236,17 @@ def generate_launch_description():
         executable='fct_manager_node',
         arguments=['joint_trajectory_controller']
     )
-    
+
+    filter_commands_node = Node(
+        package='tecnobody_workbench_utils',
+        executable='filter_commands_node',
+        parameters=[{'forward_velocity_controller_name': 'forward_velocity_controller', 
+                   'joint_trajectory_controller_name':'joint_trajectory_controller', 
+                   'default_sample_rate':250,
+                   'desampled_rate':25,
+                   'joint_names': ['joint_x', 'joint_y', 'joint_z']}]
+    )
+
     group1 = GroupAction(
                 actions=[
                     remapping_controller_node,
@@ -283,7 +295,14 @@ def generate_launch_description():
     fct_manager_launcher = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=joint_controller_node,
-            on_exit=[fct_manager_node],
+            on_exit=[fct_manager_node, filter_commands_node],
+        )
+    )
+
+    ft_offset_updater_launcher = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=fsb,
+            on_exit=[ft_offset_updater],
         )
     )
 
@@ -320,5 +339,6 @@ def generate_launch_description():
     ld.add_action(controllers_launcher_no_homing)
     ld.add_action(fct_manager_launcher)
     ld.add_action(joint_controller_launcher)
+    ld.add_action(ft_offset_updater_launcher)
     ld.add_action(rosbridge_launch)
     return ld

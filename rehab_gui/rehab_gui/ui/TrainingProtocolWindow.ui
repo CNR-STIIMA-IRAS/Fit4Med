@@ -1,0 +1,1646 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>TrainingProtocolWindow</class>
+ <widget class="QDialog" name="TrainingProtocolWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>606</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="font">
+   <font>
+    <family>FreeSans</family>
+    <pointsize>9</pointsize>
+    <kerning>false</kerning>
+   </font>
+  </property>
+  <property name="windowTitle">
+   <string>Dialog</string>
+  </property>
+  <widget class="QWidget" name="layoutWidget">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>10</y>
+     <width>587</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <layout class="QHBoxLayout" name="horizontalLayout">
+    <item>
+     <widget class="QLabel" name="label_4">
+      <property name="text">
+       <string>Exercise</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QRadioButton" name="radioButton_TypeOfExercise_Reaching">
+      <property name="text">
+       <string>Reaching</string>
+      </property>
+      <property name="checked">
+       <bool>false</bool>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QRadioButton" name="radioButton_TypeOfExercise_HandtoMouth">
+      <property name="text">
+       <string>Hand to mouth</string>
+      </property>
+      <property name="checked">
+       <bool>false</bool>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <spacer name="horizontalSpacer">
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+      <property name="sizeHint" stdset="0">
+       <size>
+        <width>15</width>
+        <height>20</height>
+       </size>
+      </property>
+     </spacer>
+    </item>
+    <item>
+     <widget class="QLabel" name="label_5">
+      <property name="text">
+       <string>Side</string>
+      </property>
+      <property name="alignment">
+       <set>Qt::AlignCenter</set>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QRadioButton" name="radioButton_SideLeft">
+      <property name="text">
+       <string>Left</string>
+      </property>
+      <property name="checked">
+       <bool>false</bool>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QRadioButton" name="radioButton_SideRight">
+      <property name="text">
+       <string>Right</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <spacer name="horizontalSpacer_2">
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+      <property name="sizeHint" stdset="0">
+       <size>
+        <width>15</width>
+        <height>20</height>
+       </size>
+      </property>
+     </spacer>
+    </item>
+    <item>
+     <widget class="QLabel" name="label_3">
+      <property name="font">
+       <font>
+        <family>FreeSans</family>
+        <pointsize>9</pointsize>
+        <bold>false</bold>
+        <kerning>false</kerning>
+       </font>
+      </property>
+      <property name="text">
+       <string>Mode</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QRadioButton" name="radioButton_RehabMode">
+      <property name="text">
+       <string>Rehab</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QRadioButton" name="radioButton_EEGMode">
+      <property name="text">
+       <string>EEG</string>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QWidget" name="layoutWidget">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>390</y>
+     <width>598</width>
+     <height>28</height>
+    </rect>
+   </property>
+   <layout class="QHBoxLayout" name="horizontalLayout_2">
+    <item>
+     <widget class="QLabel" name="label_6">
+      <property name="text">
+       <string>Vmax (cm/s)</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLCDNumber" name="lcdNumber_MaxVel"/>
+    </item>
+    <item>
+     <widget class="QLabel" name="label_7">
+      <property name="text">
+       <string>Movement Time</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLCDNumber" name="lcdNumber_SinglePhaseDuration"/>
+    </item>
+    <item>
+     <widget class="QLabel" name="label_8">
+      <property name="text">
+       <string>EXERCISE Time</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLCDNumber" name="lcdNumberExerciseTotalTime">
+      <property name="digitCount">
+       <number>2</number>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLabel" name="label_9">
+      <property name="text">
+       <string>Movement COUNT</string>
+      </property>
+     </widget>
+    </item>
+    <item>
+     <widget class="QLCDNumber" name="lcdNumber_MovementCOUNT">
+      <property name="digitCount">
+       <number>3</number>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QWidget" name="layoutWidget">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>60</y>
+     <width>583</width>
+     <height>322</height>
+    </rect>
+   </property>
+   <layout class="QGridLayout" name="gridLayout">
+    <item row="11" column="4">
+     <widget class="QProgressBar" name="progressBarPhase20">
+      <property name="value">
+       <number>24</number>
+      </property>
+     </widget>
+    </item>
+    <item row="6" column="4">
+     <widget class="QProgressBar" name="progressBarPhase15">
+      <property name="value">
+       <number>24</number>
+      </property>
+     </widget>
+    </item>
+    <item row="8" column="2">
+     <widget class="QSpinBox" name="spinBoxPercPhase07">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="10" column="5">
+     <widget class="QSpinBox" name="spinBoxDurationPhase19">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="7" column="0">
+     <widget class="QProgressBar" name="progressBarPhase06">
+      <property name="value">
+       <number>24</number>
+      </property>
+     </widget>
+    </item>
+    <item row="10" column="3">
+     <widget class="QLCDNumber" name="lcdNumberMaxVelPhase09">
+      <property name="digitCount">
+       <number>3</number>
+      </property>
+     </widget>
+    </item>
+    <item row="5" column="7">
+     <widget class="QLCDNumber" name="lcdNumberMaxVelPhase14">
+      <property name="digitCount">
+       <number>3</number>
+      </property>
+     </widget>
+    </item>
+    <item row="8" column="7">
+     <widget class="QLCDNumber" name="lcdNumberMaxVelPhase17">
+      <property name="digitCount">
+       <number>3</number>
+      </property>
+     </widget>
+    </item>
+    <item row="9" column="6">
+     <widget class="QSpinBox" name="spinBoxPercPhase18">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="7" column="6">
+     <widget class="QSpinBox" name="spinBoxPercPhase16">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="11" column="1">
+     <widget class="QSpinBox" name="spinBoxDurationPhase10">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="6" column="6">
+     <widget class="QSpinBox" name="spinBoxPercPhase15">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="4" column="3">
+     <widget class="QLCDNumber" name="lcdNumberMaxVelPhase03">
+      <property name="digitCount">
+       <number>3</number>
+      </property>
+     </widget>
+    </item>
+    <item row="3" column="3">
+     <widget class="QLCDNumber" name="lcdNumberMaxVelPhase02">
+      <property name="digitCount">
+       <number>3</number>
+      </property>
+     </widget>
+    </item>
+    <item row="7" column="5">
+     <widget class="QSpinBox" name="spinBoxDurationPhase16">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="9" column="5">
+     <widget class="QSpinBox" name="spinBoxDurationPhase18">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="4" column="0">
+     <widget class="QProgressBar" name="progressBarPhase03">
+      <property name="value">
+       <number>24</number>
+      </property>
+     </widget>
+    </item>
+    <item row="2" column="6">
+     <widget class="QSpinBox" name="spinBoxPercPhase11">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="5" column="6">
+     <widget class="QSpinBox" name="spinBoxPercPhase14">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="4" column="6">
+     <widget class="QSpinBox" name="spinBoxPercPhase13">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="3" column="2">
+     <widget class="QSpinBox" name="spinBoxPercPhase02">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="2" column="7">
+     <widget class="QLCDNumber" name="lcdNumberMaxVelPhase11">
+      <property name="digitCount">
+       <number>3</number>
+      </property>
+     </widget>
+    </item>
+    <item row="5" column="0">
+     <widget class="QProgressBar" name="progressBarPhase04">
+      <property name="value">
+       <number>24</number>
+      </property>
+     </widget>
+    </item>
+    <item row="3" column="4">
+     <widget class="QProgressBar" name="progressBarPhase12">
+      <property name="value">
+       <number>24</number>
+      </property>
+     </widget>
+    </item>
+    <item row="1" column="4" colspan="4">
+     <widget class="QLabel" name="label_2">
+      <property name="text">
+       <string>Perc                                       Duration    Override  cm/s</string>
+      </property>
+      <property name="alignment">
+       <set>Qt::AlignCenter</set>
+      </property>
+     </widget>
+    </item>
+    <item row="6" column="5">
+     <widget class="QSpinBox" name="spinBoxDurationPhase15">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="11" column="6">
+     <widget class="QSpinBox" name="spinBoxPercPhase20">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="10" column="6">
+     <widget class="QSpinBox" name="spinBoxPercPhase19">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="1" column="0" colspan="4">
+     <widget class="QLabel" name="label">
+      <property name="text">
+       <string>Perc                                          Duration    Override    cm/s</string>
+      </property>
+      <property name="alignment">
+       <set>Qt::AlignCenter</set>
+      </property>
+     </widget>
+    </item>
+    <item row="8" column="0">
+     <widget class="QProgressBar" name="progressBarPhase07">
+      <property name="value">
+       <number>24</number>
+      </property>
+     </widget>
+    </item>
+    <item row="9" column="4">
+     <widget class="QProgressBar" name="progressBarPhase18">
+      <property name="value">
+       <number>24</number>
+      </property>
+     </widget>
+    </item>
+    <item row="7" column="3">
+     <widget class="QLCDNumber" name="lcdNumberMaxVelPhase06">
+      <property name="digitCount">
+       <number>3</number>
+      </property>
+     </widget>
+    </item>
+    <item row="4" column="1">
+     <widget class="QSpinBox" name="spinBoxDurationPhase03">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="10" column="7">
+     <widget class="QLCDNumber" name="lcdNumberMaxVelPhase19">
+      <property name="digitCount">
+       <number>3</number>
+      </property>
+     </widget>
+    </item>
+    <item row="11" column="3">
+     <widget class="QLCDNumber" name="lcdNumberMaxVelPhase10">
+      <property name="digitCount">
+       <number>3</number>
+      </property>
+     </widget>
+    </item>
+    <item row="11" column="5">
+     <widget class="QSpinBox" name="spinBoxDurationPhase20">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="5" column="3">
+     <widget class="QLCDNumber" name="lcdNumberMaxVelPhase04">
+      <property name="digitCount">
+       <number>3</number>
+      </property>
+     </widget>
+    </item>
+    <item row="6" column="2">
+     <widget class="QSpinBox" name="spinBoxPercPhase05">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="6" column="0">
+     <widget class="QProgressBar" name="progressBarPhase05">
+      <property name="value">
+       <number>24</number>
+      </property>
+     </widget>
+    </item>
+    <item row="5" column="4">
+     <widget class="QProgressBar" name="progressBarPhase14">
+      <property name="value">
+       <number>24</number>
+      </property>
+     </widget>
+    </item>
+    <item row="6" column="3">
+     <widget class="QLCDNumber" name="lcdNumberMaxVelPhase05">
+      <property name="digitCount">
+       <number>3</number>
+      </property>
+     </widget>
+    </item>
+    <item row="7" column="4">
+     <widget class="QProgressBar" name="progressBarPhase16">
+      <property name="value">
+       <number>24</number>
+      </property>
+     </widget>
+    </item>
+    <item row="10" column="2">
+     <widget class="QSpinBox" name="spinBoxPercPhase09">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="11" column="7">
+     <widget class="QLCDNumber" name="lcdNumberMaxVelPhase20">
+      <property name="digitCount">
+       <number>3</number>
+      </property>
+     </widget>
+    </item>
+    <item row="3" column="7">
+     <widget class="QLCDNumber" name="lcdNumberMaxVelPhase12">
+      <property name="digitCount">
+       <number>3</number>
+      </property>
+     </widget>
+    </item>
+    <item row="5" column="2">
+     <widget class="QSpinBox" name="spinBoxPercPhase04">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="7" column="2">
+     <widget class="QSpinBox" name="spinBoxPercPhase06">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="3" column="5">
+     <widget class="QSpinBox" name="spinBoxDurationPhase12">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="10" column="1">
+     <widget class="QSpinBox" name="spinBoxDurationPhase09">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="4" column="5">
+     <widget class="QSpinBox" name="spinBoxDurationPhase13">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="8" column="3">
+     <widget class="QLCDNumber" name="lcdNumberMaxVelPhase07">
+      <property name="digitCount">
+       <number>3</number>
+      </property>
+     </widget>
+    </item>
+    <item row="2" column="4">
+     <widget class="QProgressBar" name="progressBarPhase11">
+      <property name="value">
+       <number>24</number>
+      </property>
+     </widget>
+    </item>
+    <item row="9" column="1">
+     <widget class="QSpinBox" name="spinBoxDurationPhase08">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="8" column="6">
+     <widget class="QSpinBox" name="spinBoxPercPhase17">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="6" column="1">
+     <widget class="QSpinBox" name="spinBoxDurationPhase05">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="4" column="4">
+     <widget class="QProgressBar" name="progressBarPhase13">
+      <property name="value">
+       <number>24</number>
+      </property>
+     </widget>
+    </item>
+    <item row="10" column="4">
+     <widget class="QProgressBar" name="progressBarPhase19">
+      <property name="value">
+       <number>24</number>
+      </property>
+     </widget>
+    </item>
+    <item row="5" column="1">
+     <widget class="QSpinBox" name="spinBoxDurationPhase04">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="2" column="2">
+     <widget class="QSpinBox" name="spinBoxPercPhase01">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="2" column="0">
+     <widget class="QProgressBar" name="progressBarPhase01">
+      <property name="value">
+       <number>24</number>
+      </property>
+     </widget>
+    </item>
+    <item row="9" column="7">
+     <widget class="QLCDNumber" name="lcdNumberMaxVelPhase18">
+      <property name="digitCount">
+       <number>3</number>
+      </property>
+     </widget>
+    </item>
+    <item row="2" column="1">
+     <widget class="QSpinBox" name="spinBoxDurationPhase01">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="3" column="1">
+     <widget class="QSpinBox" name="spinBoxDurationPhase02">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="5" column="5">
+     <widget class="QSpinBox" name="spinBoxDurationPhase14">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="4" column="7">
+     <widget class="QLCDNumber" name="lcdNumberMaxVelPhase13">
+      <property name="digitCount">
+       <number>3</number>
+      </property>
+     </widget>
+    </item>
+    <item row="6" column="7">
+     <widget class="QLCDNumber" name="lcdNumberMaxVelPhase15">
+      <property name="digitCount">
+       <number>3</number>
+      </property>
+     </widget>
+    </item>
+    <item row="8" column="4">
+     <widget class="QProgressBar" name="progressBarPhase17">
+      <property name="value">
+       <number>24</number>
+      </property>
+     </widget>
+    </item>
+    <item row="3" column="0">
+     <widget class="QProgressBar" name="progressBarPhase02">
+      <property name="value">
+       <number>24</number>
+      </property>
+     </widget>
+    </item>
+    <item row="2" column="3">
+     <widget class="QLCDNumber" name="lcdNumberMaxVelPhase01">
+      <property name="digitCount">
+       <number>3</number>
+      </property>
+     </widget>
+    </item>
+    <item row="9" column="3">
+     <widget class="QLCDNumber" name="lcdNumberMaxVelPhase08">
+      <property name="digitCount">
+       <number>3</number>
+      </property>
+     </widget>
+    </item>
+    <item row="8" column="5">
+     <widget class="QSpinBox" name="spinBoxDurationPhase17">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="9" column="2">
+     <widget class="QSpinBox" name="spinBoxPercPhase08">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="7" column="1">
+     <widget class="QSpinBox" name="spinBoxDurationPhase06">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="9" column="0">
+     <widget class="QProgressBar" name="progressBarPhase08">
+      <property name="value">
+       <number>24</number>
+      </property>
+     </widget>
+    </item>
+    <item row="7" column="7">
+     <widget class="QLCDNumber" name="lcdNumberMaxVelPhase16">
+      <property name="digitCount">
+       <number>3</number>
+      </property>
+     </widget>
+    </item>
+    <item row="2" column="5">
+     <widget class="QSpinBox" name="spinBoxDurationPhase11">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="8" column="1">
+     <widget class="QSpinBox" name="spinBoxDurationPhase07">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="11" column="0">
+     <widget class="QProgressBar" name="progressBarPhase10">
+      <property name="value">
+       <number>24</number>
+      </property>
+     </widget>
+    </item>
+    <item row="4" column="2">
+     <widget class="QSpinBox" name="spinBoxPercPhase03">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="11" column="2">
+     <widget class="QSpinBox" name="spinBoxPercPhase10">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+    <item row="10" column="0">
+     <widget class="QProgressBar" name="progressBarPhase09">
+      <property name="value">
+       <number>24</number>
+      </property>
+     </widget>
+    </item>
+    <item row="3" column="6">
+     <widget class="QSpinBox" name="spinBoxPercPhase12">
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="MinimumExpanding" vsizetype="Fixed">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="minimumSize">
+       <size>
+        <width>8</width>
+        <height>8</height>
+       </size>
+      </property>
+      <property name="maximumSize">
+       <size>
+        <width>40</width>
+        <height>30</height>
+       </size>
+      </property>
+      <property name="maximum">
+       <number>100</number>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QWidget" name="layoutWidget">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>460</y>
+     <width>571</width>
+     <height>76</height>
+    </rect>
+   </property>
+   <layout class="QGridLayout" name="gridLayout_2">
+    <item row="0" column="3" rowspan="2">
+     <widget class="QPushButton" name="pushButton_STARTtrainig">
+      <property name="enabled">
+       <bool>false</bool>
+      </property>
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="font">
+       <font>
+        <family>FreeSans</family>
+        <pointsize>9</pointsize>
+        <bold>true</bold>
+        <kerning>false</kerning>
+       </font>
+      </property>
+      <property name="text">
+       <string>START 
+ Training</string>
+      </property>
+     </widget>
+    </item>
+    <item row="1" column="4">
+     <widget class="QPushButton" name="pushButton_ResumeTraining">
+      <property name="enabled">
+       <bool>false</bool>
+      </property>
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Minimum" vsizetype="Expanding">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="font">
+       <font>
+        <family>FreeSans</family>
+        <pointsize>9</pointsize>
+        <bold>true</bold>
+        <kerning>false</kerning>
+       </font>
+      </property>
+      <property name="text">
+       <string>RESUME 
+ Training</string>
+      </property>
+     </widget>
+    </item>
+    <item row="1" column="2">
+     <widget class="QLineEdit" name="lineEdit">
+      <property name="text">
+       <string/>
+      </property>
+     </widget>
+    </item>
+    <item row="0" column="4">
+     <widget class="QPushButton" name="pushButton_PauseTrainig">
+      <property name="enabled">
+       <bool>false</bool>
+      </property>
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="font">
+       <font>
+        <family>FreeSans</family>
+        <pointsize>9</pointsize>
+        <bold>true</bold>
+        <kerning>false</kerning>
+       </font>
+      </property>
+      <property name="text">
+       <string>PAUSE 
+ Training</string>
+      </property>
+     </widget>
+    </item>
+    <item row="0" column="2">
+     <widget class="QLabel" name="label_10">
+      <property name="text">
+       <string>Movement 
+ NAME</string>
+      </property>
+     </widget>
+    </item>
+    <item row="0" column="0">
+     <widget class="QPushButton" name="pushButton_LoadCreateProtocol">
+      <property name="enabled">
+       <bool>true</bool>
+      </property>
+      <property name="sizePolicy">
+       <sizepolicy hsizetype="Minimum" vsizetype="Expanding">
+        <horstretch>0</horstretch>
+        <verstretch>0</verstretch>
+       </sizepolicy>
+      </property>
+      <property name="text">
+       <string>LOAD
+Protocol</string>
+      </property>
+     </widget>
+    </item>
+    <item row="1" column="0">
+     <widget class="QPushButton" name="pushButton_SaveProtocol">
+      <property name="text">
+       <string>SAVE
+ Protocol</string>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

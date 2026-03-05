@@ -7,9 +7,6 @@ controller_manager:
 
     joint_trajectory_controller:
       type: joint_trajectory_controller/JointTrajectoryController
-
-    #scaled_trajectory_controller:
-    #  type: scaled_fjt_controller/ScaledFjtController
       
     state_controller:
       type: ethercat_controllers/CiA402Controller
@@ -86,46 +83,22 @@ joint_trajectory_controller:
     set_last_command_interface_value_as_state_on_activation: false
     speed_scaling:
       initial_scaling_factor: 1.0
-      filter_coefficient: 0.9
+      filter_coefficient: 1.0
       policy: "MINIMUM"
       subscribed_topics: 
         - "~/speed_scaling_input"
     
     constraints:
+      goal_time: 0.0 #Infinite time to enter in the goal tolerance
       joint_x:
-        trajectory: 0.05
+        trajectory: 0.1
         goal: 0.005
       joint_y:
-        trajectory: 0.05
+        trajectory: 0.1
         goal: 0.005
       joint_z:
-        trajectory: 0.05
-        goal: 0.005
-
-
-# scaled_trajectory_controller:
-#   ros__parameters:
-#     joints:
-#     - joint_x
-#     - joint_y
-#     - joint_z
-#     speed_scaling:
-#       initial_scaling_factor: 1.0
-#       filter_coefficient: 0.9
-#       policy: "MINIMUM"
-#       subscribed_topics: 
-#         - "~/speed_scaling_input"
-
-#     command_interfaces:
-#     - position
-#     - velocity
-#     state_interfaces:
-#     - position
-#     - velocity
-#     open_loop_control: true
-#     constraints:
-#       goal_time: 0.0
-#     spline_order: 2
+        trajectory: 0.1
+        goal: 0.010
 
 state_controller:
   ros__parameters:
@@ -154,7 +127,7 @@ admittance_controller:
       group_name: fmrrehab
       alpha: 0.0005
     admittance:
-      mass: [ 10.0, 100.0, 10.0, 0.1, 0.1, 0.1 ]
+      mass: [ 10.0, 20.0, 10.0, 0.1, 0.1, 0.1 ]
       stiffness: [ 0.0, 0.0, 0.0, 500.0, 500.0, 500.0 ] #N/m
       damping_ratio: [ 2.828427, 2.828427, 2.828427, 2.828427, 2.828427, 2.828427 ]
       joint_damping: [10.0, 5.0, 5.0, 0.0]

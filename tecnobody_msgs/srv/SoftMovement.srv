@@ -1,0 +1,4 @@
+SoftStartStop data
+---
+bool success
+string message

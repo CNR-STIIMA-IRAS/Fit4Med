@@ -1,24 +1,31 @@
-<?xacro version = "1.0"?>
-<robot name = "tecnobody" xmlns:xacro="http://www.ros.org/wiki/xacro">
-
+<?xml version="1.0"?>
+<robot name="tecnobody" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  
   <!-- Define materials -->
   <material name="white">
     <color rgba="1 1 1 1"/>
+  </material>
+
+  <material name="black">
+    <color rgba="0.1 0.1 0.1 1"/>
+  </material>
+
+  <material name="red">
+    <color rgba="1 0 0 0"/>
   </material>
 
   <material name="grey_transparent">
     <color rgba="0.5 0.5 0.5 0.4"/>
   </material>
 
-  <!-- Define world and ee_link -->
   <link name="world"/>
-  <link name="ee_link"/>
+  <link name="flange_link"/>
 
   <!--Define fixed structure links-->
   <link name="col1">
     <visual>
       <geometry>
-        <cylinder length="2.5" radius="0.05"/>
+        <cylinder length="1.5" radius="0.1"/>
       </geometry>
       <material name="grey_transparent"/>
     </visual>
@@ -27,7 +34,7 @@
   <link name="col2">
     <visual>
       <geometry>
-        <cylinder length="2.5" radius="0.05"/>
+        <cylinder length="1.5" radius="0.1"/>
       </geometry>
       <material name="grey_transparent"/>
     </visual>
@@ -36,7 +43,7 @@
   <link name="col3">
     <visual>
       <geometry>
-        <cylinder length="2.5" radius="0.05"/>
+        <cylinder length="1.5" radius="0.1"/>
       </geometry>
       <material name="grey_transparent"/>
     </visual>
@@ -45,7 +52,7 @@
   <link name="beam0">
     <visual>
       <geometry>
-        <cylinder length="4" radius="0.05"/>
+        <cylinder length="2" radius="0.1"/>
       </geometry>
       <material name="grey_transparent"/>
     </visual>
@@ -54,7 +61,7 @@
   <link name="beam1">
     <visual>
       <geometry>
-        <cylinder length="4" radius="0.05"/>
+        <cylinder length="2" radius="0.1"/>
       </geometry>
       <material name="grey_transparent"/>
     </visual>
@@ -63,7 +70,7 @@
   <link name="beam2">
     <visual>
       <geometry>
-        <cylinder length="4" radius="0.05"/>
+        <cylinder length="2" radius="0.1"/>
       </geometry>
       <material name="grey_transparent"/>
     </visual>
@@ -72,7 +79,7 @@
   <link name="beam3">
     <visual>
       <geometry>
-        <cylinder length="4" radius="0.05"/>
+        <cylinder length="2" radius="0.1"/>
       </geometry>
       <material name="grey_transparent"/>
     </visual>
@@ -82,7 +89,7 @@
   <link name="base_link">
     <visual>
       <geometry>
-        <cylinder length="2.5" radius="0.05"/>
+        <cylinder length="1.5" radius="0.1"/>
       </geometry>
       <material name="white"/>
     </visual>
@@ -92,9 +99,18 @@
   <link name="link1">
     <visual>
       <geometry>
-        <cylinder length="4" radius="0.05"/>
+        <box size="0.1 0.1 0.1"/>
       </geometry>
       <material name="white"/>
+    </visual>
+  </link>
+
+  <link name="link1_beam">
+    <visual>
+      <geometry>
+        <cylinder length="2" radius="0.1"/>
+      </geometry>
+      <material name="black"/>
     </visual>
   </link>
 
@@ -112,9 +128,9 @@
   <link name="link3">
     <visual>
       <geometry>
-        <cylinder length="2" radius="0.05"/>
+        <cylinder length="2" radius="0.1"/>
       </geometry>
-      <material name="white"/>
+      <material name="black"/>
     </visual>
   </link>
 
@@ -122,80 +138,86 @@
   <joint name="col1_joint" type="fixed">
     <parent link="world"/>
     <child link="col1"/>
-    <origin xyz="-4 0 0" rpy="0 0 1.57"/>
+    <origin xyz="-2 0 0" rpy="0 0 1.5707963267948966"/>
   </joint>
 
   <joint name="col2_joint" type="fixed">
     <parent link="world"/>
     <child link="col2"/>
-    <origin xyz="-4 -4 0" rpy="0 0 1.57"/>
+    <origin xyz="-2 -2 0" rpy="0 0 1.5707963267948966"/>
   </joint>
 
   <joint name="col3_joint" type="fixed">
     <parent link="world"/>
     <child link="col3"/>
-    <origin xyz="0 -4 0" rpy="0 0 1.57"/>
+    <origin xyz="0 -2 0" rpy="0 0 1.5707963267948966"/>
   </joint>
 
   <joint name="beam0_joint" type="fixed">
     <parent link="base_link"/>
     <child link="beam0"/>
-    <origin xyz="0 -2 1.25" rpy="1.57 0 0"/>
+    <origin xyz="0 -1 0.75" rpy="1.5707963267948966 0 0"/>
   </joint>
 
   <joint name="beam1_joint" type="fixed">
     <parent link="col1"/>
     <child link="beam1"/>
-    <origin xyz="-2 0 1.25" rpy="0 1.57 0"/>
+    <origin xyz="-1 0 0.75" rpy="0 1.5707963267948966 0"/>
   </joint>
 
   <joint name="beam2_joint" type="fixed">
     <parent link="col2"/>
     <child link="beam2"/>
-    <origin xyz="0 -2 1.25" rpy="1.57 0 0"/>
+    <origin xyz="0 -1 0.75" rpy="1.5707963267948966 0 0"/>
   </joint>
 
   <joint name="beam3_joint" type="fixed">
     <parent link="col3"/>
     <child link="beam3"/>
-    <origin xyz="2 0 1.25" rpy="0 1.57 0"/>
+    <origin xyz="1 0 0.75" rpy="0 1.5707963267948966 0"/>
   </joint>
 
   <!-- Define active joints -->
   <joint name="base2world" type="fixed">
     <parent link="world"/>
     <child link="base_link"/>
-    <origin xyz="0 0 0" rpy="0 0 -1.57"/>
+    <origin xyz="0 0 0" rpy="0 0 -1.5707963267948966"/>
   </joint>
 
-  <joint name="joint_1" type="prismatic">
+  <joint name="joint_y" type="prismatic">
     <parent link="base_link"/>
     <child link="link1"/>
-    <origin xyz="2 -2 1.25" rpy="1.57 0 0"/>
-    <axis xyz="1 0 0"/>
-    <limit lower="-1.9" upper="1.9" effort="10" velocity="1.0"/>
+    <origin xyz="0 -1 0.75" rpy="-1.5707963267948966 0 3.141592653589793"/>
+    <axis xyz="0 0 -1"/>
+    <limit lower="-1" upper="1" effort="1000" velocity="1" acceleration="0.5"/>
   </joint>
 
-  <joint name="joint_2" type="prismatic">
+  <joint name="joint_y_fixed" type="fixed">
     <parent link="link1"/>
+    <child link="link1_beam"/>
+    <origin xyz="-1 0 0" rpy="0 1.5707963267948966 3.141592653589793"/>
+  </joint>
+
+  <joint name="joint_x" type="prismatic">
+    <parent link="link1_beam"/>
     <child link="link2"/>
     <origin xyz="0 0 0" rpy="0 0 0"/>
     <axis xyz="0 0 1"/>
-    <limit lower="-1.9" upper="1.9" effort="10" velocity="1.0"/>
+    <limit lower="-0.8" upper="0.8" effort="1000" velocity="1" acceleration="0.5"/>
   </joint>
 
-  <joint name="joint_3" type="prismatic">
+  <joint name="joint_z" type="prismatic">
     <parent link="link2"/>
     <child link="link3"/>
-    <origin xyz="0 0 0" rpy="-1.57 0 0"/>
+    <origin xyz="0 0 0" rpy="-1.5707963267948966 0 0"/>
     <axis xyz="0 0 1"/>
-    <limit lower="-1" upper="1" effort="10" velocity="1.0"/>
+    <limit lower="-0.5" upper="0.2" effort="1000" velocity="1" acceleration="0.5"/>
   </joint>
 
-  <joint name="ee_joint" type="fixed">
+  <joint name="flange_joint" type="fixed">
     <parent link="link3"/>
-    <child link="ee_link"/>
-    <origin xyz="0 0 -1" rpy="0 3.14 0"/>
+    <child link="flange_link"/>
+    <origin xyz="0 0 -0.75" rpy="0 3.141592653589793 -1.5707963267948966"/>
   </joint>
 
 </robot>

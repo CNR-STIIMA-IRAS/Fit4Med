@@ -1,6 +1,8 @@
-from launch import LaunchDescription
-from launch.conditions import IfCondition
+from launch import LaunchDescription, LaunchContext
+from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import Command, FindExecutable, PathJoinSubstitution, LaunchConfiguration
+from launch.actions import GroupAction, RegisterEventHandler
+from launch.event_handlers import OnProcessExit
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch_ros.parameter_descriptions import ParameterValue
@@ -9,7 +11,7 @@ import yaml
 
 def load_yaml(package_name, file_path):
     package_share = FindPackageShare(package=package_name).find(package_name)
-    file_path = PathJoinSubstitution([package_share, file_path]).perform(None)
+    file_path = PathJoinSubstitution([package_share, file_path]).perform(LaunchContext())
     with open(file_path, 'r') as file:
         return yaml.safe_load(file)
 
@@ -23,7 +25,7 @@ def generate_launch_description():
         [
             PathJoinSubstitution([FindExecutable(name='xacro')]),
             ' ',
-            PathJoinSubstitution([FindPackageShare(moveit_config_package), "urdf", 'tecnobody_real.urdf.xacro']),
+            PathJoinSubstitution([FindPackageShare(moveit_config_package), "config", 'tecnobody_real.urdf.xacro']),
         ]
     )
     robot_description = {'robot_description': robot_description_content}
@@ -35,7 +37,7 @@ def generate_launch_description():
     ros2_control_node = Node(
         package='controller_manager',
         executable='ros2_control_node',
-        parameters=[robot_description, initial_joint_controllers],
+        parameters=[initial_joint_controllers],
         output='screen',
     )
 
@@ -51,11 +53,51 @@ def generate_launch_description():
         executable='robot_state_publisher',
         output='screen',
         parameters=[robot_description])
-
-    trajectory_controller_node = Node(
+    
+    ssb = Node(
         package='controller_manager',
         executable='spawner',
-        arguments=['fmrrehab_controller'],
+        arguments=['state_controller'],
+        output='screen',
+    )
+
+    fsb = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['ft_sensor_command_broadcaster'],
+        output='screen',
+    )
+
+    joint_controller_node = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=[
+            'joint_trajectory_controller'
+        ],
+        output='screen',
+    )
+
+    remapping_controller_node = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=[
+            'remapping_controller'
+        ],
+        output='screen',
+    )
+
+    homing = Node(
+        package='tecnobody_workbench_utils',
+        executable='boot_hw',
+        arguments=['MODE_CYCLIC_SYNC_POSITION'],
+        output='screen',
+        condition=IfCondition(LaunchConfiguration('perform_homing'))
+    )
+
+    eth_checker = Node(
+        package='tecnobody_workbench_utils',
+        executable='ethercat_checker_node',
+        name='tecnobody_ethercat_checker_node',
         output='screen',
     )
 
@@ -63,7 +105,7 @@ def generate_launch_description():
         [
             PathJoinSubstitution([FindExecutable(name="xacro")]),
             " ",
-            PathJoinSubstitution([FindPackageShare(moveit_config_package), "urdf", srdf_file]),
+            PathJoinSubstitution([FindPackageShare(moveit_config_package), "config", srdf_file]),
         ]
     )
     robot_description_semantic = {"robot_description_semantic": ParameterValue(robot_description_semantic_content, value_type=str)}
@@ -76,8 +118,8 @@ def generate_launch_description():
 
     moveit_config = (
         MoveItConfigsBuilder("fmrrehab")
-        .robot_description(file_path="urdf/tecnobody_real.urdf.xacro")
-        .robot_description_semantic(file_path="urdf/tecnobody.srdf")
+        .robot_description(file_path="config/tecnobody_real.urdf.xacro")
+        .robot_description_semantic(file_path="config/tecnobody.srdf")
         .planning_scene_monitor(
             publish_robot_description=True, publish_robot_description_semantic=True
         )
@@ -115,12 +157,61 @@ def generate_launch_description():
         ],
     )
 
+    group1 = GroupAction(
+                actions=[
+                    eth_checker,
+                    remapping_controller_node,
+                    move_group_node,
+                    rviz_node
+                ],
+                condition=IfCondition(LaunchConfiguration('perform_homing'))
+            )
+    
+    group2 = GroupAction(
+                actions=[
+                    eth_checker,
+                    remapping_controller_node,
+                    move_group_node,
+                    rviz_node
+                ],
+                condition=UnlessCondition(LaunchConfiguration('perform_homing'))
+            )
+    
+    controllers_launcher = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=homing,
+            on_exit=[group1],
+        )
+    )
+
+    homing_launcher = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=ssb,
+            on_exit=[homing, jsb, fsb],
+        )
+    )
+
+    controllers_launcher_no_homing = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=ssb,
+            on_exit=[group2],
+        )
+    )
+
+    joint_controller_launcher = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=remapping_controller_node,
+            on_exit=[joint_controller_node],
+        )
+    )
+
     ld = LaunchDescription()
     ld.add_action(ros2_control_node)
-    ld.add_action(jsb)
     ld.add_action(rsp)
-    ld.add_action(trajectory_controller_node)
-    ld.add_action(move_group_node)
-    ld.add_action(rviz_node)
+    ld.add_action(ssb)
+    ld.add_action(homing_launcher)
+    ld.add_action(controllers_launcher)
+    ld.add_action(controllers_launcher_no_homing)
+    ld.add_action(joint_controller_launcher)
 
     return ld

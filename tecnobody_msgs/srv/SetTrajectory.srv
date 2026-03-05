@@ -1,4 +1,4 @@
 tecnobody_msgs/CartesianPoint[] cartesian_positions
-float64[] repetition_ovrs
+float64 override
 ---
 bool success

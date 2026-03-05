@@ -9,15 +9,15 @@ moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControll
 
 moveit_simple_controller_manager:
   controller_names:
-    - fmrrehab_controller
+    - joint_trajectory_controller
 
-  fmrrehab_controller:
+  joint_trajectory_controller:
     type: FollowJointTrajectory
     action_ns: follow_joint_trajectory
     default: true
     joints:
-      - joint_1
-      - joint_2
-      - joint_3
+      - joint_x
+      - joint_y
+      - joint_z
     action_ns: follow_joint_trajectory
     default: true
