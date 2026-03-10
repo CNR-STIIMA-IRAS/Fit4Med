@@ -1,3 +1,6 @@
+// Copyright 2026 CNR-STIIMA-IRAS
+// SPDX-License-Identifier: Apache-2.0
+
 /**
  * @file plc_controller.hpp
  * @brief ROS 2 Control plugin for safety PLC GPIO command/state bridging.

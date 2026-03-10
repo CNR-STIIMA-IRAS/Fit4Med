@@ -1,3 +1,6 @@
+# Copyright 2026 CNR-STIIMA-IRAS
+# SPDX-License-Identifier: Apache-2.0
+ 
 """PLC state machine manager for safety-certified rehabilitation platform control.
 
 This module implements a critical state machine that coordinates the entire rehabilitation

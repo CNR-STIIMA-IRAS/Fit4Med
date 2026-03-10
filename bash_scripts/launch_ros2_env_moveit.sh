@@ -1,4 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# Copyright 2026 CNR-STIIMA-IRAS
+# SPDX-License-Identifier: Apache-2.0
+
+
 source /home/fit4med/fit4med_ws/install/setup.bash
 
 perform_homing=false

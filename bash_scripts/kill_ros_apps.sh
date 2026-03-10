@@ -1,4 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# Copyright 2026 CNR-STIIMA-IRAS
+# SPDX-License-Identifier: Apache-2.0
 
 ##########################################
 RED='\033[0;31m'

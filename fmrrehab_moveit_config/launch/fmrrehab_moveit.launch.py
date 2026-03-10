@@ -1,3 +1,6 @@
+# Copyright 2026 CNR-STIIMA-IRAS
+# SPDX-License-Identifier: Apache-2.0
+
 import os
 
 from debian import c

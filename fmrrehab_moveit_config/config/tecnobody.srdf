@@ -1,3 +1,6 @@
+<!-- Copyright 2026 CNR-STIIMA-IRAS -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+ 
 <?xml version="1.0" encoding="UTF-8"?>
 <!--This does not replace URDF, and is not an extension of URDF.
     This is a format for representing semantic information about the robot structure.

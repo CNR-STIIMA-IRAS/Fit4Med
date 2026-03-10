@@ -1,3 +1,6 @@
+# Copyright 2026 CNR-STIIMA-IRAS
+# SPDX-License-Identifier: Apache-2.0
+
 from moveit_configs_utils import MoveItConfigsBuilder
 from launch.substitutions import PathJoinSubstitution, LaunchConfiguration, Command, FindExecutable
 from launch.actions import DeclareLaunchArgument

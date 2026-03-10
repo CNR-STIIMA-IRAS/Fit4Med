@@ -1,3 +1,6 @@
+<!-- Copyright 2026 CNR-STIIMA-IRAS -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+ 
 <library path="fit4med_ee_joint_hw">
   <class  name="fit4med_ee_joint_hw/EEJointPositionSystem"
           type="fit4med_ee_joint_hw::EEJointPositionSystem"

@@ -1,3 +1,6 @@
+<!-- Copyright 2026 CNR-STIIMA-IRAS -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+ 
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="tecnobody">
     <xacro:arg name="initial_positions_file" default="$(find fmrrehab_moveit_config)/config/initial_positions.yaml" />
