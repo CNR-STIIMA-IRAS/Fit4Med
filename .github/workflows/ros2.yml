@@ -46,6 +46,7 @@ jobs:
     - name: Install Dependencies with rosdep
       run: |
         source /opt/ros/${{ matrix.ros_distro }}/setup.bash
+        sudo apt-get update
         rosdep install --from-paths src --ignore-src -r -y
       shell: bash
 
