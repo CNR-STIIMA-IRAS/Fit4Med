@@ -9,6 +9,7 @@ on:
 env:
   BUILD_TYPE: Release
 
+## Try to use Docker
 jobs:
   build:
     name: Build on ros ${{ matrix.ros_distro }} and ${{ matrix.os }}
