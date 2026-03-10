@@ -105,4 +105,4 @@ ethercat master # If not OP, check ethercat master
 This project is licensed under the Apache-2.0 License. See LICENSE file for details.
 
 ## Contact
-For questions about this rehabilitation platform, contact [Nicola Pedrocchi](mailto:nicola.pedrocchi@cnr.it) and [Adriano Scibilia](mailto:adriano.scibilia@cnr.it)
+For questions about this rehabilitation platform, contact [Nicola Pedrocchi](mailto:nicola.pedrocchi@cnr.it?subject=Your%20Subject&body=[GITHUB%20Fit4Med]) and [Adriano Scibilia](mailto:adriano.scibilia@cnr.it)
