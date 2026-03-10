@@ -65,5 +65,6 @@ jobs:
 
     - name: colcon test 'plc_controller'
       run: |
+        source /opt/ros/${{ matrix.ros_distro }}/setup.bash
         colcon test --packages-select plc_controller --event-handlers console_direct+ --ctest-args --rerun-failed --output-on-failure
       shell: bash
