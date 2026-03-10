@@ -53,6 +53,7 @@ jobs:
     - name: Install Dependencies with rosdep
       run: |
         source /opt/ros/${{ matrix.ros_distro }}/setup.bash
+        rosdep update
         cd ${{github.workspace}}/colcon_ws
         rosdep install --from-paths src --ignore-src -r -y
 
