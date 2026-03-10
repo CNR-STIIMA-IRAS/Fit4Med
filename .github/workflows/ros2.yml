@@ -60,7 +60,7 @@ jobs:
       run: |
         source /opt/ros/${{ matrix.ros_distro }}/setup.bash
         cd ${{github.workspace}}/colcon_ws
-        colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+        colcon build --executor sequential --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
 
     - name: colcon test 'plc_controller'
       run: |
