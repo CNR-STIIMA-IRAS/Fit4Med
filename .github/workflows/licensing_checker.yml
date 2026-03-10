@@ -1,4 +1,4 @@
-name: ros2
+name: license_checker
 
 on:
   push:
