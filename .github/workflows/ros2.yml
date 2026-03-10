@@ -24,14 +24,27 @@ jobs:
       image: ros:${{ matrix.ros_distro }}-ros-base
 
     steps:   
+    - name: Create workspace
+      run: mkdir -p src/Fit4Med
+
     - name: Checkout code
       uses: actions/checkout@v3
+      with:
+        path: src/Fit4Med
 
     - name: Setup ROS environment
       run: |
           source /opt/ros/${{ matrix.ros_distro }}/setup.bash
           rosdep update
       shell: bash
+    - name: Check PWD
+      run: |
+          sudo apt-get install tree
+          pwd
+          tree -L 2
+
+      shell: bash
+      
     - name: Checkout Fit4Med dependencies (VCS)
       run: |
         vcs import src < src/Fit4Med/.repos
