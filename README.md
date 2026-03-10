@@ -102,7 +102,7 @@ ethercat master # If not OP, check ethercat master
 - Check for controller timeouts in /tmp/launch logs
 
 ## License
-This project is licensed under the MIT License. See LICENSE file for details.
+This project is licensed under the Apache-2.0 License. See LICENSE file for details.
 
 ## Contact
 For questions about this rehabilitation platform, contact CNR-STIIMA-IRAS team
