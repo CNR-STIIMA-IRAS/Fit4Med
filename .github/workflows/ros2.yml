@@ -61,3 +61,8 @@ jobs:
         source /opt/ros/${{ matrix.ros_distro }}/setup.bash
         colcon test --packages-select plc_controller --event-handlers console_direct+ --ctest-args --rerun-failed --output-on-failure
       shell: bash
+
+    - name: Check REUSE compliance
+      run: |
+        pip install reuse
+        reuse lint
