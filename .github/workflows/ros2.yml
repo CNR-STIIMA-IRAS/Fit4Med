@@ -39,9 +39,8 @@ jobs:
       shell: bash
     - name: Check PWD
       run: |
-          sudo apt-get install tree
           pwd
-          tree -L 2
+          ls -la
 
       shell: bash
       
