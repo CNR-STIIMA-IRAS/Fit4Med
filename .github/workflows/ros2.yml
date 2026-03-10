@@ -37,15 +37,9 @@ jobs:
           source /opt/ros/${{ matrix.ros_distro }}/setup.bash
           rosdep update
       shell: bash
-    - name: Check PWD
-      run: |
-          pwd
-          ls -la
-
-      shell: bash
-      
     - name: Checkout Fit4Med dependencies (VCS)
       run: |
+        source /opt/ros/${{ matrix.ros_distro }}/setup.bash
         vcs import src < src/Fit4Med/.repos
       shell: bash
 
@@ -59,11 +53,13 @@ jobs:
           http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" \
           > /etc/apt/sources.list.d/ros2.list
         apt-get update
+        source /opt/ros/${{ matrix.ros_distro }}/setup.bash
         rosdep install --from-paths src --ignore-src -r -y
       shell: bash
 
     - name: colcon build
       run: |
+        source /opt/ros/${{ matrix.ros_distro }}/setup.bash
         colcon build --executor sequential --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
       shell: bash
 
