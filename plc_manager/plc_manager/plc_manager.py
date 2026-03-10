@@ -316,7 +316,7 @@ class PLCControllerInterface(Node):
             'PLC_node/estop',                   # [4] main E-stop signal
             'PLC_node/manual_mode',             # [5] unused
             'PLC_node/force_sensors_pwr',       # [6] F/T sensor power control
-            'PLC_node/s_output.8'               # [7] unused
+            'PLC_node/brake_disable'            # [7] Brake Disable (0=enabled, 1=disabled)
         ]
 
         # ========== Launcher Health Monitoring ==========
@@ -632,8 +632,11 @@ class PLCControllerInterface(Node):
                             
                             # Wait for GUI to acknowledge (10 second timeout)
                             timeout = time.time() + 10
-                            data, addr = self.client.receive()
-                            while data != b"STOPPED":
+                            while True:
+                                data, addr = self.client.receive()
+                                if data == b"STOPPED":
+                                    self.get_logger().info("✅ GUI shutdown acknowledged")
+                                    break
                                 time.sleep(0.5)
                                 if time.time() > timeout:
                                     self.get_logger().warn(
@@ -641,8 +644,6 @@ class PLCControllerInterface(Node):
                                         throttle_duration_sec=5.0
                                     )
                                     break
-                            self.get_logger().info("✅ GUI shutdown acknowledged")
-                            
                         except Exception as e:
                             self.get_logger().warn(f"Error communicating with GUI: {e}")
 
@@ -652,10 +653,11 @@ class PLCControllerInterface(Node):
                             platform_launcher_pid = subprocess.check_output(
                                 ["pgrep", "-f", "ros2 launch tecnobody_workbench run_platform_control.launch.py"]
                             )
-                            os.kill(int(platform_launcher_pid), signal.SIGINT)
+                            os.kill(int(platform_launcher_pid.strip()), signal.SIGINT)
                             time.sleep(2)
                             self.get_logger().info("✅ Launcher process terminated")
-                            
+                        except ValueError as e:
+                            self.get_logger().info(f"Exception caught: {e}")
                         except subprocess.CalledProcessError:
                             self.get_logger().info("No platform_control.launch.py process found.")
                     
