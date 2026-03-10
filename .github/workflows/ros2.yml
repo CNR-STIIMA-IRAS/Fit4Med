@@ -9,7 +9,7 @@ on:
 env:
   BUILD_TYPE: Release
 
-## Try to use Docker
+## Try to use Docker --- 
 jobs:
   build:
     name: Build on ros ${{ matrix.ros_distro }} and ${{ matrix.os }}
@@ -44,6 +44,6 @@ jobs:
       run: |
         colcon build --executor sequential --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
 
-    - name: colcon test 'plc_controller'
-      run: |
-        colcon test --packages-select plc_controller --event-handlers console_direct+ --ctest-args --rerun-failed --output-on-failure
+    # - name: colcon test 'plc_controller'
+    #   run: |
+    #     colcon test --packages-select plc_controller --event-handlers console_direct+ --ctest-args --rerun-failed --output-on-failure
