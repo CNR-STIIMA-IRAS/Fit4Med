@@ -34,7 +34,7 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y --fix-missing git python3-pip sudo
+        sudo apt-get install -y --fix-missing git python3-pip sudo tree
         sudo apt-get -y install ros-${{ matrix.ros_distro }}-ros-base
         python3 -m pip install colcon-common-extensions
         python3 -m pip install --force-reinstall pytest-repeat
