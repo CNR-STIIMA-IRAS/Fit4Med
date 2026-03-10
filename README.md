@@ -2,6 +2,7 @@
 [![ROS 2 Jazzy](https://img.shields.io/badge/ROS%202-Jazzy-brightgreen)](https://docs.ros.org/en/jazzy/)
 [![C++ Standard](https://img.shields.io/badge/C%2B%2B-17-blue)]()
 [![Python Version](https://img.shields.io/badge/Python-3.12-blue)]()
+[![ROS 2 Build](https://github.com/CNR-STIIMA-IRAS/Fit4Med/actions/workflows/ros2.yml/badge.svg)](https://github.com/CNR-STIIMA-IRAS/Fit4Med/actions/workflows/ros2.yml)
 
 **Fmrrehab** is a comprehensive rehabilitation robotics platform built on ROS 2 with advanced motion control, force-torque sensing, and safety-critical PLC integration. The system coordinates a 3-DOF rehabilitation arm through a real-time control architecture with emergency stop chains and sensor-based impedance control.
 
