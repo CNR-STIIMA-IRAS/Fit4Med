@@ -520,7 +520,7 @@ void PLCController::initialize_plc_state_msg()
   const auto gpio_name = params_.gpios.front();
   plc_state_msg.interface_names = get_plc_state_interfaces_names(gpio_name);
   plc_state_msg.values = std::vector<bool>(
-    plc_state_msg.interface_names.size(), std::numeric_limits<bool>::quiet_NaN());
+    plc_state_msg.interface_names.size(), false);
 }
 
 
@@ -822,7 +822,7 @@ void PLCController::update_plc_states()
           RCLCPP_ERROR(
             get_node()->get_logger(), "Failed to retrieve state value for %s",
             interface_name.c_str());
-          plc_state_msg.values.push_back(std::numeric_limits<uint8_t>::quiet_NaN());
+          plc_state_msg.values.push_back(false);
         }
       }
     }
