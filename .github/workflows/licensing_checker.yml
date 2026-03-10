@@ -50,14 +50,7 @@ jobs:
         rosdep install --from-paths src --ignore-src -r -y
       shell: bash
 
-    - name: colcon build
+    - name: Check REUSE compliance
       run: |
-        source /opt/ros/${{ matrix.ros_distro }}/setup.bash
-        colcon build --executor sequential --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
-      shell: bash
-
-    - name: colcon test 'plc_controller'
-      run: |
-        source /opt/ros/${{ matrix.ros_distro }}/setup.bash
-        colcon test --packages-select plc_controller --event-handlers console_direct+ --ctest-args --rerun-failed --output-on-failure
-      shell: bash
+        pip install reuse
+        reuse lint
