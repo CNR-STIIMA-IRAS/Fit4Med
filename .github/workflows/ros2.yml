@@ -37,10 +37,11 @@ jobs:
         sudo apt-get install -y --fix-missing git python3-pip sudo
         sudo apt-get -y install ros-${{ matrix.ros_distro }}-ros-base
         python3 -m pip install colcon-common-extensions
+        python3 -m pip install --force-reinstall pytest-repeat
         python3 -m pip install vcstool
         python3 -m pip install rosdep
         rosdep update
-    - name: Setup colcon workspace
+    - name: Setup Colcon Workspace
       run: | 
         source /opt/ros/${{ matrix.ros_distro }}/setup.bash
         mkdir -p ${{github.workspace}}/colcon_ws/src
@@ -63,5 +64,4 @@ jobs:
       run: |
         source /opt/ros/${{ matrix.ros_distro }}/setup.bash
         cd ${{github.workspace}}/colcon_ws
-        colcon build --symlink-install --merge-install --cmake-arg \
-          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON 
+        colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
