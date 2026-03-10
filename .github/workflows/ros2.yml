@@ -19,8 +19,8 @@ jobs:
         include:
         - os: ubuntu-24.04
           ros_distro: 'jazzy'
-      container:
-        image: ros:${{ matrix.ros_distro }}-ros-base
+    container:
+      image: ros:${{ matrix.ros_distro }}-ros-base
 
     steps:   
     - name: Checkout code
