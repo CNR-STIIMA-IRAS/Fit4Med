@@ -31,19 +31,23 @@ jobs:
       run: |
           source /opt/ros/${{ matrix.ros_distro }}/setup.bash
           rosdep update
-
+      shell: bash
     - name: Checkout Fit4Med dependencies (VCS)
       run: |
         vcs import src < src/Fit4Med/.repos
+      shell: bash
 
     - name: Install Dependencies with rosdep
       run: |
         rosdep install --from-paths src --ignore-src -r -y
+      shell: bash
 
     - name: colcon build
       run: |
         colcon build --executor sequential --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+      shell: bash
 
-    # - name: colcon test 'plc_controller'
-    #   run: |
-    #     colcon test --packages-select plc_controller --event-handlers console_direct+ --ctest-args --rerun-failed --output-on-failure
+    - name: colcon test 'plc_controller'
+      run: |
+        colcon test --packages-select plc_controller --event-handlers console_direct+ --ctest-args --rerun-failed --output-on-failure
+      shell: bash
