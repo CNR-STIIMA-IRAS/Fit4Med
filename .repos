@@ -1,0 +1,5 @@
+repositories:
+  ethercat_controller_msgs:
+    type: git
+    url: https://github.com/CNR-STIIMA-IRAS/ethercat_controller_msgs.git
+    version: master

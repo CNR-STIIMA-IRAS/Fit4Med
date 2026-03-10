@@ -54,6 +54,12 @@ jobs:
         repository: 'CNR-STIIMA-IRAS/Fit4Med'
         path: 'colcon_ws/src/Fit4Med'
 
+    - name: Checkout Fit4Med dependencies (VCS)
+      run: |
+        source /opt/ros/${{ matrix.ros_distro }}/setup.bash
+        cd ${{github.workspace}}/colcon_ws
+        vcs import src < src/Fit4Med/.repos
+
     - name: Install Dependencies with rosdep
       run: |
         source /opt/ros/${{ matrix.ros_distro }}/setup.bash
