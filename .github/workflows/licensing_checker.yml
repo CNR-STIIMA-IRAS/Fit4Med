@@ -52,6 +52,8 @@ jobs:
 
     - name: Check REUSE compliance
       run: |
+        sudo apt update
+        sudo apt install python3-pip
         pip install reuse
         reuse lint
       shell: bash
