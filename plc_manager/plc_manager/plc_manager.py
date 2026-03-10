@@ -109,6 +109,8 @@ import os
 # Must be BEFORE importing rclpy (sets logging format globally)
 os.environ['RCUTILS_CONSOLE_OUTPUT_FORMAT'] = '[{severity}] [{name}]: {message}'
 
+SKIP_ETHERCAT_CHECK = os.environ.get("PLC_MANAGER_SKIP_ETHERCAT", "0") == "1"
+
 import rclpy
 from rclpy.signals import SignalHandlerOptions
 from rclpy.node import Node
@@ -367,28 +369,40 @@ class PLCControllerInterface(Node):
             - INFO: "The PLC ethercat slave is active (=> FLX0-GETC100 OP)"
             - Returns False if slave not found or not in OP state
         """
-        # ========== Run ethercat diagnostic pipeline ==========
-        # Process 1: Get all EtherCAT slaves
-        process1 = subprocess.Popen(["ethercat", "slaves"], stdout=subprocess.PIPE)
-        # Process 2: Filter for FLX0-GETC100 PLC device
-        process2 = subprocess.Popen(
-            ["grep", "FLX0-GETC100"],
-            stdin=process1.stdout,
-            stdout=subprocess.PIPE
-        )
-        # Process 3: Extract device alias (col 3) and state (col 5)
-        process3 = subprocess.Popen(
-            ["awk", "{print $3, $5}"],
-            stdin=process2.stdout,
-            stdout=subprocess.PIPE
-        )
+        if SKIP_ETHERCAT_CHECK:
+            self.get_logger().info(
+                "Skipping EtherCAT health check (PLC_MANAGER_SKIP_ETHERCAT=1)."
+            )
+            return True
 
-        # Close intermediate pipes
-        process1.stdout.close()
+        try:
+            # ========== Run ethercat diagnostic pipeline ==========
+            # Process 1: Get all EtherCAT slaves
+            process1 = subprocess.Popen(["ethercat", "slaves"], stdout=subprocess.PIPE)
+            # Process 2: Filter for FLX0-GETC100 PLC device
+            process2 = subprocess.Popen(
+                ["grep", "FLX0-GETC100"],
+                stdin=process1.stdout,
+                stdout=subprocess.PIPE
+            )
+            # Process 3: Extract device alias (col 3) and state (col 5)
+            process3 = subprocess.Popen(
+                ["awk", "{print $3, $5}"],
+                stdin=process2.stdout,
+                stdout=subprocess.PIPE
+            )
 
-        # Get final output
-        output, _ = process3.communicate()
-        output_text = output.decode('utf-8').rstrip().lstrip()
+            # Close intermediate pipes
+            process1.stdout.close()
+
+            # Get final output
+            output, _ = process3.communicate()
+            output_text = output.decode('utf-8').rstrip().lstrip()
+        except FileNotFoundError as exc:
+            self.get_logger().warn(
+                "EtherCAT diagnostic command unavailable, skipping check: %s", exc
+            )
+            return False
 
         # ========== Check for expected device state ==========
         if "FLX0-GETC100" in output_text.split() and "OP" in output_text.split():
