@@ -1,4 +1,5 @@
 #include "plc_controller/plc_controller.hpp"
+#include "plc_controller/parameter_utils.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -381,13 +382,7 @@ bool PLCController::update_dynamic_map_parameters()
  */
 void PLCController::store_command_interface_types()
 {
-  for (const auto & [gpio_name, interfaces] : params_.command_interfaces.gpios_map)
-  {
-    std::transform(
-      interfaces.interfaces.cbegin(), interfaces.interfaces.cend(),
-      std::back_inserter(command_interface_types_),
-      [&](const auto & interface_name) { return gpio_name + "/" + interface_name; });
-  }
+  parameter_utils::flatten_gpio_interface_map(params_.command_interfaces.gpios_map, command_interface_types_);
 }
 
 
@@ -404,11 +399,9 @@ void PLCController::store_command_interface_types()
  */
 bool PLCController::should_broadcast_all_interfaces_of_configured_gpios() const
 {
-  auto are_interfaces_empty = [](const auto & interfaces)
-  { return interfaces.second.interfaces.empty(); };
-  return std::all_of(
-    params_.state_interfaces.gpios_map.cbegin(), params_.state_interfaces.gpios_map.cend(),
-    are_interfaces_empty);
+  // auto are_interfaces_empty = [](const auto & interfaces)
+  // { return interfaces.second.interfaces.empty(); };
+  return parameter_utils::all_interface_lists_empty(params_.state_interfaces.gpios_map);
 }
 
 
@@ -492,13 +485,7 @@ void PLCController::store_state_interface_types()
     return;
   }
 
-  for (const auto & [gpio_name, interfaces] : params_.state_interfaces.gpios_map)
-  {
-    std::transform(
-      interfaces.interfaces.cbegin(), interfaces.interfaces.cend(),
-      std::back_inserter(state_interface_types_),
-      [&](const auto & interface_name) { return gpio_name + "/" + interface_name; });
-  }
+  parameter_utils::flatten_gpio_interface_map(params_.state_interfaces.gpios_map, state_interface_types_);
 }
 
 
@@ -721,7 +708,7 @@ controller_interface::return_type PLCController::update_plc_commands()
       if (it != gpio_commands.interface_names.end())
       {
         auto index = std::distance(gpio_commands.interface_names.begin(), it);
-        command_interface.get().set_value(static_cast<double>(gpio_commands.values[index]));
+        [[maybe_unused]] auto result = command_interface.get().set_value(static_cast<double>(gpio_commands.values[index]));
       }
       // If not found, skip (interface not present in this command message)
       // This allows partial updates where not all interfaces are commanded
@@ -843,4 +830,3 @@ void PLCController::update_plc_states()
 
 PLUGINLIB_EXPORT_CLASS(
   plc_controller::PLCController, controller_interface::ControllerInterface)
-  

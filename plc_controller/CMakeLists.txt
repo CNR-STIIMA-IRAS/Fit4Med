@@ -60,4 +60,38 @@ ament_export_include_directories(
 ament_export_libraries(
   plc_controller
 )
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+
+  ament_add_gtest(
+    plc_controller_parameter_utils_test
+    test/unit/test_parameter_utils.cpp
+  )
+  target_include_directories(plc_controller_parameter_utils_test PRIVATE include)
+  target_link_libraries(plc_controller_parameter_utils_test
+    plc_controller
+  )
+
+  ament_target_dependencies(
+    plc_controller_parameter_utils_test
+    controller_interface
+  )
+
+  ament_add_gtest(
+    plc_controller_plugin_test
+    test/integration/test_plugin_load.cpp
+  )
+
+  target_include_directories(plc_controller_plugin_test PRIVATE include)
+  target_link_libraries(plc_controller_parameter_utils_test
+    plc_controller
+  )
+
+  ament_target_dependencies(
+    plc_controller_plugin_test
+    controller_interface
+  )
+
+
+endif()
 ament_package()
