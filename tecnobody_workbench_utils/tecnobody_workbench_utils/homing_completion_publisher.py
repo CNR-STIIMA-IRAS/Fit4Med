@@ -1,3 +1,6 @@
+# Copyright 2026 CNR-STIIMA
+# SPDX-License-Identifier: Apache-2.0
+
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Bool

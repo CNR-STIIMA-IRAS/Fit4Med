@@ -1,3 +1,6 @@
+# Copyright 2026 CNR-STIIMA
+# SPDX-License-Identifier: CC0-1.0
+
 moveit_setup_assistant_config:
   urdf:
     package: tecnobody_workbench

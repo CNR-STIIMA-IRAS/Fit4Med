@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2026 CNR-STIIMA-IRAS
+# Copyright 2026 CNR-STIIMA
 # SPDX-License-Identifier: Apache-2.0
 
 now=$(date +"%Y%m%d_%H%M%S")

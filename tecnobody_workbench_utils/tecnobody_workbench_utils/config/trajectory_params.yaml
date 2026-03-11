@@ -1,3 +1,6 @@
+# Copyright 2026 CNR-STIIMA
+# SPDX-License-Identifier: Apache-2.0
+
 # Trajectory endpoint and nominal duration
 target_position: [ 0.3, -0.3, 0.0 ] # Final cartesian position [m]
 nominal_duration: 2.0 # Time to reach target [s]

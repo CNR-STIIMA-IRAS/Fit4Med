@@ -1,3 +1,6 @@
+# Copyright 2026 CNR-STIIMA
+# SPDX-License-Identifier: Apache-2.0
+
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription
 from launch.substitutions import PathJoinSubstitution, LaunchConfiguration, Command, FindExecutable

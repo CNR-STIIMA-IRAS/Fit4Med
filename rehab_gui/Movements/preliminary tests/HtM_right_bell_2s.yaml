@@ -1,3 +1,6 @@
+# Copyright 2026 CNR-STIIMA
+# SPDX-License-Identifier: Apache-2.0
+
 a_movement_definition:
   begin_config:
   - - 0.9376824922899347

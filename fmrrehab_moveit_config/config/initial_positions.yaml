@@ -1,3 +1,6 @@
+# Copyright 2026 CNR-STIIMA
+# SPDX-License-Identifier: Apache-2.0
+
 # Default initial positions for tecnobody's ros2_control fake system
 initial_positions:
   joint_x: 0.0

@@ -1,3 +1,6 @@
+# Copyright 2026 CNR-STIIMA
+# SPDX-License-Identifier: Apache-2.0
+
 from launch import LaunchDescription
 from launch_ros.actions import Node
 from launch.event_handlers import OnProcessExit

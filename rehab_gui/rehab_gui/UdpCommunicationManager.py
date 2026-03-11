@@ -1,3 +1,6 @@
+# Copyright 2026 CNR-STIIMA
+# SPDX-License-Identifier: Apache-2.0
+
 from PyQt5.QtCore import QThread, QObject, pyqtSignal
 from PyQt5.QtCore import QObject, pyqtSignal
 import socket

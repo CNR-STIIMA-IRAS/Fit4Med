@@ -1,3 +1,7 @@
+// Copyright 2026 CNR-STIIMA
+//
+// SPDX-License-Identifier: Apache-2.0
+
 #include "plc_controller/plc_controller.hpp"
 #include "plc_controller/parameter_utils.hpp"
 

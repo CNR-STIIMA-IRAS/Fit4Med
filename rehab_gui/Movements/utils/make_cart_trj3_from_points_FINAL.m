@@ -1,3 +1,6 @@
+% Copyright 2026 CNR-STIIMA
+% SPDX-License-Identifier: Apache-2.0
+
 
 function make_cart_trj3_from_points(P, yamlOut, doPlot)
 % make_cart_trj3_from_points

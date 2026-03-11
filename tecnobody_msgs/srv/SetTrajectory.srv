@@ -1,3 +1,7 @@
+# Copyright 2026 CNR-STIIMA
+#
+# SPDX-License-Identifier: Apache-2.0
+
 tecnobody_msgs/CartesianPoint[] cartesian_positions
 float64 override
 ---

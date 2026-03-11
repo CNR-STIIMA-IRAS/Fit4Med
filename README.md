@@ -1,3 +1,6 @@
+<!-- Copyright 2026 CNR-STIIMA -->
+<!--  SPDX-License-Identifier: CC0-1.0 -->
+
 # FMRREHAB: Functional Movement Robotic Rehabilitation platform (a Fit4Med project)
 [![ROS 2 Jazzy](https://img.shields.io/badge/ROS%202-Jazzy-brightgreen)](https://docs.ros.org/en/jazzy/)
 [![C++ Standard](https://img.shields.io/badge/C%2B%2B-17-blue)]()

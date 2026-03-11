@@ -1,3 +1,6 @@
+<!-- Copyright 2026 CNR-STIIMA -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+
 <?xacro version = "1.0"?>
 <robot name = "tecnobody" xmlns:xacro="http://www.ros.org/wiki/xacro">
 

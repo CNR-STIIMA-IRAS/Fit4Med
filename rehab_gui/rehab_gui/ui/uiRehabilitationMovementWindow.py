@@ -1,3 +1,6 @@
+# Copyright 2026 CNR-STIIMA
+# SPDX-License-Identifier: Apache-2.0
+
 # -*- coding: utf-8 -*-
 
 # Form implementation generated from reading ui file 'rehab_gui/rehab_gui/ui/RehabilitationMovementWindow.ui'

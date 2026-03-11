@@ -1,3 +1,6 @@
+# Copyright 2026 CNR-STIIMA
+# SPDX-License-Identifier: Apache-2.0
+
 # Sick GetC100
 # This file is part of the Fit4Med project.
 vendor_id: 0x01000056

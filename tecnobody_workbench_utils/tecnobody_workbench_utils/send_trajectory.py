@@ -1,3 +1,6 @@
+# Copyright 2026 CNR-STIIMA
+# SPDX-License-Identifier: Apache-2.0
+
 """
 Simplified trajectory loader that sends multi-repetition exercises to gui_trajectory_manager.
 

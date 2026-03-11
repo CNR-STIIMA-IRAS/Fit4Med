@@ -1,3 +1,6 @@
+# Copyright 2026 CNR-STIIMA
+# SPDX-License-Identifier: Apache-2.0
+
 # Configuration file for Maxon EPOS3 drive
 vendor_id: 0x000001dd
 product_id: 0x10305070

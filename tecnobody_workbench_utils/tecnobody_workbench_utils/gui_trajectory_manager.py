@@ -1,3 +1,6 @@
+# Copyright 2026 CNR-STIIMA
+# SPDX-License-Identifier: Apache-2.0
+
 """Rehabilitation exercise trajectory manager for GUI-controlled robot motion execution.
 
 This module implements a bridge between the rehabilitation GUI and the ROS 2 control 

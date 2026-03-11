@@ -1,3 +1,6 @@
+# Copyright 2026 CNR-STIIMA
+# SPDX-License-Identifier: Apache-2.0
+
 """Safety-critical sonar sensor teaching node for ultrasonic distance calibration.
 
 This module implements a ROS 2 node that manages the sonar sensor calibration process

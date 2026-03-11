@@ -1,4 +1,4 @@
-# Copyright 2026 CNR-STIIMA-IRAS
+# Copyright 2026 CNR-STIIMA
 # SPDX-License-Identifier: Apache-2.0
 
 from moveit_configs_utils import MoveItConfigsBuilder

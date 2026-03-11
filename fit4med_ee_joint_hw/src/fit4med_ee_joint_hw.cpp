@@ -1,3 +1,6 @@
+// Copyright 2026 CNR-STIIMA
+// SPDX-License-Identifier: Apache-2.0
+
 #include "fit4med_ee_joint_hw/fit4med_ee_joint_hw.hpp"
 #include <hardware_interface/types/hardware_interface_type_values.hpp>
 #include <pluginlib/class_list_macros.hpp>

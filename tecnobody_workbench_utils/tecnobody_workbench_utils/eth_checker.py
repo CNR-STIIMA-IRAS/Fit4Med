@@ -1,3 +1,6 @@
+# Copyright 2026 CNR-STIIMA
+# SPDX-License-Identifier: Apache-2.0
+
 """
 EtherCAT Checker Node for Drive State Monitoring and Control.
 

@@ -1,3 +1,6 @@
+# Copyright 2026 CNR-STIIMA
+# SPDX-License-Identifier: Apache-2.0
+
 planning_plugins:
 - pilz_industrial_motion_planner/CommandPlanner
 # The order of the elements in the adapter corresponds to the order they are processed by the motion planning pipeline.
