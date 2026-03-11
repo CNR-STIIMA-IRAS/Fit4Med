@@ -325,7 +325,7 @@ private:
    * 
    * Used when state_interfaces not explicitly configured in YAML (auto-discovery).
    */
-  void set_all_state_interfaces_of_configured_gpios();
+  InterfacesNames set_all_state_interfaces_of_configured_gpios();
 
   /**
    * @brief Parse URDF hardware information to extract GPIO definitions.

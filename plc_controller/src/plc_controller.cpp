@@ -386,7 +386,7 @@ bool PLCController::update_dynamic_map_parameters()
  */
 void PLCController::store_command_interface_types()
 {
-  parameter_utils::flatten_gpio_interface_map(params_.command_interfaces.gpios_map, command_interface_types_);
+  command_interface_types_ = parameter_utils::flatten_gpio_interface_map(params_.command_interfaces.gpios_map);
 }
 
 
@@ -444,8 +444,9 @@ catch (const std::exception & e)
  * 
  * Result stored in: state_interface_types_
  */
-void PLCController::set_all_state_interfaces_of_configured_gpios()
+InterfacesNames PLCController::set_all_state_interfaces_of_configured_gpios()
 {
+  InterfacesNames result;
   const auto gpios{get_gpios_from_urdf()};
   for (const auto & gpio_name : params_.gpios)
   {
@@ -455,12 +456,13 @@ void PLCController::set_all_state_interfaces_of_configured_gpios()
       {
         std::transform(
           gpio.state_interfaces.begin(), gpio.state_interfaces.end(),
-          std::back_insert_iterator(state_interface_types_),
+          std::back_insert_iterator(result),
           [&gpio_name](const auto & interface_name)
           { return gpio_name + '/' + interface_name.name; });
       }
     }
   }
+  return result;
 }
 
 
@@ -485,11 +487,11 @@ void PLCController::store_state_interface_types()
       get_node()->get_logger(),
       "State interfaces are not configured. All available interfaces of configured GPIOs will be "
       "broadcasted.");
-    set_all_state_interfaces_of_configured_gpios();
+    state_interface_types_ = set_all_state_interfaces_of_configured_gpios();
     return;
   }
 
-  parameter_utils::flatten_gpio_interface_map(params_.state_interfaces.gpios_map, state_interface_types_);
+  state_interface_types_ = parameter_utils::flatten_gpio_interface_map(params_.state_interfaces.gpios_map);
 }
 
 

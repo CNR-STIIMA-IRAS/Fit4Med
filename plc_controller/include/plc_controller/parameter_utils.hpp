@@ -24,8 +24,9 @@ namespace parameter_utils
  * @return InterfacesNames Vector of "gpio/interface" strings in iteration order.
  */
 template <typename GpioMap>
-void flatten_gpio_interface_map(const GpioMap & gpios_map, InterfacesNames& result)
+InterfacesNames flatten_gpio_interface_map(const GpioMap & gpios_map)
 {
+  InterfacesNames result;
   for (const auto & [gpio_name, interface_data] : gpios_map)
   {
     std::transform(
@@ -33,6 +34,7 @@ void flatten_gpio_interface_map(const GpioMap & gpios_map, InterfacesNames& resu
       std::back_inserter(result),
       [&gpio_name](const std::string & interface_name) { return gpio_name + '/' + interface_name; });
   }
+  return result;
 }
 
 /**

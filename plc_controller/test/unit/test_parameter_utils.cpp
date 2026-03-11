@@ -27,7 +27,7 @@ TEST(ParameterUtils, FlattenGpioInterfaceMapBuildsQualifiedNames)
   };
 
   InterfacesNames flattened;
-  parameter_utils::flatten_gpio_interface_map(config, flattened);
+  flattened = parameter_utils::flatten_gpio_interface_map(config);
 
   ASSERT_EQ(flattened.size(), 3u);
   EXPECT_EQ(flattened[0], "alpha_gpio/one");
@@ -39,7 +39,7 @@ TEST(ParameterUtils, FlattenGpioInterfaceMapHandlesEmptyMap)
 {
   std::map<std::string, FakeInterfaceSet> config{};
   InterfacesNames flattened;
-  parameter_utils::flatten_gpio_interface_map(config, flattened);
+  flattened = parameter_utils::flatten_gpio_interface_map(config);
   EXPECT_TRUE(flattened.empty());
 }
 
