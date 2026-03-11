@@ -34,7 +34,7 @@ private:
   double command_vel_ = 0.0;
 
   rclcpp::Node::SharedPtr node_;
-  rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr set_position_sub_;
+  //rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr set_position_sub_;
 
   void set_position_callback(const std_msgs::msg::Float64::SharedPtr msg);
 };
