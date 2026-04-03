@@ -1,6 +1,6 @@
 <!-- Copyright 2026 CNR-STIIMA -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
- 
+
 <library path="plc_controller">
   <class name="plc_controller/PLCController"
          type="plc_controller::PLCController"

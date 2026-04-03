@@ -89,11 +89,11 @@ class ConstRequestServiceHandler(RosilibpyServiceHandler):
             print(f'<<<< Given request: {self.req}')
         return self.response
 
-class DriveStates:
+class CoEDriveStates:
     def __init__(self, lenght : int):
         self.lenght = lenght
         self.dof_names : List[str] = ['n/a'] * lenght
-        self.drive_states : List[str] = ['n/a'] * lenght
+        self.coe_drive_states : List[str] = ['n/a'] * lenght
         self.modes_of_operation : List[str] = ['n/a'] * lenght
         self.status_words : List[int] = [0] * lenght
         self.fault_present : bool = True
@@ -102,22 +102,38 @@ class DriveStates:
     def from_dict(self, msg : dict):
         if msg is not None and 'dof_names' in msg.keys() and len(msg['dof_names'])==self.lenght:
             self.dof_names = msg['dof_names']
-            self.drive_states = msg['drive_states']
+            self.coe_drive_states = msg['drive_states']
             self.modes_of_operation = msg['modes_of_operation']
             self.status_words = msg['status_words']
             self.fault_present =  msg['fault_present']
             self.drives_on =  msg['drives_on']
         else:
             self.dof_names = ['n/a'] * self.lenght
-            self.drive_states = ['n/a'] * self.lenght
+            self.coe_drive_states = ['n/a'] * self.lenght
             self.modes_of_operation = ['n/a'] * self.lenght
             self.status_words = [0] * self.lenght
             self.fault_present = True
             self.drives_on = False
+            
+
+# Ethercat Controller States, i.e., the state of all the ethercat slaves
+class EcSlaveStates:
+    def __init__(self, lenght : int):
+        self.lenght = lenght
+        self.slave_names : List[str] = ['n/a'] * lenght
+        self.slave_states : List[str] = ['n/a'] * lenght
+    
+    def from_dict(self, msg : dict):
+        if msg is not None and 'slave_names' in msg.keys() and len(msg['slave_names'])==self.lenght:
+            self.slave_names  = [ m.replace('0x000001dd:0x10305070','ASDA2 Delta') for m in msg['slave_names']]
+            self.slave_states = msg['slave_states']
+        else:
+            self.slave_names = ['n/a'] * self.lenght
+            self.slave_states = ['n/a'] * self.lenght
 
 class SyncRosManager:
 
-    def __init__(self, joint_names: List[str], ros_client: roslibpy.Ros):
+    def __init__(self, expected_number_of_slaves: int, joint_names: List[str], ros_client: roslibpy.Ros):
         self._ros_period = 1
         self._controller_list_period = 50  # milliseconds
         self.trajectory_controller_name : str = 'joint_trajectory_controller'
@@ -136,9 +152,10 @@ class SyncRosManager:
 
         self._joint_state = None
         self._joint_names = joint_names
-        self.slave_names = self._joint_names
+        self._expected_number_of_slaves = expected_number_of_slaves
 
-        self.drive_states : DriveStates = DriveStates(len(self._joint_names))
+        self.coe_drive_states : CoEDriveStates = CoEDriveStates(len(self._joint_names))
+        self.ec_slave_states : EcSlaveStates = EcSlaveStates(self._expected_number_of_slaves)
 
         self.ros_client = ros_client
 
@@ -238,6 +255,9 @@ class SyncRosManager:
         self.get_drive_state_client : RosilibpyServiceHandler = RosilibpyServiceHandler(self.ros_client, '/ethercat_checker/get_drive_states',
                                                                                         'ethercat_controller_msgs/srv/GetDriveStates')
         
+        self.get_slave_state_client : RosilibpyServiceHandler = RosilibpyServiceHandler(self.ros_client, '/ethercat_checker/get_slave_states',
+                                                                                        'tecnobody_msgs/srv/GetSlaveStates')
+        
         self.perform_homing_client : RosilibpyServiceHandler = RosilibpyServiceHandler(self.ros_client, '/state_controller/perform_homing', 'std_srvs/srv/Trigger')
 
         self.set_trajectory_client : RosilibpyServiceHandler= RosilibpyServiceHandler(self.ros_client, "/tecnobody_workbench_utils/set_trajectory",  
@@ -285,6 +305,7 @@ class SyncRosManager:
         self.mode_of_op_client = None #type: ignore
         self.enable_eth_error_check = None #type: ignore
         self.get_drive_state_client = None #type: ignore
+        self.get_slave_state_client = None #type: ignore
         self.perform_homing_client = None #type: ignore
         self.set_trajectory_client = None #type: ignore
 
@@ -363,10 +384,17 @@ class SyncRosManager:
         if not self.destroy_clients_init:
             
             msg_drive_states = self.get_drive_states()
-            self.drive_states.from_dict(msg_drive_states['states'] if msg_drive_states is not None and 'states' in msg_drive_states else None) #type: ignore
+            self.coe_drive_states.from_dict(msg_drive_states['states'] if msg_drive_states is not None and 'states' in msg_drive_states else None) #type: ignore
             
-            if len(self.drive_states.dof_names) != len(self._joint_names):
-                print(f'Warning! Get an incomplete list of states (received the data for the axes: {self.drive_states.dof_names}, expected: {self._joint_names}')
+            if len(self.coe_drive_states.dof_names) != len(self._joint_names):
+                print(f'Warning! Get an incomplete list of states (received the data for the axes: {self.coe_drive_states.dof_names}, expected: {self._joint_names}')
+                return 
+            
+            msg_slave_states = self.get_slave_states()
+            self.ec_slave_states.from_dict(msg_slave_states) #type: ignore
+            
+            if len(self.ec_slave_states.slave_names) != self._expected_number_of_slaves:
+                print(f'Warning! Get an incomplete list of states (received the data for the axes: {self.ec_slave_states.slave_names}, expected: {self._expected_number_of_slaves}')
                 return 
             
             list_controllers_response : dict = self.get_list_controllers()
@@ -374,7 +402,7 @@ class SyncRosManager:
                 return
             
             ##########################
-            moo : List[int] = [ self.get_op_mode_number(mode) for mode in self.drive_states.modes_of_operation ]
+            moo : List[int] = [ self.get_op_mode_number(mode) for mode in self.coe_drive_states.modes_of_operation ]
 
             is_csv_mode = all([moo[j] == 9 for j in range(len(self._joint_names))])
             is_csp_mode = all([moo[j] == 8 for j in range(len(self._joint_names))])
@@ -437,7 +465,7 @@ class SyncRosManager:
     ##############################################################################################
 
     def controller_and_op_mode_switch(self, new_mode: int, new_controller: str, timeout_s: float = 5.0):
-        moo = [ self.get_op_mode_number(moo) for moo in self.drive_states.modes_of_operation]
+        moo = [ self.get_op_mode_number(moo) for moo in self.coe_drive_states.modes_of_operation]
         print(f'{GREEN}>>>>{NC} Switch MOO and controller({YELLOW}{moo}, {self.current_controller_name}{NC}) => ({YELLOW}{new_mode}, {new_controller}{NC})')
         ok = new_controller == self.current_controller_name and\
                 all(new_mode == moo[j] for j in range(len(self._joint_names)))
@@ -456,7 +484,7 @@ class SyncRosManager:
                 if ok:
                     start_time = time.time()
                     while True:
-                        moo = [ self.get_op_mode_number(moo) for moo in self.drive_states.modes_of_operation]
+                        moo = [ self.get_op_mode_number(moo) for moo in self.coe_drive_states.modes_of_operation]
                         current_time = time.time()
                         elapsed = current_time - start_time
                         if elapsed > timeout_s:
@@ -475,7 +503,7 @@ class SyncRosManager:
 
     def set_mode_of_operation(self, mode_value: int) -> bool:
         for idx,dof in enumerate(self._joint_names):
-            if self.get_op_mode_number(self.drive_states.modes_of_operation[idx]) == mode_value:
+            if self.get_op_mode_number(self.coe_drive_states.modes_of_operation[idx]) == mode_value:
                 pass
             req = {'dof_name': dof, 'mode_of_operation': mode_value,}
             _ = self.mode_of_op_client.call(req)
@@ -483,13 +511,13 @@ class SyncRosManager:
         return True
 
         # op_response = []
-        # for mode in self.drive_states.modes_of_operation:
+        # for mode in self.coe_drive_states.modes_of_operation:
         #     op_response.append(self.get_op_mode_number(mode))
         # if all(op_response[j] == mode_value for j in range(len(self._joint_names))):
         #     self.op_mode_request_in_execution = False
         #     return True
         # else:
-        #     print(f"got response: {self.drive_states.modes_of_operation} when trying to change OP mode.")
+        #     print(f"got response: {self.coe_drive_states.modes_of_operation} when trying to change OP mode.")
         #     time.sleep(0.1)
         #     return self.set_mode_of_operation(mode_value)
 
@@ -509,13 +537,13 @@ class SyncRosManager:
                     current_time = time.time()
                     elapsed = current_time - start_time
 
-                    if all((status_word & (1 << 12)) != 0 for status_word in self.drive_states.status_words):
+                    if all((status_word & (1 << 12)) != 0 for status_word in self.coe_drive_states.status_words):
                         print('Homing performed successfully')
                         ok = True
                         break
                     elif elapsed > timeout_sec:
                         print('Timeout while waiting for homing to complete')
-                        for status_word in self.drive_states.status_words:
+                        for status_word in self.coe_drive_states.status_words:
                             print(
                                 f' - STATUS WORD: bit 12 (homing completed): {status_word & (1 << 12)}, '
                                 f'bit 13 (error): {status_word & (1 << 13)}'
@@ -572,6 +600,16 @@ class SyncRosManager:
 
         except Exception as e:
             print(f'Drive States Service call failed with exception: {e}')
+        return result
+
+    def get_slave_states(self) -> dict:
+        result : dict = None  # type: ignore
+        try:
+            result = self.get_slave_state_client.call()
+            if result is None:
+                print('Slave States Service call failed')
+        except Exception as e:
+            print(f'Slave States Service call failed with exception: {e}')
         return result
 
 

@@ -618,10 +618,18 @@ class PLCControllerInterface(Node):
                         if not self.FIRST_TIME:
                             self.get_logger().info("🏠 First startup: launching with homing calibration")
                             subprocess.Popen(
-                                [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh --perform-homing"],
+                                [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"],
                                 shell=True,
                                 executable="/bin/bash"
                             )
+                            # REMOVED THE AUTOMATIC HOMING ALSO IN THE FIRST BOOT. 
+                            #   > CAIMMI GENERATES TOO MANY ERRORS, AND A FULL REBOOT IS OFTEN REQUIRED TO RECOVER BUT THE 
+                            #   > HOMOING SHOULD NOT START SINCE IT WOULD ZERO THE POSITION
+                            # subprocess.Popen(
+                            #     [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh --perform-homing"],
+                            #     shell=True,
+                            #     executable="/bin/bash"
+                            # )
                             self.FIRST_TIME = True
                         # ========== Subsequent startups: skip homing (faster) ==========
                         else:
@@ -807,7 +815,7 @@ def main(args=None):
     # ========== Set CPU affinity to core 2 ==========
     # Ensures deterministic scheduling for control tasks
     import os
-    os.sched_setaffinity(0, {2})
+    os.sched_setaffinity(0, {7})
     
     # ========== Bringup flag (execute once at startup) ==========
     bringup_done = False

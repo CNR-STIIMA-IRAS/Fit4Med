@@ -129,6 +129,17 @@ class RobotWindow(QtWidgets.QDialog):
     
     def onBehaviourActivation(self, index):
         print(f"MOO option activated to: {index}")
+        slave_states = self.ROS.getSlaveStates()
+        if not all([state == 'OP' for state in slave_states]):
+            slave_names = self.ROS.getSlaveStates()
+            slave_states_dict = dict(zip(slave_names, slave_states))
+            move_ok  = all([ state == 'OP' if 'delta' in state[0].lower() else True for state in slave_states_dict.items()])
+            manual_guidance_ok = all([ state == 'OP' if 'delta' or 'ati' in state[0].lower() else True for state in slave_states_dict.items()])
+
+            if (move_ok and index in [1,2,4]) or (manual_guidance_ok and index == 3):
+                QMessageBox.warning(self, "Warning", f"Please check for errors the Ethercat Configuration")
+                return
+
         try:
             if index == 1:  # Zeroing
                 self.ROS.enableControllerBehaviour("Homing")

@@ -23,6 +23,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   #"srv/StartMovement.srv"
   "srv/MovementProgress.srv"
   "srv/SoftMovement.srv"
+  "srv/GetSlaveStates.srv"
 )
 
 if(BUILD_TESTING)

@@ -65,13 +65,82 @@ remove_pids_from_list()
   PIDS=${string% }  # Remove the trailing space
 }
 
+report_zombies_with_match()
+{
+  local match="$1"
+  local zombie_info=""
+
+  zombie_info=$(ps -eo pid=,ppid=,stat=,cmd= | awk -v pat="$match" '
+    BEGIN { IGNORECASE = 1 }
+    $3 ~ /^Z/ && $0 ~ pat { print }
+  ')
+
+  if [ -n "$zombie_info" ]; then
+    echo -e "${MAGENTA}!! Zombie processes still present for match \"$match\"${NC}"
+    while IFS= read -r zombie_line; do
+      [ -z "$zombie_line" ] && continue
+      zombie_pid=$(echo "$zombie_line" | awk '{print $1}')
+      zombie_ppid=$(echo "$zombie_line" | awk '{print $2}')
+      parent_info=$(ps -fp "$zombie_ppid" | tail -n 1)
+      echo -e "${MAGENTA}   zombie: ${zombie_line}${NC}"
+      if [ -n "$parent_info" ]; then
+        echo -e "${MAGENTA}   parent: ${parent_info}${NC}"
+      else
+        echo -e "${MAGENTA}   parent: not found, it should be reaped soon by init/systemd${NC}"
+      fi
+    done <<< "$zombie_info"
+  fi
+}
+
+reap_zombie_parents_with_match()
+{
+  local match="$1"
+  local zombie_ppids=""
+  local parent_pid=""
+  local parent_info=""
+
+  zombie_ppids=$(ps -eo ppid=,stat=,cmd= | awk -v pat="$match" '
+    BEGIN { IGNORECASE = 1 }
+    $2 ~ /^Z/ && $0 ~ pat { print $1 }
+  ' | sort -u)
+
+  if [ -z "$zombie_ppids" ]; then
+    return
+  fi
+
+  echo -e "${YELLOW}>> Trying to reap zombie parents for match ${GREEN}$match${NC}"
+  while IFS= read -r parent_pid; do
+    [ -z "$parent_pid" ] && continue
+
+    if [ "$parent_pid" -le 1 ] || [ "$parent_pid" -eq "$$" ]; then
+      echo -e "${MAGENTA}   skipping parent PID=$parent_pid for safety${NC}"
+      continue
+    fi
+
+    parent_info=$(ps -fp "$parent_pid" | tail -n 1)
+    if [ -z "$parent_info" ]; then
+      echo -e "${MAGENTA}   parent PID=$parent_pid already exited${NC}"
+      continue
+    fi
+
+    echo -e "${MAGENTA}   parent before reap attempt: ${parent_info}${NC}"
+    kill -15 "$parent_pid" 2>/dev/null
+    sleep 2
+
+    if ps -p "$parent_pid" >/dev/null 2>&1; then
+      echo -e "${MAGENTA}   parent PID=$parent_pid still alive, sending SIGKILL${NC}"
+      kill -9 "$parent_pid" 2>/dev/null
+      sleep 1
+    fi
+  done <<< "$zombie_ppids"
+}
+
 kill_process_with_match() {
   
   HDR="[${GREEN}$1${NC}]"
   # Get the PIDs of processes that match the first name
   echo -e "${YELLOW}>> Processing the termination of processes matching the string ${GREEN}$1${NC}"
-  PIDS=$(ps -aux | grep -i "$1" | grep -v grep | awk '{print $2}')
-  PIDS=$(echo "$PIDS" | tr ' ' '\n' | sort -u | tr '\n' ' ')
+  PIDS=$(pgrep -f -i "$1" | sort -u | tr '\n' ' ')
   timeout="$2"
 
   # Convert the PIDs string to an array
@@ -79,10 +148,10 @@ kill_process_with_match() {
   if [ -z "$PIDS" ]; then
     echo -e "$HDR No processes matching the specified patterns were found."
   else
-    ps -aux | grep -i "$1" | grep -v grep
+    ps -fp $PIDS
     # Define signals to try
-    SIGNALS=(2 9)  # INT, TERM
-
+    SIGNALS=(2 15 9)  # INT, TERM, KILL
+    
     remove_pids_from_list
 
     HDR="$HDR [PIDs:${CYAN}$PIDS${NC}]"
@@ -140,11 +209,14 @@ kill_process_with_match() {
 
         if [ "$progress" -eq 100 ]; then
           printf "\n"
-          echo -e "$HDR Timeout of $duration seconds exceeded. We try with an harder signal ..."
+          echo -e "$HDR Timeout of $duration seconds exceeded. We try with a stronger signal ..."
           break
         fi
       done
     done
+    report_zombies_with_match "$1"
+    reap_zombie_parents_with_match "$1"
+    report_zombies_with_match "$1"
     echo -e "$HDR done"
   fi
   echo -e "${GREEN}<< Done $1${NC}"
@@ -154,6 +226,7 @@ kill_process_with_match() {
 #unspaw_controllers plc_controller_manager
 kill_process_with_match run_sickPLC.launch.py 10
 kill_process_with_match fit4med_ws 5
+kill_process_with_match ros 5
 kill_process_with_match jazzy 5
 
 #sudo rm -fr /tmp/*

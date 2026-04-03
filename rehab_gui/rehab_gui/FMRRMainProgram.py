@@ -81,12 +81,13 @@ class MainProgram(QMainWindow):
         self.ui.setupUi(self)
         ###############################################
 
-        self.remote_ip = remote_ip
-        self.udp_port = udp_port
-        self.roslibpy_port = roslibpy_port
+        self.number_of_ec_slaves : int = 4
+        self.remote_ip : str = remote_ip
+        self.udp_port : int = udp_port
+        self.roslibpy_port : int = roslibpy_port
         self.udp = UdpCommunicationManager(self.remote_ip, self.udp_port)
         
-        self.ros_manager = RosCommunicationManager(JOINT_NAMES, self.remote_ip, self.roslibpy_port, self)
+        self.ros_manager = RosCommunicationManager(JOINT_NAMES,  self.number_of_ec_slaves,  self.remote_ip, self.roslibpy_port, self)
 
 
         self.motorWindow = MotorsWindow()

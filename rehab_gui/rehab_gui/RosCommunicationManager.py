@@ -41,13 +41,14 @@ class RosCommunicationManager(QObject):
     stop_ros_communication_signal : pyqtSignal = pyqtSignal()
     worker_thread : Worker = None #type: ignore
     
-    def __init__(self, joint_names: List[str], remote_ip: str, remote_port: int, widget: QWidget): #port=9090
+    def __init__(self, joint_names: List[str], number_of_ec_slaves: int, remote_ip: str, remote_port: int, widget: QWidget): #port=9090
         super().__init__()
         
         self.widget = widget
         self.enable_controller_behaviour = None
         self.ROS : SyncRosManager = None #type: ignore
 
+        self.number_of_ec_slaves = number_of_ec_slaves
         self.joint_names = joint_names
         self.remote_ip = remote_ip
         self.remote_port = remote_port
@@ -76,7 +77,7 @@ class RosCommunicationManager(QObject):
             del self.ROS
             self.ROS = None #type: ignore
 
-        self.ROS = SyncRosManager(self.joint_names, self.ros_client)
+        self.ROS = SyncRosManager(self.number_of_ec_slaves, self.joint_names, self.ros_client)
 
         self.worker_thread.start_thread()
 
@@ -177,25 +178,31 @@ class RosCommunicationManager(QObject):
         self.ROS.reset_fault()
 
     def areMotorsOn(self) -> bool:
-        return self.ROS.drive_states.drives_on if self.rOk() else False
+        return self.ROS.coe_drive_states.drives_on if self.rOk() else False
     
     def isManualResetFaults(self) -> bool:
         return self.ROS.manual_reset_faults if self.rOk() else False
             
     def isInFaultState(self) -> bool:
-        return self.ROS.drive_states.fault_present if self.rOk() else True
+        return self.ROS.coe_drive_states.fault_present if self.rOk() else True
     
     def getCurrentControllerName(self) -> str:
         return self.ROS.current_controller_name if self.rOk() else "n/a"
     
     def getJointTrajectoryControllerName(self) -> str:
         return self.ROS.trajectory_controller_name if self.rOk() else "n/a"
+
+    def getSlaveNames(self) -> List[str]:
+        return self.ROS.ec_slave_states.slave_names if self.rOk() else ['n/a'] * self.number_of_ec_slaves
     
+    def getSlaveStates(self) -> List[str]:
+        return self.ROS.ec_slave_states.slave_states if self.rOk() else ['n/a'] * self.number_of_ec_slaves
+
     def getDriversStates(self) -> List[str]:
-        return self.ROS.drive_states.drive_states if self.rOk() else ['n/a'] * len(self.joint_names)
+        return self.ROS.coe_drive_states.coe_drive_states if self.rOk() else ['n/a'] * len(self.joint_names)
         
     def getDriversModeOfOperations(self) -> List[str]:
-        return self.ROS.drive_states.modes_of_operation if self.rOk() else ['n/a'] * len(self.joint_names)
+        return self.ROS.coe_drive_states.modes_of_operation if self.rOk() else ['n/a'] * len(self.joint_names)
     
     def getDriversFeedbackPosition(self) -> List[float]:
         return self.ROS.RobotJointPosition if self.rOk() else [0.0] * len(self.joint_names)

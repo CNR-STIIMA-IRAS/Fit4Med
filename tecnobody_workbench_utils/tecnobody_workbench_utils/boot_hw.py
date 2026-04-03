@@ -24,6 +24,7 @@ where target_mode is one of the MODE_* constants defined in "MODE_OF_OPERATION_M
 (default: MODE_CYCLIC_SYNC_POSITION)
 """
 
+from typing import List
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
@@ -76,6 +77,50 @@ def get_op_mode_string(mode_number):
         return list(MODE_OF_OPERATION_MAP.keys())[list(MODE_OF_OPERATION_MAP.values()).index(mode_number)]
     return MODE_OF_OPERATION_MAP['MODE_NO_MODE']
 
+def get_ethercat_slaves_status(logger) -> List[dict]:
+    """
+    Query the EtherCAT master for the status of slave devices.
+    
+    Parses the output of the 'ethercat slaves' command to extract slave names
+    and their current state (INIT, PRE-OP, SAFE-OP, OP, etc.).
+    
+    Returns:
+        dict: Dictionary mapping slave indices to {'name': str, 'state': str}
+        Empty dict if 'ethercat' command is not available
+        
+    Raises:
+        No exceptions are raised; errors are logged instead
+    """
+    try:
+        result = subprocess.run(['ethercat', 'slaves'],
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                text=True,
+                                check=True)
+        lines = result.stdout.strip().splitlines()
+        
+        # Extract lines for Master1 section
+        lines_master1 = []
+        section_master1_found = False
+        for line in lines:
+            section_master1_found = section_master1_found or 'Master1' in line
+            if section_master1_found and not 'Master1' in line:
+                lines_master1.append(line)
+
+        # Parse slave information
+        eth_states : List[dict] = [dict()] * len(lines_master1)
+        for iSlave in range(len(lines_master1)):
+            parts = lines_master1[iSlave].split()
+            if len(parts) > 2:
+                slave_name, state = f"{parts[4]}-{parts[1]}", parts[2]
+                eth_states[iSlave] = {'name': slave_name, 'state': state}
+            else:
+                logger.warn(f"Formato non valido per la linea dello slave {iSlave}: {lines_master1[iSlave]}")
+        return eth_states
+
+    except FileNotFoundError:
+        logger.error("'ethercat' command not found. Verify that EtherCAT master is active.")
+        return []
 
 class HomingNode(Node):
     """
@@ -142,62 +187,13 @@ class HomingNode(Node):
         When all slaves reach OP state, this method cancels the timer to stop
         periodic checks and sets the ethercat_ready flag.
         """
-        eth_states = self.get_ethercat_slaves_status()
-        if eth_states and all(info['state'] == 'OP' for info in eth_states.values()):
+        eth_states = get_ethercat_slaves_status(self._logger)
+        if eth_states and all(info['state'] == 'OP' for info in eth_states):
             self.get_logger().info('All EtherCAT slaves are in OP state.')
             self.ethercat_ready = True
             self.ethercat_timer.cancel()  # Stop the timer
         else:
             self.get_logger().info(f'Not all EtherCAT slaves in OP state. Current states: {eth_states}')
-
-
-    def get_ethercat_slaves_status(self):
-        """
-        Query the EtherCAT master for the status of slave devices.
-        
-        Parses the output of the 'ethercat slaves' command to extract slave names
-        and their current state (INIT, PRE-OP, SAFE-OP, OP, etc.).
-        
-        Returns:
-            dict: Dictionary mapping slave indices to {'name': str, 'state': str}
-            Empty dict if 'ethercat' command is not available
-            
-        Raises:
-            No exceptions are raised; errors are logged instead
-        """
-        try:
-            result = subprocess.run(['ethercat', 'slaves'],
-                                    stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE,
-                                    text=True,
-                                    check=True)
-            lines = result.stdout.strip().splitlines()
-            
-            # Extract lines for Master1 section
-            lines_master1 = []
-            section_master1_found = False
-            for line in lines:
-                section_master1_found = section_master1_found or 'Master1' in line
-                if section_master1_found and not 'Master1' in line:
-                    lines_master1.append(line)
-
-            # Parse slave information
-            eth_states = {}
-            for idx in self.slave_indices:
-                if idx < len(lines_master1):
-                    parts = lines_master1[idx].split()
-                    if len(parts) > 2:
-                        slave_name, state = parts[1], parts[2]
-                        eth_states[idx] = {'name': slave_name, 'state': state}
-                    else:
-                        self.get_logger().warn(f"Formato non valido per la linea dello slave {idx}: {lines_master1[idx]}")
-                else:
-                    self.get_logger().warn(f"Nessuno slave trovato all'indice {idx}.")
-            return eth_states
-
-        except FileNotFoundError:
-            self.get_logger().error("'ethercat' command not found. Verify that EtherCAT master is active.")
-            return {}
 
 
     def handle_drive_status(self, msg):

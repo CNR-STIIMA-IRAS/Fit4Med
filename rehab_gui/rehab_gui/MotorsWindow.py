@@ -30,6 +30,11 @@ class MotorsWindow(QtWidgets.QWidget):
         self.ui.tableWidget_MotorsInfo.setColumnWidth(1, 200)
         self.ui.tableWidget_MotorsInfo.setColumnWidth(2, 200)
         self.ui.tableWidget_MotorsInfo.setColumnWidth(3, 100)
+        
+        self.ui.tableWidget_EthercatNodesInfo.setRowCount(self.ROS.number_of_ec_slaves)      # Set the number of rows
+        self.ui.tableWidget_EthercatNodesInfo.setColumnCount(2)  # Set the number of columns
+        self.ui.tableWidget_EthercatNodesInfo.setColumnWidth(0, 300)
+        self.ui.tableWidget_EthercatNodesInfo.setColumnWidth(1, 300)
 
     def resetFaults(self) -> None:
         if self.ui.comboBox_ResetFaults.currentIndex() == 2:
@@ -94,4 +99,13 @@ class MotorsWindow(QtWidgets.QWidget):
         for i,q in enumerate(self.ROS.getDriversFeedbackPosition()):
             item = QtWidgets.QTableWidgetItem(f'{q:.3f}')  #
             self.ui.tableWidget_MotorsInfo.setItem(i, 3, item)
+            
+        for i,name in enumerate(self.ROS.getSlaveNames()):
+            # 0 Joint Names
+            item = QtWidgets.QTableWidgetItem(name)  #
+            self.ui.tableWidget_EthercatNodesInfo.setItem(i, 0, item)
+        for i,state in enumerate(self.ROS.getSlaveStates()):
+            item = QtWidgets.QTableWidgetItem(state)  #
+            self.ui.tableWidget_EthercatNodesInfo.setItem(i, 1, item)
+
 

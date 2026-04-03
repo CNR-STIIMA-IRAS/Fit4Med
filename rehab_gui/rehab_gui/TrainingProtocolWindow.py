@@ -170,7 +170,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
             self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(False)
 
             # Set Mode of Operation to 2 to activate proximity sensor
-            self.ROS.setModeOfOperation(2)
+            # self.ROS.setModeOfOperation(2)
 
         elif self.ui_main.rehabMovementWindow.TypeOfMovement == 2: # HtMM
             self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(True)
@@ -180,7 +180,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
             self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(False)
 
             # Set Mode of Operation to 1 to activate switch sensor
-            self.ROS.setModeOfOperation(1)
+            # self.ROS.setModeOfOperation(1)
 
         else:
             self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(True)
@@ -210,6 +210,15 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
             else:
                 self.progressBarPhases[19].setValue(100)
                 self.stopTrainig()
+                self.ui.pushButton_STARTtrainig.setStyleSheet("background-color: rgb(85, 255, 127); color: black;")
+                self.ui.pushButton_STARTtrainig.setText("START TRAINING")
+                self.ui.pushButton_PauseTrainig.setEnabled(False)
+                self.ui.pushButton_ResumeTraining.setEnabled(False)
+        if not self.ROS.isRosCommunicationActive():
+            self.stopTrainig()
+            self.ui.pushButton_STARTtrainig.setEnabled(False)
+            self.ui.pushButton_PauseTrainig.setEnabled(False)
+            self.ui.pushButton_ResumeTraining.setEnabled(False)
 
     def clbk_ModeChanged(self):
         """Callback for mode selection radio buttons (RehabMode / EEGMode)"""

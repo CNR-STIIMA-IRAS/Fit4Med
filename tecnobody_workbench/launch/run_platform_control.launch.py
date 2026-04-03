@@ -13,7 +13,7 @@ from launch.launch_description_sources import AnyLaunchDescriptionSource
 import threading
 
 import os
-os.sched_setaffinity(0, {3,7})
+os.sched_setaffinity(0, {3})
 
 # Funzione per lanciare il nodo che pubblica il flag
 def launch_status_node(context, *args, **kwargs):
@@ -130,6 +130,7 @@ def generate_launch_description():
         parameters=[initial_joint_controllers],
         # prefix=['xterm -e gdb -ex run --args'],
         output='screen',
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'ros2_control_node_%p_%t.log'}
     )
 
     jsb = Node(
@@ -137,13 +138,15 @@ def generate_launch_description():
         executable='spawner',
         arguments=['joint_state_broadcaster'],
         output='screen',
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'joint_state_broadcaster_%p_%t.log'}
     )
     
     rsp = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
         output='screen',
-        parameters=[robot_description]
+        parameters=[robot_description],
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'robot_state_publisher_%p_%t.log'}
     )
 
     ssb = Node(
@@ -151,6 +154,8 @@ def generate_launch_description():
         executable='spawner',
         arguments=['state_controller'],
         output='screen',
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'state_controller_%p_%t.log'}
+
     )
 
     fsb = Node(
@@ -158,6 +163,7 @@ def generate_launch_description():
         executable='spawner',
         arguments=['ft_sensor_command_broadcaster'],
         output='screen',
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'ft_sensor_command_broadcaster_%p_%t.log'}
     )
 
     homing = Node(
@@ -165,7 +171,8 @@ def generate_launch_description():
         executable='boot_hw',
         arguments=['MODE_CYCLIC_SYNC_POSITION'],
         output='screen',
-        condition=IfCondition(LaunchConfiguration('perform_homing'))
+        condition=IfCondition(LaunchConfiguration('perform_homing')),
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'homing_%p_%t.log'}
     )
 
     homing_done_publisher = Node(
@@ -179,12 +186,14 @@ def generate_launch_description():
         executable='ethercat_checker_node',
         name='tecnobody_ethercat_checker_node',
         output='screen',
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'ethercat_checker_%p_%t.log'}
     )
 
     ft_offset_updater = Node(
         package='tecnobody_workbench_utils',
         executable='ft_offset_updater',
         output='screen',
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'ft_offset_updater_%p_%t.log'}
     )
 
     joint_controller_node = Node(
@@ -195,6 +204,7 @@ def generate_launch_description():
             #'scaled_trajectory_controller'
         ],
         output='screen',
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'joint_trajectory_controller_%p_%t.log'}   
     )
 
     remapping_controller_node = Node(
@@ -204,6 +214,7 @@ def generate_launch_description():
             'remapping_controller'
         ],
         output='screen',
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'remapping_controller_%p_%t.log'}
     )
 
     forward_controller_node = Node(
@@ -211,6 +222,7 @@ def generate_launch_description():
         executable='spawner',
         arguments=['forward_velocity_controller', '--inactive'],
         output='screen',
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'forward_velocity_controller_%p_%t.log'}
     )
 
     forward_pos_controller_node = Node(
@@ -218,6 +230,8 @@ def generate_launch_description():
         executable='spawner',
         arguments=['forward_position_controller'],
         output='screen',
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'forward_position_controller_%p_%t.log'}
+
     )
 
     admittance_controller_node = Node(
@@ -225,6 +239,8 @@ def generate_launch_description():
         executable='spawner',
         arguments=['admittance_controller', '--inactive'],
         output='screen',
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'admittance_controller_%p_%t.log'}
+
     )
 
     homing_launcher = RegisterEventHandler(
@@ -237,7 +253,9 @@ def generate_launch_description():
     fct_manager_node = Node(
         package='tecnobody_workbench_utils',
         executable='fct_manager_node',
-        arguments=['joint_trajectory_controller']
+        arguments=['joint_trajectory_controller'],
+        output='screen',
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'fct_manager_node_%p_%t.log'}
     )
 
     filter_commands_node = Node(
@@ -247,7 +265,9 @@ def generate_launch_description():
                    'joint_trajectory_controller_name':'joint_trajectory_controller', 
                    'default_sample_rate':250,
                    'desampled_rate':25,
-                   'joint_names': ['joint_x', 'joint_y', 'joint_z']}]
+                   'joint_names': ['joint_x', 'joint_y', 'joint_z']}],
+        output='screen',
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'filter_commands_node_%p_%t.log'}
     )
 
     group1 = GroupAction(

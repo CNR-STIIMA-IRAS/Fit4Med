@@ -24,10 +24,12 @@ Services provided:
     - /ethercat_checker/enable_error_checking: Enable/disable auto fault reset
     - /ethercat_checker/start_motors: Turn on motors with brake control
     - /ethercat_checker/stop_motors: Turn off motors with brake control
-    - /ethercat_checker/get_drive_states: Query current drive states
+    - /ethercat_checker/get_drive_states: Query current drive states (Can Over Ethercat)
+    - /ethercat_checker/get_slave_states: Query current ethercat states (PREOP/SAFEOP/OP)
     - /ethercat_checker/request_shutdown: Gracefully shutdown the node
 """
 
+from typing import List
 import rclpy
 import time
 from rclpy.node import Node
@@ -36,9 +38,11 @@ from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from std_srvs.srv import Trigger
 from ethercat_controller_msgs.msg import Cia402DriveStates
 from ethercat_controller_msgs.srv import GetModesOfOperation, GetDriveStates
+from tecnobody_msgs.srv import GetSlaveStates
 from std_msgs.msg import Bool
 from std_srvs.srv import SetBool, Trigger
 from tecnobody_msgs.msg import PlcController
+from .boot_hw import get_ethercat_slaves_status
 
 # Global flag for coordinating node shutdown across threads
 _shutdown_request = False
@@ -155,6 +159,14 @@ class EthercatCheckerNode(Node):
             self.get_drive_states_callback,
             callback_group=service_group
         )
+        
+        # Service to query current drive states
+        self.get_slaves_status_srv = self.create_service(
+            GetSlaveStates,
+            '/ethercat_checker/get_slave_states', 
+            self.get_slave_states_callback,
+            callback_group=service_group
+        )
 
         # Service to request graceful node shutdown
         self.shutdown_service = self.create_service(
@@ -266,6 +278,23 @@ class EthercatCheckerNode(Node):
         response.states.status_words = [status_word for status_word in self.feedback.status_words.values()]
         response.states.fault_present = self.feedback.fault_present
         response.states.drives_on = self.feedback.drives_on
+        return response
+    
+    def get_slave_states_callback(self, request: GetSlaveStates.Request, response: GetSlaveStates.Response):
+        """
+        Service callback to query current ethercat slave states.
+        
+        Args:
+            request (GetDriveStates.Request): Empty request
+            response (GetDriveStates.Response): Response populated with current state and slave names
+            
+        Returns:
+            GetDriveStates.Response: Response containing current drive states
+        """
+        ethercat_states : List[dict] = get_ethercat_slaves_status(self._logger)
+        response = GetSlaveStates.Response()
+        response.slave_names =  [info['name'] for info in ethercat_states] #type: ignore
+        response.slave_states = [info['state'] for info in ethercat_states] #type: ignore
         return response
 
 

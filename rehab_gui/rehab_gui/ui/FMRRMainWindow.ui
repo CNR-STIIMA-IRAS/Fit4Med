@@ -1,7 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Copyright 2026 CNR-STIIMA -->
-<!-- SPDX-License-Identifier: Apache-2.0 -->
-
 <ui version="4.0">
  <class>FMRRMainWindow</class>
  <widget class="QDialog" name="FMRRMainWindow">
@@ -88,21 +85,6 @@
       </rect>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_TrainingProtocol"/>
-    </widget>
-   </widget>
-   <widget class="QWidget" name="tabOnlineViewer">
-    <attribute name="title">
-     <string>Online Data Viewer</string>
-    </attribute>
-    <widget class="QGraphicsView" name="graphicsView">
-     <property name="geometry">
-      <rect>
-       <x>0</x>
-       <y>10</y>
-       <width>591</width>
-       <height>491</height>
-      </rect>
-     </property>
     </widget>
    </widget>
   </widget>

@@ -1,9 +1,6 @@
-# Copyright 2026 CNR-STIIMA
-# SPDX-License-Identifier: Apache-2.0
-
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'rehab_gui/rehab_gui/ui/FMRRMainWindow.ui'
+# Form implementation generated from reading ui file 'FMRRMainWindow.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.10
 #
@@ -53,12 +50,6 @@ class Ui_FMRRMainWindow(object):
         self.verticalLayout_TrainingProtocol.setContentsMargins(0, 0, 0, 0)
         self.verticalLayout_TrainingProtocol.setObjectName("verticalLayout_TrainingProtocol")
         self.tabWidget.addTab(self.tabTrainingProtocol, "")
-        self.tabOnlineViewer = QtWidgets.QWidget()
-        self.tabOnlineViewer.setObjectName("tabOnlineViewer")
-        self.graphicsView = QtWidgets.QGraphicsView(self.tabOnlineViewer)
-        self.graphicsView.setGeometry(QtCore.QRect(0, 10, 591, 491))
-        self.graphicsView.setObjectName("graphicsView")
-        self.tabWidget.addTab(self.tabOnlineViewer, "")
         self.verticalLayoutWidget = QtWidgets.QWidget(FMRRMainWindow)
         self.verticalLayoutWidget.setGeometry(QtCore.QRect(0, 610, 601, 261))
         self.verticalLayoutWidget.setObjectName("verticalLayoutWidget")
@@ -84,5 +75,4 @@ class Ui_FMRRMainWindow(object):
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tabRobotMovement), _translate("FMRRMainWindow", "Robot Movement"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tabRehabilitationMovement), _translate("FMRRMainWindow", "Rehabilitation Movement"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tabTrainingProtocol), _translate("FMRRMainWindow", "Training Protocol"))
-        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tabOnlineViewer), _translate("FMRRMainWindow", "Online Data Viewer"))
         self.pushButton_CloseProgram.setText(_translate("FMRRMainWindow", "Exit"))
