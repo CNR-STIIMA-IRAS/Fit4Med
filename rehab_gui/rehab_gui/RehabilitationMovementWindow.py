@@ -19,10 +19,7 @@ from RosCommunicationManager import RosCommunicationManager
 import yaml
 from yaml.loader import SafeLoader
 import numpy as np
-from scipy import interpolate
 from copy import deepcopy
-import time
-import matplotlib.pyplot as plt
 #MC Classes/methods
 
 class SimpleFileDialog(QFileDialog):
@@ -95,7 +92,6 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
     def connect(self, ROS: RosCommunicationManager, parent_timer: QTimer):
         self.ROS = ROS
         self.parent_timer = parent_timer
-        self.parent_timer.timeout.connect(self.updateWindow)        
 
     def updateWindow(self):
         if self.ROS.isRosCommunicationActive():
@@ -116,6 +112,9 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
 #####                                                                                                    #####
 ##############################################################################################################
     def clbk_BtnCreateMovementData(self):
+        from scipy import interpolate
+        import matplotlib.pyplot as plt
+
         MovementsPath = self.main_app.FMRR_Paths['Movements']
         update_rate = 50
         
@@ -645,7 +644,9 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
 
     def clbk_BtnGoToStartPosition(self):
         self.ROS.setManualMode(True)
-        time.sleep(0.5)
+        QTimer.singleShot(500, self._goToStartPosition_afterDelay)
+
+    def _goToStartPosition_afterDelay(self):
         if self.ROS.getCurrentControllerName() != self.ROS.getJointTrajectoryControllerName():
             if not self.ROS.enableControllerBehaviour("FCT"):
                 QMessageBox.warning(self, "Warning", "Failed in setting the joint trajectory controller")

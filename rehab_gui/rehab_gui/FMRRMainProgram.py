@@ -1,9 +1,6 @@
 # Copyright 2026 CNR-STIIMA
 # SPDX-License-Identifier: Apache-2.0
 
-import cProfile
-import pstats
-
 import os
 import sys
 import signal
@@ -70,8 +67,8 @@ class MainProgram(QMainWindow):
     def __init__(self, remote_ip, udp_port = 5005, roslibpy_port=9090):
         super().__init__()
 
-        self._update_window_period = 20
-        self._update_TrainingTime = 20
+        self._update_window_period = 100
+        self._update_TrainingTime = 100
         self._toolPosCovFact = 100 # to display coordinatates in centimeters (are given in meters in the yaml files) (used in MovementWindow to display data)
         self._jointPosConvFact = 180/np.pi # conversion from radiants to degrees (used in MovementWindow to display data)
         self.trigger_pause = pyqtSignal(bool) # signal to pause the worker thread
@@ -117,7 +114,6 @@ class MainProgram(QMainWindow):
 
     def connect(self):
         self.update_window_timer = QTimer()
-        self.update_window_timer.timeout.connect(self.updateWindow)
         self.motorWindow.connect(self.ros_manager, self.update_window_timer)
         self.robotWindow.connect(self.ros_manager, self.update_window_timer)
         self.rehabMovementWindow.connect(self.ros_manager, self.update_window_timer)
@@ -130,16 +126,21 @@ class MainProgram(QMainWindow):
         self.udp.start_ros_communication.connect(self.ros_manager.startRosCommunication)
         self.udp.stop_ros_communication.connect(self.ros_manager.stopRosCommunication)
         self.ros_manager.stop_ros_communication_signal.connect(self.udp.onResetRosCommunication)
-        #self.update_window_timer.timeout.connect(self.listActiveControllers) #type: ignore
 
+        self.update_window_timer.timeout.connect(self.updateWindow)
         self.update_window_timer.start(self._update_window_period)
 
     def updateWindow(self):
-        pass
-        # if not self.ros_manager.isRosCommunicationActive():
-        #     self.ros_waiting_dialog.show()
-        # else:
-        #     self.ros_waiting_dialog.hide()
+        current_tab = self.ui.tabWidget.currentIndex()
+        # Always update motors window (visible across all tabs)
+        self.motorWindow.updateWindow()
+        # Only update the sub-window for the currently visible tab
+        if current_tab == 0:
+            self.robotWindow.updateWindow()
+        elif current_tab == 1:
+            self.rehabMovementWindow.updateWindow()
+        elif current_tab == 2:
+            self.trainingProtocolWindow.updateWindow()
 
     def closeEvent(self, event):
         MyString = "Do you want to exit?"
@@ -195,6 +196,7 @@ def main(remote_ip : str, maximise_window : bool):
     return app.exec_()
 
 def analyze_profile():
+    import pstats
     p = pstats.Stats('app_profile.prof')
     p.sort_stats('cumulative')
     p.print_stats()
@@ -212,8 +214,9 @@ if __name__ == "__main__":
 
     print(args)
     
-    profiler : cProfile.Profile = None #type: ignore
-    if args.profile: 
+    profiler = None
+    if args.profile:
+        import cProfile
         print('>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> Profiling activated')
         profiler = cProfile.Profile()
         profiler.enable()  # Start profiling

@@ -55,7 +55,7 @@ class RosCommunicationManager(QObject):
         self.roslib_first_time_connection = True
         self.manual_mode_activated = False
 
-        self.worker_thread = Worker(self.updateState)
+        self.worker_thread = Worker(self.updateState, loop_period_s=0.2)
         self.worker_thread.finished.connect(self.onUpdateWorkerThreadFinished)
     
     def onUpdateWorkerThreadFinished(self):

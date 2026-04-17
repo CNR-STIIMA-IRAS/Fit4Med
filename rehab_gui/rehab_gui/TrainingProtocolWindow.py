@@ -118,82 +118,95 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         self.typeOfExerciseButtonGroup.addButton(self.ui.radioButton_TypeOfExercise_Reaching, 0)
         self.typeOfExerciseButtonGroup.addButton(self.ui.radioButton_TypeOfExercise_HandtoMouth, 1)
 
+        # Cache for updateWindow to avoid redundant widget updates
+        self._last_load_enabled = None
+        self._last_start_state = None
+        self._last_save_enabled = None
+        self._last_side = None
+        self._last_type = None
+        self._last_movement_count = None
+        self._last_total_time_display = None
+
     def connect(self, ROS: RosCommunicationManager, parent_timer: QTimer):
         self.ROS = ROS
         self.parent_timer = parent_timer
-        self.parent_timer.timeout.connect(self.updateWindow)
     
     def updateWindow(self):
-        if self.ui_main.movement_loaded and not self.Training_ON:
-            self.ui.pushButton_LoadCreateProtocol.setEnabled(True)
-        else:
-            self.ui.pushButton_LoadCreateProtocol.setEnabled(False)
+        load_enabled = self.ui_main.movement_loaded and not self.Training_ON
+        if load_enabled != self._last_load_enabled:
+            self._last_load_enabled = load_enabled
+            self.ui.pushButton_LoadCreateProtocol.setEnabled(load_enabled)
 
-        if self.ui_main.movement_loaded and self.ProtocolData is not None:
-            self.ui.pushButton_STARTtrainig.setEnabled(True)
-            self.ui.pushButton_STARTtrainig.setStyleSheet("background-color: rgb(85, 255, 127); color: black;")
-        else:
-            self.ui.pushButton_STARTtrainig.setEnabled(False)
-            self.ui.pushButton_STARTtrainig.setStyleSheet("")
+        start_state = (bool(self.ui_main.movement_loaded), self.ProtocolData is not None)
+        if start_state != self._last_start_state:
+            self._last_start_state = start_state
+            if start_state[0] and start_state[1]:
+                self.ui.pushButton_STARTtrainig.setEnabled(True)
+                self.ui.pushButton_STARTtrainig.setStyleSheet("background-color: rgb(85, 255, 127); color: black;")
+            else:
+                self.ui.pushButton_STARTtrainig.setEnabled(False)
+                self.ui.pushButton_STARTtrainig.setStyleSheet("")
 
-        # Enable Save button only if a protocol has been loaded
-        if self.ProtocolData is not None:
-            self.ui.pushButton_SaveProtocol.setEnabled(True)
-        else:
-            self.ui.pushButton_SaveProtocol.setEnabled(False)
+        save_enabled = self.ProtocolData is not None
+        if save_enabled != self._last_save_enabled:
+            self._last_save_enabled = save_enabled
+            self.ui.pushButton_SaveProtocol.setEnabled(save_enabled)
 
-        if self.ui_main.rehabMovementWindow.SideOfMovement == 1: #Left
-            self.ui.radioButton_SideLeft.blockSignals(True)
-            self.ui.radioButton_SideRight.blockSignals(True)
-            self.ui.radioButton_SideLeft.setChecked(True)
-            self.ui.radioButton_SideLeft.blockSignals(False)
-            self.ui.radioButton_SideRight.blockSignals(False)
-        elif self.ui_main.rehabMovementWindow.SideOfMovement == 2: #Right
-            self.ui.radioButton_SideLeft.blockSignals(True)
-            self.ui.radioButton_SideRight.blockSignals(True)
-            self.ui.radioButton_SideRight.setChecked(True)
-            self.ui.radioButton_SideLeft.blockSignals(False)
-            self.ui.radioButton_SideRight.blockSignals(False)
-        else:
-            self.ui.radioButton_SideLeft.blockSignals(True)
-            self.ui.radioButton_SideRight.blockSignals(True)
-            self.ui.radioButton_SideLeft.setChecked(False)
-            self.ui.radioButton_SideRight.setChecked(False)
-            self.ui.radioButton_SideLeft.blockSignals(False)
-            self.ui.radioButton_SideRight.blockSignals(False)
-        
-        if self.ui_main.rehabMovementWindow.TypeOfMovement == 1: # Reaching 
-            self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(True)
-            self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(True)
-            self.ui.radioButton_TypeOfExercise_Reaching.setChecked(True)
-            self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(False)
-            self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(False)
+        side = self.ui_main.rehabMovementWindow.SideOfMovement
+        if side != self._last_side:
+            self._last_side = side
+            if side == 1:
+                self.ui.radioButton_SideLeft.blockSignals(True)
+                self.ui.radioButton_SideRight.blockSignals(True)
+                self.ui.radioButton_SideLeft.setChecked(True)
+                self.ui.radioButton_SideLeft.blockSignals(False)
+                self.ui.radioButton_SideRight.blockSignals(False)
+            elif side == 2:
+                self.ui.radioButton_SideLeft.blockSignals(True)
+                self.ui.radioButton_SideRight.blockSignals(True)
+                self.ui.radioButton_SideRight.setChecked(True)
+                self.ui.radioButton_SideLeft.blockSignals(False)
+                self.ui.radioButton_SideRight.blockSignals(False)
+            else:
+                self.ui.radioButton_SideLeft.blockSignals(True)
+                self.ui.radioButton_SideRight.blockSignals(True)
+                self.ui.radioButton_SideLeft.setChecked(False)
+                self.ui.radioButton_SideRight.setChecked(False)
+                self.ui.radioButton_SideLeft.blockSignals(False)
+                self.ui.radioButton_SideRight.blockSignals(False)
 
-            # Set Mode of Operation to 2 to activate proximity sensor
-            # self.ROS.setModeOfOperation(2)
+        movement_type = self.ui_main.rehabMovementWindow.TypeOfMovement
+        if movement_type != self._last_type:
+            self._last_type = movement_type
+            if movement_type == 1:
+                self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(True)
+                self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(True)
+                self.ui.radioButton_TypeOfExercise_Reaching.setChecked(True)
+                self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(False)
+                self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(False)
+            elif movement_type == 2:
+                self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(True)
+                self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(True)
+                self.ui.radioButton_TypeOfExercise_HandtoMouth.setChecked(True)
+                self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(False)
+                self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(False)
+            else:
+                self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(True)
+                self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(True)
+                self.ui.radioButton_TypeOfExercise_Reaching.setChecked(False)
+                self.ui.radioButton_TypeOfExercise_HandtoMouth.setChecked(False)
+                self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(False)
+                self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(False)
+                self.ROS.setModeOfOperation(0)
 
-        elif self.ui_main.rehabMovementWindow.TypeOfMovement == 2: # HtMM
-            self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(True)
-            self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(True)
-            self.ui.radioButton_TypeOfExercise_HandtoMouth.setChecked(True)
-            self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(False)
-            self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(False)
+        if self.NumberExecMovements != self._last_movement_count:
+            self._last_movement_count = self.NumberExecMovements
+            self.ui.lcdNumber_MovementCOUNT.display(self.NumberExecMovements)
 
-            # Set Mode of Operation to 1 to activate switch sensor
-            # self.ROS.setModeOfOperation(1)
-
-        else:
-            self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(True)
-            self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(True)
-            self.ui.radioButton_TypeOfExercise_Reaching.setChecked(False)
-            self.ui.radioButton_TypeOfExercise_HandtoMouth.setChecked(False)
-            self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(False)
-            self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(False)
-
-            self.ROS.setModeOfOperation(0) # Default mode, no sensor activated
-
-        self.ui.lcdNumber_MovementCOUNT.display( self.NumberExecMovements ) 
-        self.ui.lcdNumberExerciseTotalTime.display( np.floor((self.TotalTrainingTime - self.ActualTrainingTime)/60) )
+        total_time_display = np.floor((self.TotalTrainingTime - self.ActualTrainingTime) / 60)
+        if total_time_display != self._last_total_time_display:
+            self._last_total_time_display = total_time_display
+            self.ui.lcdNumberExerciseTotalTime.display(total_time_display)
 
         if self.Training_ON:
             _iPhase = self.ROS.getExerciseRepetitionCounter()

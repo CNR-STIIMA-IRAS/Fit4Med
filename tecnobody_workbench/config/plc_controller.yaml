@@ -21,6 +21,7 @@ PLC_controller:
           - manual_mode
           - force_sensors_pwr
           - brake_disable
+          - eeg_sync
     state_interfaces:
       PLC_node:
         - interfaces:

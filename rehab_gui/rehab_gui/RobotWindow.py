@@ -3,7 +3,7 @@
 
 import os
 import sys
-from PyQt5 import QtWidgets, QtWidgets
+from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import QMessageBox, QPushButton, QProgressBar, QWidget, QSizePolicy
 from PyQt5.QtCore import QTimer, QObject, Qt, pyqtSignal, QThread
 from ui.uiRobotWindow import Ui_RobotWindow
@@ -65,6 +65,12 @@ class RobotWindow(QtWidgets.QDialog):
         self.ui.comboBox_MOO.addItems(['', 'Zeroing', 'JOG', 'Manual Guidance', 'PTP'])
         self.ui.progressBar_RelativeHoming.setVisible(False)
 
+        # Cache for enable states to avoid redundant setStyleSheet calls
+        self._last_homing_state = None
+        self._last_jog_state = None
+        self._last_manual_guidance_state = None
+        self._last_ptp_state = None
+
     def handleButtonCallbackFailure(self, pb : QPushButton, callback, error_msg : str) -> None:
         previous_state = pb.isChecked()  # Save the previous state
         try:
@@ -82,7 +88,6 @@ class RobotWindow(QtWidgets.QDialog):
     def connect(self, ROS: RosCommunicationManager, parent_timer: QTimer):
         self.ROS = ROS
         self.parent_timer = parent_timer
-        self.parent_timer.timeout.connect(self.updateWindow)
 
         # Collega i segnali di cambiamento a funzioni di callback
         self.ui.comboBox_MOO.currentIndexChanged.connect(self.onBehaviourOptionChanged)
@@ -167,8 +172,9 @@ class RobotWindow(QtWidgets.QDialog):
             return
         
         self.ROS.setManualMode(True)
-        time.sleep(0.5)
+        QTimer.singleShot(500, self._goTo_afterDelay)
 
+    def _goTo_afterDelay(self) -> None:
         ActualRobotConfiguration  = deepcopy( self.ROS.getHandleFeedbackPosition())
         NewRobotConfiguration = ActualRobotConfiguration
         JointTargetPosition = (float(self.ui.doubleSpin_Joint1_Value.value()), float(self.ui.doubleSpin_Joint2_Value.value()), float(self.ui.doubleSpin_Joint3_Value.value()))
@@ -259,6 +265,9 @@ class RobotWindow(QtWidgets.QDialog):
             self.ROS.turnOffMotors()
 
     def enableRelativeHomingButton(self, activate: bool):
+        if activate == self._last_homing_state:
+            return
+        self._last_homing_state = activate
         self.ui.frame_ReativeHoming.setEnabled(activate)
         self.ui.pushButton_RelativeHoming.setEnabled(activate)
         if activate: 
@@ -267,6 +276,11 @@ class RobotWindow(QtWidgets.QDialog):
             self.ui.pushButton_RelativeHoming.setStyleSheet("")
 
     def enableJogButton(self, activate: bool):
+        motors_on = self.ROS.areMotorsOn() if activate else False
+        state_key = (activate, motors_on)
+        if state_key == self._last_jog_state:
+            return
+        self._last_jog_state = state_key
         self.ui.frame_JOG.setEnabled(activate)
         self.ui.pushButton_JOG.setEnabled(activate)
         self.ui.pushButton_Xminus.setEnabled(activate)
@@ -276,25 +290,19 @@ class RobotWindow(QtWidgets.QDialog):
         self.ui.pushButton_Zminus.setEnabled(activate)
         self.ui.pushButton_Zplus.setEnabled(activate)
         if activate: 
-            if self.ROS.areMotorsOn():
+            jog_axis_style = "background-color: rgb(255,255,224); color: black;"
+            if motors_on:
                 self.ui.pushButton_JOG.setStyleSheet("background-color: rgb(255, 69, 0); color: black;")
                 self.ui.pushButton_JOG.setText("Deactivate Jog")
-                self.ui.pushButton_Xminus.setStyleSheet("background-color: rgb(255,255,224); color: black;")
-                self.ui.pushButton_Xplus.setStyleSheet("background-color: rgb(255,255,224); color: black;")
-                self.ui.pushButton_Yminus.setStyleSheet("background-color: rgb(255,255,224); color: black;")
-                self.ui.pushButton_Yplus.setStyleSheet("background-color: rgb(255,255,224); color: black;")
-                self.ui.pushButton_Zminus.setStyleSheet("background-color: rgb(255,255,224); color: black;")
-                self.ui.pushButton_Zplus.setStyleSheet("background-color: rgb(255,255,224); color: black;")
             else:
                 self.ui.pushButton_JOG.setStyleSheet("background-color: rgb(85, 255, 127); color: black;")
                 self.ui.pushButton_JOG.setText("Activate Jog")
-                self.ui.pushButton_Xminus.setStyleSheet("background-color: rgb(255,255,224); color: black;")
-                self.ui.pushButton_Xplus.setStyleSheet("background-color: rgb(255,255,224); color: black;")
-                self.ui.pushButton_Yminus.setStyleSheet("background-color: rgb(255,255,224); color: black;")
-                self.ui.pushButton_Yplus.setStyleSheet("background-color: rgb(255,255,224); color: black;")
-                self.ui.pushButton_Zminus.setStyleSheet("background-color: rgb(255,255,224); color: black;")
-                self.ui.pushButton_Zplus.setStyleSheet("background-color: rgb(255,255,224); color: black;")
-
+            self.ui.pushButton_Xminus.setStyleSheet(jog_axis_style)
+            self.ui.pushButton_Xplus.setStyleSheet(jog_axis_style)
+            self.ui.pushButton_Yminus.setStyleSheet(jog_axis_style)
+            self.ui.pushButton_Yplus.setStyleSheet(jog_axis_style)
+            self.ui.pushButton_Zminus.setStyleSheet(jog_axis_style)
+            self.ui.pushButton_Zplus.setStyleSheet(jog_axis_style)
         else:
             self.ui.pushButton_JOG.setStyleSheet("")
             self.ui.pushButton_Xminus.setStyleSheet("")
@@ -306,10 +314,15 @@ class RobotWindow(QtWidgets.QDialog):
 
 
     def enableManualGuidanceButton(self, activate: bool):
+        motors_on = self.ROS.areMotorsOn() if activate else False
+        state_key = (activate, motors_on)
+        if state_key == self._last_manual_guidance_state:
+            return
+        self._last_manual_guidance_state = state_key
         self.ui.frame_MoveRobotManually.setEnabled(activate)
         self.ui.pushButton_MoveRobotManually.setEnabled(activate)
         if activate: 
-            if self.ROS.areMotorsOn():
+            if motors_on:
                 self.ui.pushButton_MoveRobotManually.setStyleSheet("background-color: rgb(255, 69, 0); color: black;")
                 self.ui.pushButton_MoveRobotManually.setText("Deactivate Manual Guidance")
             else:
@@ -319,9 +332,14 @@ class RobotWindow(QtWidgets.QDialog):
             self.ui.pushButton_MoveRobotManually.setStyleSheet("")
 
     def enablePTPFrame(self, activate: bool):
+        motors_on = self.ROS.areMotorsOn() if activate else False
+        state_key = (activate, motors_on)
+        if state_key == self._last_ptp_state:
+            return
+        self._last_ptp_state = state_key
         self.ui.frame_GoalPosition.setEnabled(activate)
         if activate:
-            if self.ROS.areMotorsOn():
+            if motors_on:
                 self.ui.pushButton_ApproachAllJoint.setStyleSheet("background-color: rgb(255, 69, 0); color: black;")
                 self.ui.pushButton_ApproachAllJoint.setText("Interrupt")
             else:

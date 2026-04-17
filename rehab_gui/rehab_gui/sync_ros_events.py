@@ -133,6 +133,18 @@ class EcSlaveStates:
 
 class SyncRosManager:
 
+    OP_MODE_DICT = {
+        'MODE_NO_MODE': 0,
+        'MODE_PROFILED_POSITION': 1,
+        'MODE_PROFILED_VELOCITY': 3,
+        'MODE_PROFILED_TORQUE': 4,
+        'MODE_HOMING': 6,
+        'MODE_INTERPOLATED_POSITION': 7,
+        'MODE_CYCLIC_SYNC_POSITION': 8,
+        'MODE_CYCLIC_SYNC_VELOCITY': 9,
+        'MODE_CYCLIC_SYNC_TORQUE': 10
+    }
+
     def __init__(self, expected_number_of_slaves: int, joint_names: List[str], ros_client: roslibpy.Ros):
         self._ros_period = 1
         self._controller_list_period = 50  # milliseconds
@@ -158,6 +170,9 @@ class SyncRosManager:
         self.ec_slave_states : EcSlaveStates = EcSlaveStates(self._expected_number_of_slaves)
 
         self.ros_client = ros_client
+
+        # Pre-compute the set of joint names for fast subset checks in callbacks
+        self._joint_names_set = set(self._joint_names)
 
         #  subscribers
         self.RobotJointPosition = [0.0] * len(self._joint_names)
@@ -192,10 +207,7 @@ class SyncRosManager:
     def init_publisher_and_subscribers(self):
         #subscribers
         self.joint_subscriber : roslibpy.Topic = roslibpy.Topic(self.ros_client, '/joint_states', 'sensor_msgs/msg/JointState')
-        self.joint_subscriber.subscribe(self.getJointState)
-
-        self.tool_subscriber  : roslibpy.Topic = roslibpy.Topic(self.ros_client, '/joint_states', 'sensor_msgs/msg/JointState')
-        self.tool_subscriber.subscribe(self.getToolPosition)
+        self.joint_subscriber.subscribe(self.getJointAndToolState)
 
         self.plc_states_subscriber : roslibpy.Topic = roslibpy.Topic(
             self.ros_client,
@@ -222,7 +234,6 @@ class SyncRosManager:
 
     def detach_publisher_and_subscribers(self):
         self.joint_subscriber.unsubscribe()
-        self.tool_subscriber.unsubscribe()
         self.plc_states_subscriber.unsubscribe()
         self.movement_status_subscriber.unsubscribe()
         
@@ -349,32 +360,18 @@ class SyncRosManager:
             'interface_names' : name,
             'values' : value
         })
-        timeout = time.time() + 1
-        while time.time() < timeout:
-            self.plc_command_publisher.publish(command_msg)
+        self.plc_command_publisher.publish(command_msg)
 
 
-    def getJointState(self, data):
-        if not set(self._joint_names).issubset(data['name']):
-            print(
-                f"JointState names {data['name']} do not match the expected joint names {self._joint_names}. Ignoring data.")
+    def getJointAndToolState(self, data):
+        if not self._joint_names_set.issubset(data['name']):
             return
         name_to_position = dict(zip(data['name'], data['position']))
-        self.RobotJointPosition = [
+        positions = [
             name_to_position[joint] for joint in self._joint_names if joint in name_to_position
         ]
-
-    def getToolPosition(self, data):
-        if not set(self._joint_names).issubset(data['name']):
-            print(
-                f"Tool Position names {data['name']} do not match the expected joint names {self._joint_names}. Ignoring data.")
-            return
-
-        self.HandlePosition = [0, 0, 0]
-        name_to_position = dict(zip(data['name'], data['position']))
-        self.HandlePosition = [
-            name_to_position[joint] for joint in self._joint_names if joint in name_to_position
-        ]
+        self.RobotJointPosition = positions
+        self.HandlePosition = positions
 
     def getPLCStates(self, data):
         self.plc_states = dict(zip(data['interface_names'], data['values']))
@@ -614,18 +611,7 @@ class SyncRosManager:
 
 
     def get_op_mode_number(self, mode: str) -> int:
-        op_mode_dict={
-            'MODE_NO_MODE': 0,
-            'MODE_PROFILED_POSITION': 1,
-            'MODE_PROFILED_VELOCITY': 3,
-            'MODE_PROFILED_TORQUE': 4,
-            'MODE_HOMING': 6,
-            'MODE_INTERPOLATED_POSITION': 7,
-            'MODE_CYCLIC_SYNC_POSITION': 8,
-            'MODE_CYCLIC_SYNC_VELOCITY': 9,
-            'MODE_CYCLIC_SYNC_TORQUE': 10
-        }
-        return op_mode_dict.get(mode, 0)
+        return self.OP_MODE_DICT.get(mode, 0)
 
     def turn_on_motors(self) -> bool:
         result : dict = None  # type: ignore
