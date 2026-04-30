@@ -39,6 +39,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         # self.FIRST_TIME = True
         self.Training_ON = False
         self.NumberExecMovements = 0
+        self._near_zero_triggered = True
         self.TotalTrainingTime = 0
         self.ActualTrainingTime = 0
         self.execution_time_percentage = 0
@@ -217,9 +218,15 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
                 if self.ROS.getExerciseCompleted():
                     self.ROS.setExerciseCompleted(False)
                     self.ModalityActualValue = self.Modalities[_iPhase] # change here the modality 
+                    self.spinBoxSpeedOvr[_iPhase].enabled = False
+                _handle_pos = self.ROS.getHandleFeedbackPosition()
+                _is_near_zero = self.ROS.isRosCommunicationActive() and all(abs(p) < 0.01 for p in _handle_pos)
+                if _is_near_zero and not self._near_zero_triggered:
+                    self._near_zero_triggered = True
                     self.NumberExecMovements += 1
                     print(f'Number of movements: {self.NumberExecMovements} - Ovr: {self.spinBoxSpeedOvr[_iPhase].value()}')
-                    self.spinBoxSpeedOvr[_iPhase].enabled = False
+                elif not _is_near_zero:
+                    self._near_zero_triggered = False
             else:
                 self.progressBarPhases[19].setValue(100)
                 self.stopTrainig()
@@ -325,6 +332,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         self.ROS.setManualMode(False)
         self.ROS.enableControllerBehaviour("FCT")
         self.Training_ON = True
+        self._near_zero_triggered = True
         self.ActualTrainingTime = 0
         self.sendExercise()
         self.ModalityActualValue = self.Modalities[0]
@@ -346,6 +354,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
 
     def stopTrainig(self):
         self.Training_ON = False
+        self._near_zero_triggered = False
         self.ROS.stopAnyMovement()
         self.ROS.triggerSoftMovementStop()
         for iProgBar in self.progressBarPhases:
