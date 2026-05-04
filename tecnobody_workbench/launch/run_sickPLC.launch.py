@@ -24,7 +24,9 @@ plc_controller_manager_node_name="plc_controller_manager"
 
 def clean_shutdown(event, context):
     import os
-    nodes_names = ['robot_state_publisher', 'plc_manager_node', 'sonar_teach_node', 'ros2_control_node']
+    # ros2_control_node is excluded: it handles SIGINT correctly on its own.
+    # Using -f matches the full command line to avoid hitting other ros2_control_node instances.
+    nodes_names = ['robot_state_publisher', 'plc_manager_node', 'sonar_teach_node']
     for nm in nodes_names:
         _nm = nm[0:15] if len(nm)>15  else nm
         if event.reason == "ctrl-c (SIGINT)":

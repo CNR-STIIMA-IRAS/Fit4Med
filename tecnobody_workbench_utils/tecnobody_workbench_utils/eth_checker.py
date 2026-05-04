@@ -567,11 +567,22 @@ def main(args=None):
         while not _shutdown_request:
             executor.spin_once()
     except KeyboardInterrupt:
-        node.get_logger().info('Keyboard interrupt, shutting down.\n')
+        import signal as _signal
+        _signal.signal(_signal.SIGINT, _signal.SIG_IGN)
+        try:
+            node.get_logger().info('Keyboard interrupt, shutting down.\n')
+        except Exception:
+            print('[ethercat_checker_node] Keyboard interrupt, shutting down.')
     finally:
         # Cleanup: shutdown executor and destroy node
-        executor.shutdown()
-        node.destroy_node()
+        try:
+            executor.shutdown()
+        except Exception:
+            pass
+        try:
+            rclpy.try_shutdown()
+        except Exception:
+            pass
 
 
 if __name__ == '__main__':

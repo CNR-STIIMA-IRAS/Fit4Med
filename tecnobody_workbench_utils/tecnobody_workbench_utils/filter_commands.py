@@ -582,10 +582,17 @@ def main():
     try:
         rclpy.spin(fc)
     except KeyboardInterrupt:
-        fc.get_logger().info('Keyboard interrupt, shutting down.\n')
-    
+        try:
+            fc.get_logger().info('Keyboard interrupt, shutting down.\n')
+        except Exception:
+            print('[filter_commands_node] Keyboard interrupt, shutting down.')
+
     # Cleanup
-    fc.destroy_node()
+    try:
+        rclpy.shutdown()
+    except Exception:
+        pass
+    # fc.destroy_node()
 
 
 if __name__ == '__main__':

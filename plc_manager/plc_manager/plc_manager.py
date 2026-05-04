@@ -444,6 +444,7 @@ class PLCControllerInterface(Node):
         self.get_logger().info("Cleanup: Cancelling timers and destroying node.")
         if not self.check_ros_status_timer.is_canceled():
             self.check_ros_status_timer.cancel()
+        self.client.close()
         self.destroy_node()
 
 
@@ -484,6 +485,9 @@ class PLCControllerInterface(Node):
             - May publish emergency E-stop commands on launcher crash
             - Logs state transitions and warnings
         """
+        if self.shutdown_requested:
+            return False
+
         launcher_name = "run_platform_control.launch.py"
         
         try:
@@ -840,10 +844,10 @@ def main(args=None):
     
     # ========== Graceful cleanup ==========
     try:
-        rclpy.try_shutdown()
         node.cleanup()
+        rclpy.try_shutdown()
     except Exception as e:
-        node.get_logger().error(f"Error during shutdown: {e}")
+        print(f"Error during shutdown: {e}")
 
 
 if __name__ == '__main__':

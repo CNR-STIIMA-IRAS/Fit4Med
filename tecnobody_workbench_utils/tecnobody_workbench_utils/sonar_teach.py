@@ -478,14 +478,20 @@ def main(args=None):
                 node.get_logger().warning('Graceful shutdown request received!')
                 break
             # Execute single iteration of executor (process callbacks)
-            executor.spin_once()
+            executor.spin_once(timeout_sec=0.5)
 
     except Exception as e:
-        node.get_logger().error(f"Unexpected exception in main loop: {e}")
-    
+        try:
+            node.get_logger().error(f"Unexpected exception in main loop: {e}")
+        except Exception:
+            print(f'[sonar_teach_node] Unexpected exception in main loop: {e}')
+
     # Graceful cleanup
     try:
-        rclpy.try_shutdown()
         node.cleanup()
     except Exception as e:
-        node.get_logger().error(f"Error during shutdown: {e}")
+        print(f'[sonar_teach_node] Error during cleanup: {e}')
+    try:
+        rclpy.try_shutdown()
+    except Exception:
+        pass
