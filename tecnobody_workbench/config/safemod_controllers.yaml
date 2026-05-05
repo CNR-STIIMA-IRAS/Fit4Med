@@ -29,6 +29,10 @@ controller_manager:
     remapping_controller:
       type: "remapping_controller/RemappingController"
 
+joint_state_broadcaster:
+  ros__parameters:
+    publish_rate: 50.0
+
 ft_sensor_command_broadcaster:
   ros__parameters:
     frame_id: "ee_link"
@@ -86,9 +90,10 @@ joint_trajectory_controller:
     set_last_command_interface_value_as_state_on_activation: false
     speed_scaling:
       initial_scaling_factor: 1.0
+    trajectory_scaling:
       filter_coefficient: 1.0
       policy: "MINIMUM"
-      subscribed_topics: 
+      subscribed_topics:
         - "~/speed_scaling_input"
     
     constraints:

@@ -65,6 +65,7 @@ joint_trajectory_controller:
     set_last_command_interface_value_as_state_on_activation: false
     speed_scaling:
       initial_scaling_factor: 1.0
+    trajectory_scaling:
       filter_coefficient: 1.0
       policy: "MINIMUM"
       subscribed_topics:

@@ -7,7 +7,7 @@ import numpy as np
 from yaml.loader import SafeLoader
 
 from PyQt5 import QtWidgets
-from PyQt5.QtWidgets import QProgressBar, QSpinBox, QLCDNumber, QComboBox, QMessageBox, QWidget, QButtonGroup
+from PyQt5.QtWidgets import QProgressBar, QSpinBox, QLCDNumber, QComboBox, QMessageBox, QWidget, QButtonGroup, QFileDialog, QApplication
 from PyQt5.QtCore import QTimer, pyqtSignal
 
 
@@ -252,37 +252,59 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
             self.EEGModeEnabled = True
 
     def clbk_LoadCreateProtocol(self):
-        filename = QtWidgets.QFileDialog.getOpenFileName(None, "Load Protocol", self.ui_main.FMRR_Paths['Protocols'] , "*.yaml")
-        if bool(filename[0]):
-            # load data  
-            self.ProtocolData = yaml.load(open(filename [0]), Loader=SafeLoader) # type: ignore
-            # get values       
-            self.PhaseIsEnabled = self.ProtocolData["Phases"].get('PhaseIsEnabled')[0]
-            self.NrEnabledPhases = sum( self.PhaseIsEnabled ) #Sistemare se non si usa
-            self.TotalTrainingTime =  self.ui_main.PhaseDuration * self.NrEnabledPhases
-            self.Modalities = self.ProtocolData["Phases"].get('Modalities')[0]
-            self.Percentage = self.ProtocolData["Phases"].get('Percentage')[0]
-            # Load durations if available (for backward compatibility with old protocols)
-            duration_data = self.ProtocolData["Phases"].get('Duration')
-            self.Durations = duration_data[0] if duration_data else None
-            self.ui.lcdNumber_SinglePhaseDuration.display(np.floor(self.ui_main.PhaseDuration))
-            self.ui.lcdNumberExerciseTotalTime.display( np.floor(self.TotalTrainingTime/60) )
-            self.ui.lcdNumber_MaxVel.display(np.floor(self.ui_main.Vmax))
+        dlg = QFileDialog(None, "Load Protocol", self.ui_main.FMRR_Paths['Protocols'], "*.yaml")
+        dlg.setOption(QFileDialog.DontUseNativeDialog, True)
+        dlg.setFileMode(QFileDialog.ExistingFile)
+        screen = QApplication.primaryScreen().availableGeometry()
+        dlg.setMaximumSize(screen.width(), screen.height())
+        dlg.resize(min(int(screen.width() * 0.9), 1100), min(int(screen.height() * 0.85), 750))
+        if not dlg.exec_():
+            return
+        selected = dlg.selectedFiles()
+        if not selected or not selected[0]:
+            return
+        filename = [selected[0]]
+
+        # load data  
+        self.ProtocolData = yaml.load(open(filename [0]), Loader=SafeLoader) # type: ignore
+        # get values       
+        self.PhaseIsEnabled = self.ProtocolData["Phases"].get('PhaseIsEnabled')[0]
+        self.NrEnabledPhases = sum( self.PhaseIsEnabled ) #Sistemare se non si usa
+        self.TotalTrainingTime =  self.ui_main.PhaseDuration * self.NrEnabledPhases
+        self.Modalities = self.ProtocolData["Phases"].get('Modalities')[0]
+        self.Percentage = self.ProtocolData["Phases"].get('Percentage')[0]
+        # Load durations if available (for backward compatibility with old protocols)
+        duration_data = self.ProtocolData["Phases"].get('Duration')
+        self.Durations = duration_data[0] if duration_data else None
+        self.ui.lcdNumber_SinglePhaseDuration.display(np.floor(self.ui_main.PhaseDuration))
+        self.ui.lcdNumberExerciseTotalTime.display( np.floor(self.TotalTrainingTime/60) )
+        self.ui.lcdNumber_MaxVel.display(np.floor(self.ui_main.Vmax))
             
-            for iPhase in range(20):
-                self.lcdNumberPhases[iPhase].setNumDigits(3) # type: ignore
-                iPhaseVel = int( float(self.Percentage[iPhase]) /100 * self.ui_main.Vmax )
-                self.lcdNumberPhases[iPhase].display( iPhaseVel ) # type: ignore
-                self.spinBoxSpeedOvr[iPhase].setValue(self.Percentage[iPhase]) # type: ignore
-                # Load duration if available in YAML
-                if self.Durations is not None:
-                    self.spinBoxDuration[iPhase].setValue(self.Durations[iPhase]) # type: ignore
+        for iPhase in range(20):
+            self.lcdNumberPhases[iPhase].setNumDigits(3) # type: ignore
+            iPhaseVel = int( float(self.Percentage[iPhase]) /100 * self.ui_main.Vmax )
+            self.lcdNumberPhases[iPhase].display( iPhaseVel ) # type: ignore
+            self.spinBoxSpeedOvr[iPhase].setValue(self.Percentage[iPhase]) # type: ignore
+            # Load duration if available in YAML
+            if self.Durations is not None:
+                self.spinBoxDuration[iPhase].setValue(self.Durations[iPhase]) # type: ignore
                     
-            for iProgressBar in self.progressBarPhases:
-                iProgressBar.setValue(0) # type: ignore
+        for iProgressBar in self.progressBarPhases:
+            iProgressBar.setValue(0) # type: ignore
                 
     def clbk_SaveProtocol(self):
-        filename = QtWidgets.QFileDialog.getSaveFileName(None, "Save Protocol", self.ui_main.FMRR_Paths['Protocols'], "*.yaml")
+        dlg = QFileDialog(None, "Save Protocol", self.ui_main.FMRR_Paths['Protocols'], "*.yaml")
+        dlg.setOption(QFileDialog.DontUseNativeDialog, True)
+        dlg.setAcceptMode(QFileDialog.AcceptSave)
+        screen = QApplication.primaryScreen().availableGeometry()
+        dlg.setMaximumSize(screen.width(), screen.height())
+        dlg.resize(min(int(screen.width() * 0.9), 1100), min(int(screen.height() * 0.85), 750))
+        if not dlg.exec_():
+            return
+        selected = dlg.selectedFiles()
+        if not selected or not selected[0]:
+            return
+        filename = [selected[0]]
         if bool(filename[0]):
             # Gather data from GUI
             speed_percentages = [sp.value() for sp in self.spinBoxSpeedOvr]

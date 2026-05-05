@@ -12,7 +12,7 @@
 import sys
 from pathlib import Path
 from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtWidgets import QMessageBox, QPushButton, QFileDialog, QWidget
+from PyQt5.QtWidgets import QMessageBox, QPushButton, QFileDialog, QWidget, QApplication
 from PyQt5.QtCore import QTimer
 from ui.uiRehabilitationMovementWindow import Ui_RehabilitationMovementWindow
 from RosCommunicationManager import RosCommunicationManager
@@ -28,9 +28,11 @@ class SimpleFileDialog(QFileDialog):
         self.setOption(QFileDialog.DontUseNativeDialog, True)
         self.setSidebarUrls([])  # remove content
         self.setFileMode(QFileDialog.ExistingFile)
-        self.showMaximized()
+        # Constrain to available screen area so the dialog never exceeds the display
+        screen = QApplication.primaryScreen().availableGeometry()
+        self.setMaximumSize(screen.width(), screen.height())
+        self.resize(min(int(screen.width() * 0.9), 1100), min(int(screen.height() * 0.85), 750))
 
-        # Try to hide the sidebar completely
         for child in self.findChildren(QWidget):
             if "sidebar" in child.objectName().lower():
                 child.hide()
@@ -643,7 +645,26 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
         self.ui.pushButton_CREATEMovement.setEnabled(True)
 
     def clbk_BtnGoToStartPosition(self):
-        self.ROS.setManualMode(True)
+        self.ROS.setManualMode(False)
+        if not self.ROS.enableControllerBehaviour("FCT"):
+            moos = self.ROS.getDriversModeOfOperations()
+            ctrl = self.ROS.getCurrentControllerName()
+            QMessageBox.warning(
+                self, "Warning",
+                f"Could not switch to Cyclic Synchronous Position mode (mode 8).\n"
+                f"Active controller: {ctrl}\nDrive modes: {moos}\n"
+                "Please verify that all drives are operational before starting training."
+            )
+            return False
+        if self.ROS.getCurrentControllerName() != self.ROS.getJointTrajectoryControllerName():
+            QMessageBox.warning(
+                self, "Warning",
+                f"Joint trajectory controller is not active "
+                f"(active: {self.ROS.getCurrentControllerName()}).\n"
+                "Cannot start training."
+            )
+            return False
+        self.Training_ON = True
         QTimer.singleShot(500, self._goToStartPosition_afterDelay)
 
     def _goToStartPosition_afterDelay(self):

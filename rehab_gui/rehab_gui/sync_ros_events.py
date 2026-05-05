@@ -206,20 +206,27 @@ class SyncRosManager:
 
     def init_publisher_and_subscribers(self):
         #subscribers
-        self.joint_subscriber : roslibpy.Topic = roslibpy.Topic(self.ros_client, '/joint_states', 'sensor_msgs/msg/JointState')
+        self.joint_subscriber : roslibpy.Topic = roslibpy.Topic(
+            self.ros_client, '/joint_states', 'sensor_msgs/msg/JointState',
+            throttle_rate=100,  # 10 Hz max delivered to client; avoids flooding the WebSocket at 250 Hz
+            queue_length=1)     # only the latest message matters for display
         self.joint_subscriber.subscribe(self.getJointAndToolState)
 
         self.plc_states_subscriber : roslibpy.Topic = roslibpy.Topic(
             self.ros_client,
             '/PLC_controller/plc_states',
-            'tecnobody_msgs/msg/PlcStates'
+            'tecnobody_msgs/msg/PlcStates',
+            throttle_rate=200,  # 5 Hz is sufficient for PLC state display
+            queue_length=1
         )
         self.plc_states_subscriber.subscribe(self.getPLCStates)
 
         self.movement_status_subscriber : roslibpy.Topic = roslibpy.Topic(
             self.ros_client,
             '/tecnobody_workbench_utils/movement_status',
-            'std_msgs/msg/String'
+            'std_msgs/msg/String',
+            throttle_rate=200,  # status strings change slowly
+            queue_length=1
         )
         self.movement_status_subscriber.subscribe(self.update_movement_status)  #TODO: check
 
