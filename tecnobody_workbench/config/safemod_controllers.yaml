@@ -95,18 +95,22 @@ joint_trajectory_controller:
       policy: "MINIMUM"
       subscribed_topics:
         - "~/speed_scaling_input"
-    
+    # enable_rt_logging: true
     constraints:
       goal_time: 0.0 #Infinite time to enter in the goal tolerance
+      decelerate_on_cancel: true
       joint_x:
-        trajectory: 0.01
+        trajectory: 0.11
         goal: 0.005
+        max_deceleration_on_cancel: 0.5
       joint_y:
-        trajectory: 0.01
+        trajectory: 0.11
         goal: 0.005
+        max_deceleration_on_cancel: 0.5
       joint_z:
-        trajectory: 0.01
+        trajectory: 0.11
         goal: 0.010
+        max_deceleration_on_cancel: 0.5
 
 state_controller:
   ros__parameters:
