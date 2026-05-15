@@ -99,13 +99,13 @@ joint_trajectory_controller:
     constraints:
       goal_time: 0.0 #Infinite time to enter in the goal tolerance
       joint_x:
-        trajectory: 0.1
+        trajectory: 0.01
         goal: 0.005
       joint_y:
-        trajectory: 0.1
+        trajectory: 0.01
         goal: 0.005
       joint_z:
-        trajectory: 0.1
+        trajectory: 0.01
         goal: 0.010
 
 state_controller:

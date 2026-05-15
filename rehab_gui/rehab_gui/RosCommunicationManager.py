@@ -54,6 +54,7 @@ class RosCommunicationManager(QObject):
         self.remote_port = remote_port
         self.roslib_first_time_connection = True
         self.manual_mode_activated = False
+        self._exercise_in_suspension: bool = False
 
         self.worker_thread = Worker(self.updateState, loop_period_s=0.2)
         self.worker_thread.finished.connect(self.onUpdateWorkerThreadFinished)
@@ -318,6 +319,35 @@ class RosCommunicationManager(QObject):
     
     def getMovementStopped(self) -> bool:
         return self.ROS.movement_stopped if self.rOk() else False
+
+    def setMovementStopped(self, value: bool) -> None:
+        if self.rOk():
+            self.ROS.movement_stopped = value
     
+    def getExerciseSuspended(self) -> bool:
+        return self.ROS.exercise_suspended if self.rOk() else False
+
+    def setExerciseSuspended(self, value: bool) -> None:
+        if self.rOk():
+            self.ROS.exercise_suspended = value
+
+    # ------------------------------------------------------------------ #
+    # Suspension state (GUI-level flag — survives ROS flag reset)          #
+    # ------------------------------------------------------------------ #
+    def setExerciseInSuspension(self, value: bool) -> None:
+        """Mark/clear the persistent 'exercise suspended, waiting for resume' state."""
+        self._exercise_in_suspension = value
+
+    def isExerciseInSuspension(self) -> bool:
+        return self._exercise_in_suspension
+
+    def turnOffMotorsAsync(self) -> None:
+        """Request motor stop without blocking the Qt main thread."""
+        if not self.rOk():
+            return
+        self.ROS.publish_plc_command(['PLC_node/manual_mode'], [0])
+        if self.areMotorsOn():
+            self.ROS.motors_off_client.call_async()
+
     def getMovementStatus(self) -> str:
         return self.ROS.get_movement_status() if self.rOk() else 'n/a'

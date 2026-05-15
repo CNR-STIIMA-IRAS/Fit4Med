@@ -97,6 +97,8 @@ class MotorsWindow(QtWidgets.QWidget):
             state_key = 'fault'
         elif self.ROS.areMotorsOn():
             state_key = 'motors_on'
+        elif self.ROS.isExerciseInSuspension():
+            state_key = 'suspended'
         else:
             state_key = 'motors_off'
 
@@ -114,6 +116,9 @@ class MotorsWindow(QtWidgets.QWidget):
             elif state_key == 'motors_on':
                 self.ui.lineEdit_Emergency.setText("Warning \n Motors On")
                 self.ui.lineEdit_Emergency.setStyleSheet("background-color: rgb(255,215,00); color: white")
+            elif state_key == 'suspended':
+                self.ui.lineEdit_Emergency.setText("SUSPENSION STATE")
+                self.ui.lineEdit_Emergency.setStyleSheet("background-color: rgb(255,140,0); color: white")
             else:
                 self.ui.lineEdit_Emergency.setText("Motors Off \n State OK")
                 self.ui.lineEdit_Emergency.setStyleSheet("background-color: green; color: white")

@@ -158,6 +158,7 @@ class SyncRosManager:
         self.trajectory_completed = False
         self.exercise_completed = False
         self.movement_stopped = False
+        self.exercise_suspended = False
         self.cancel_movement = False
         self.execution_time_percentage : int = 0
         self.repetition_cnt : int = 0
@@ -310,6 +311,9 @@ class SyncRosManager:
         
         self.on_movement_stopped_server : roslibpy.Service  = roslibpy.Service(self.ros_client, "/rehab_gui/movement_stopped", "std_srvs/Trigger")        
         self.on_movement_stopped_server.advertise(self.on_movement_stopped)
+
+        self.on_exercise_suspended_server : roslibpy.Service  = roslibpy.Service(self.ros_client, "/rehab_gui/exercise_suspended", "std_srvs/Trigger")        
+        self.on_exercise_suspended_server.advertise(self.on_exercise_suspended)
 
         print('All service clients correctly initialized.')
         return True
@@ -734,6 +738,7 @@ class SyncRosManager:
         msg = roslibpy.Message({'factor': int(100)})
         self.repetition_cnt = 0
         self.exercise_completed = False
+        self.exercise_suspended = False
         response : dict = None #type: ignore
         if len(ovrs) != len(durations):
             print(f"[Set Trajectory] mismatching input dimension!")
@@ -796,6 +801,12 @@ class SyncRosManager:
     def on_movement_stopped(self, request, response):
         print(f"[on_movement_stopped] Service Call: {request}")
         self.movement_stopped = True
+        response['success'] = True
+        return True     
+
+    def on_exercise_suspended(self, request, response):
+        print(f"[on_exercise_suspended] Service Call: {request}")
+        self.exercise_suspended = True
         response['success'] = True
         return True       
     

@@ -257,6 +257,10 @@ class FollowJointTrajectoryActionManager(Node):
             MovementProgress, 
             "/rehab_gui/exercise_progress"
         )
+        self.exercise_suspended_client = self.create_client(
+            Trigger, 
+            "/rehab_gui/exercise_suspended"
+        )
 
 
     def _init_publishers_subscribers(self) -> None:
@@ -878,7 +882,20 @@ class FollowJointTrajectoryActionManager(Node):
 
     def on_exercise_goal_done(self, future):
         if self._goal_handle is not None:
-            self._advance_exercise()
+            result = future.result()
+            status = result.status
+
+            if status == GoalStatus.STATUS_SUCCEEDED:
+                self.get_logger().info(f'Repetition {self.exercise_cnt} completed successfully.')
+                self._advance_exercise()
+            elif status == GoalStatus.STATUS_CANCELED:
+                self.get_logger().info(f'Repetition {self.exercise_cnt} was cancelled.')
+            elif status == GoalStatus.STATUS_ABORTED:
+                self.get_logger().info(f'Repetition {self.exercise_cnt} was aborted.')
+                self.exercise_suspended_client.call_async(Trigger.Request())
+            else:
+                self.get_logger().info(f'Repetition {self.exercise_cnt} ended with status: {status}')
+
 
     def check_exercise_status(self) -> None:
         """Monitor exercise progress and report percentage to GUI (50 Hz timer).
