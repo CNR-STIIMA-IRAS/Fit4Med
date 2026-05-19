@@ -341,6 +341,12 @@ class RosCommunicationManager(QObject):
     def isExerciseInSuspension(self) -> bool:
         return self._exercise_in_suspension
 
+    def eegSync(self, value: int = 1) -> None:
+        """Send a sync pulse to the EEG system via the PLC eeg_sync command interface."""
+        if not self.rOk():
+            return
+        self.ROS.publish_plc_command(['PLC_node/eeg_sync'], [value])
+
     def turnOffMotorsAsync(self) -> None:
         """Request motor stop without blocking the Qt main thread."""
         if not self.rOk():

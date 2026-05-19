@@ -109,6 +109,8 @@ class MainProgram(QMainWindow):
         self.FMRR_Paths['Protocols'] = parent_directory + '/Protocols'
         self.FMRR_Paths['Movements'] = parent_directory + '/Movements'  
         self.FMRR_Paths['Joint_Configuration'] = parent_directory + '/config'
+        self.FMRR_Paths['Data'] = os.path.normpath(os.path.join(parent_directory, 'Data'))
+        os.makedirs(self.FMRR_Paths['Data'], exist_ok=True)
 
         self.movement_loaded : bool = False
 

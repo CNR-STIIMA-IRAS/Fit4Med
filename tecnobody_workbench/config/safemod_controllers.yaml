@@ -100,15 +100,15 @@ joint_trajectory_controller:
       goal_time: 0.0 #Infinite time to enter in the goal tolerance
       decelerate_on_cancel: true
       joint_x:
-        trajectory: 0.11
+        trajectory: 0.15
         goal: 0.005
         max_deceleration_on_cancel: 0.5
       joint_y:
-        trajectory: 0.11
+        trajectory: 0.15
         goal: 0.005
         max_deceleration_on_cancel: 0.5
       joint_z:
-        trajectory: 0.11
+        trajectory: 0.15
         goal: 0.010
         max_deceleration_on_cancel: 0.5
 
