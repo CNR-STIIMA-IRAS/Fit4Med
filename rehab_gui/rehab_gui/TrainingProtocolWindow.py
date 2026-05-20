@@ -2,8 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
-import signal
-import subprocess
 import yaml
 import time
 import numpy as np
@@ -121,7 +119,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         self.ui.radioButton_EEGMode.toggled.connect(self.clbk_ModeChanged)
         self.EEGModeEnabled = False
         self.SaveModeEnabled = False
-        self._bag_process: subprocess.Popen = None  # type: ignore
+        self._bag_recording_active: bool = False
         
         #   RADIO BUTTONS - Side Selection (program controlled, no callback)
         self.sideButtonGroup = QButtonGroup()
@@ -303,7 +301,6 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
                 if self.ROS.getExerciseCompleted():
                     self.ROS.setExerciseCompleted(False)
                     self.ModalityActualValue = self.Modalities[_iPhase] # change here the modality
-                    self.spinBoxSpeedOvr[_iPhase].enabled = False
                     self._exec_pct_stall_count = 0  # reset stall counter on phase completion
                 # set movemnt count lcd number
                 _handle_pos = self.ROS.getHandleFeedbackPosition()
@@ -311,10 +308,10 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
                 if _is_near_zero and not self._near_zero_triggered:
                     self._near_zero_triggered = True
                     self.NumberExecMovements += 1
-                    if self.EEGModeEnabled:
-                        self.ROS.eegSync(1)
                     print(f'Number of movements: {self.NumberExecMovements} - Ovr: {self.spinBoxSpeedOvr[_iPhase].value()}')
                 elif not _is_near_zero:
+                    if self._near_zero_triggered and self.EEGModeEnabled:
+                        self.ROS.eegSync()
                     self._near_zero_triggered = False
             else:
                 self.progressBarPhases[19].setValue(100)
@@ -336,37 +333,18 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
     def clbk_ModeChanged(self):
         """Callback for mode/save selection buttons.
 
-        Three states (neither / Save / EEG):
-        - Neither selected  → default Rehab (no recording, no EEG sync)
-        - Save selected     → ros2 bag recording starts/stops with training
-        - EEG selected      → EEG sync pulse sent at each movement start
-        Clicking an already-selected button deselects it (non-exclusive group).
+        Both buttons are independent and can be active simultaneously:
+        - Save: ros2 bag recording starts/stops with training
+        - EEG:  EEG sync pulse sent at each movement start
+        Clicking an already-selected button deselects it.
         """
         sender = self.sender()
         if sender == self.ui.radioButton_RehabMode:
-            if self.ui.radioButton_RehabMode.isChecked():
-                # Save turned ON: uncheck EEG
-                self.ui.radioButton_EEGMode.blockSignals(True)
-                self.ui.radioButton_EEGMode.setChecked(False)
-                self.ui.radioButton_EEGMode.blockSignals(False)
-                self.SaveModeEnabled = True
-                self.EEGModeEnabled = False
-                print("Save Mode selected")
-            else:
-                self.SaveModeEnabled = False
-                print("Save Mode deselected — default Rehab")
+            self.SaveModeEnabled = self.ui.radioButton_RehabMode.isChecked()
+            print("Save Mode " + ("selected" if self.SaveModeEnabled else "deselected"))
         elif sender == self.ui.radioButton_EEGMode:
-            if self.ui.radioButton_EEGMode.isChecked():
-                # EEG turned ON: uncheck Save
-                self.ui.radioButton_RehabMode.blockSignals(True)
-                self.ui.radioButton_RehabMode.setChecked(False)
-                self.ui.radioButton_RehabMode.blockSignals(False)
-                self.EEGModeEnabled = True
-                self.SaveModeEnabled = False
-                print("EEG Mode selected")
-            else:
-                self.EEGModeEnabled = False
-                print("EEG Mode deselected — default Rehab")
+            self.EEGModeEnabled = self.ui.radioButton_EEGMode.isChecked()
+            print("EEG Mode " + ("selected" if self.EEGModeEnabled else "deselected"))
 
     def clbk_DurationChanged(self, _value: int):
         self._update_total_training_time_display()
@@ -531,44 +509,18 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         # self.ProtocolData = None
 
     def _start_bag_recording(self) -> None:
-        """Start a ros2 bag record process for joint states and FT wrench.
-
-        Bags are saved under <package_root>/Data/<YYYY-MM-DD_HH-MM-SS>/.
-        The Data directory is created automatically if it doesn't exist.
-        """
-        if self._bag_process is not None:
-            print('[BagRecord] Already recording — skipping start.')
-            return
-        import datetime
-        data_dir = self.ui_main.FMRR_Paths['Data']
-        timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        output_dir = os.path.join(data_dir, f'bag_{timestamp}')
-        topics = ['/joint_states', '/ft_sensor_command_broadcaster/wrench']
-        cmd = ['ros2', 'bag', 'record', '-o', output_dir] + topics
-        try:
-            # os.setsid puts the process in its own group so SIGINT reaches it cleanly
-            self._bag_process = subprocess.Popen(cmd, preexec_fn=os.setsid)
-            print(f'[BagRecord] Started: {" ".join(cmd)}')
-        except Exception as e:
-            print(f'[BagRecord] Failed to start recording: {e}')
-            self._bag_process = None
+        """Request the bag_recorder_node on the Linux PC to start recording."""
+        self.ROS.startBagRecording()
+        self._bag_recording_active = True
+        print('[BagRecord] Start request sent.')
 
     def _stop_bag_recording(self) -> None:
-        """Send SIGINT (Ctrl+C) to the bag record process to finalize the bag."""
-        if self._bag_process is None:
+        """Request the bag_recorder_node on the Linux PC to stop recording."""
+        if not self._bag_recording_active:
             return
-        try:
-            os.killpg(os.getpgid(self._bag_process.pid), signal.SIGINT)
-            self._bag_process.wait(timeout=5)
-            print('[BagRecord] Stopped and bag finalized.')
-        except Exception as e:
-            print(f'[BagRecord] Error stopping recording: {e}')
-            try:
-                self._bag_process.kill()
-            except Exception:
-                pass
-        finally:
-            self._bag_process = None
+        self._bag_recording_active = False
+        self.ROS.stopBagRecording()
+        print('[BagRecord] Stop request sent.')
 
     def sendExercise(self):
         if not self.ROS.isRosCommunicationActive():

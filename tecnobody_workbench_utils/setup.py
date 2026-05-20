@@ -34,7 +34,8 @@ setup(
             'launch_status_publisher = tecnobody_workbench_utils.launch_status_publisher',
             'fct_manager_node = tecnobody_workbench_utils.gui_trajectory_manager:main',
             'filter_commands_node = tecnobody_workbench_utils.filter_commands:main',
-            'sonar_teach_node = tecnobody_workbench_utils.sonar_teach:main'
+            'sonar_teach_node = tecnobody_workbench_utils.sonar_teach:main',
+            'bag_recorder_node = tecnobody_workbench_utils.bag_recorder_node:main',
         ],
     },
 )

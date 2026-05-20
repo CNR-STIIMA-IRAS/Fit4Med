@@ -258,6 +258,13 @@ def generate_launch_description():
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'fct_manager_node_%p_%t.log'}
     )
 
+    bag_recorder_node = Node(
+        package='tecnobody_workbench_utils',
+        executable='bag_recorder_node',
+        output='screen',
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'bag_recorder_node_%p_%t.log'}
+    )
+
     filter_commands_node = Node(
         package='tecnobody_workbench_utils',
         executable='filter_commands_node',
@@ -318,7 +325,7 @@ def generate_launch_description():
     fct_manager_launcher = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=joint_controller_node,
-            on_exit=[fct_manager_node, filter_commands_node],
+            on_exit=[fct_manager_node, filter_commands_node, bag_recorder_node],
         )
     )
 

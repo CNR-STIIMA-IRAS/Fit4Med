@@ -299,6 +299,11 @@ class SyncRosManager:
         self.sonar_bias_client : ConstRequestServiceHandler = ConstRequestServiceHandler(self.ros_client, "/sonar_teach_node/enable_sonar_teach",
                                                                                            "std_srvs/Trigger", roslibpy.ServiceRequest())
 
+        self.bag_recorder_start_client : ConstRequestServiceHandler = ConstRequestServiceHandler(self.ros_client, '/bag_recorder/start',
+                                                                                                  'std_srvs/srv/Trigger', roslibpy.ServiceRequest())
+        self.bag_recorder_stop_client : ConstRequestServiceHandler = ConstRequestServiceHandler(self.ros_client, '/bag_recorder/stop',
+                                                                                                 'std_srvs/srv/Trigger', roslibpy.ServiceRequest())
+
         self.on_trajectory_finished_server : roslibpy.Service = roslibpy.Service(self.ros_client, "/rehab_gui/trajectory_finished", "std_srvs/Trigger")
         self.on_trajectory_finished_server.advertise(self.on_trajectory_finished)
 
@@ -333,15 +338,21 @@ class SyncRosManager:
 
         self.reset_speed_over_client = None #type: ignore
         self.set_rehab_exercise_client = None #type: ignore
+        self.set_eeg_exercise_client = None #type: ignore
         self.stop_movement_client = None #type: ignore
         self.sonar_bias_client = None #type: ignore
         self.soft_movement_start_client = None #type: ignore
         self.soft_movement_stop_client = None #type: ignore
-        
+        self.bag_recorder_start_client = None #type: ignore
+        self.bag_recorder_stop_client = None #type: ignore
+
         self.on_trajectory_finished_server.unadvertise()
         self.on_exercise_finished_server.unadvertise()
         self.on_exercise_progress_server.unadvertise()
+        self.on_movement_stopped_server.unadvertise()
         self.on_movement_stopped_server = None #type: ignore
+        self.on_exercise_suspended_server.unadvertise()
+        self.on_exercise_suspended_server = None #type: ignore
         print('All service/clients correctly deleted.')
         return True
     
@@ -830,3 +841,13 @@ class SyncRosManager:
     def sonar_bias(self) :
         print("Setting sonar bias...")
         self.sonar_bias_client.call()
+
+    def send_eeg_sync(self):
+        """Send a 100 ms HIGH pulse on PLC_node/eeg_sync (non-blocking).
+        Sends HIGH immediately, then schedules LOW after 100 ms via a
+        daemon background thread — no Qt dependency, no blocking.
+        """
+        self.publish_plc_command(['PLC_node/eeg_sync'], [1])
+        t = threading.Timer(0.2, lambda: self.publish_plc_command(['PLC_node/eeg_sync'], [0]))
+        t.daemon = True
+        t.start()
