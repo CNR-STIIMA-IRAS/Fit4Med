@@ -196,6 +196,17 @@ def generate_launch_description():
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'ft_offset_updater_%p_%t.log'}
     )
 
+    go_to_start_controller_node = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=[
+            'go_to_start_controller'
+            #'scaled_trajectory_controller'
+        ],
+        output='screen',
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'go_to_start_controller_%p_%t.log'}   
+    )
+
     joint_controller_node = Node(
         package='controller_manager',
         executable='spawner',

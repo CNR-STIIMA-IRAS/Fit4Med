@@ -21,6 +21,7 @@
             <command_interface name="force_sensors_pwr"/>
             <command_interface name="brake_disable"/>
             <command_interface name="eeg_sync"/>
+            <command_interface name="z_recovery"/>
             <state_interface name="s_msg"/>
             <state_interface name="s_input.0"/>
             <state_interface name="estop"/>

@@ -278,6 +278,7 @@ class EthercatCheckerNode(Node):
         response.states.status_words = [status_word for status_word in self.feedback.status_words.values()]
         response.states.fault_present = self.feedback.fault_present
         response.states.drives_on = self.feedback.drives_on
+        # self.get_logger().info(f"[get_drive_states_callback] status_words: {response.states.status_words}, states: {response.states.drive_states}, fault_present: {response.states.fault_present}, drives_on: {response.states.drives_on}")
         return response
     
     def get_slave_states_callback(self, request: GetSlaveStates.Request, response: GetSlaveStates.Response):
@@ -358,7 +359,7 @@ class EthercatCheckerNode(Node):
             Trigger.Response: Response indicating success or timeout failure
         """
         self.publish_plc_command(['PLC_node/brake_disable'], [0])
-        time.sleep(0.2)  # Allow brake to engage before turning off drives
+        time.sleep(0.4)  # Allow brake to engage before turning off drives
         self.try_turn_off()
         timeout_s : float = 5.0
         start_time = time.time()

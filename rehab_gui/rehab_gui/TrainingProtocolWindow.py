@@ -204,10 +204,11 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
             self._last_load_enabled = load_enabled
             self.ui.pushButton_LoadCreateProtocol.setEnabled(load_enabled)
 
-        start_state = (bool(self.ui_main.movement_loaded), self.ProtocolData is not None)
+        homing_done = self.ROS.isHomingDone()
+        start_state = (bool(self.ui_main.movement_loaded), self.ProtocolData is not None, homing_done)
         if start_state != self._last_start_state:
             self._last_start_state = start_state
-            if start_state[0] and start_state[1]:
+            if start_state[0] and start_state[1] and start_state[2]:
                 self.ui.pushButton_STARTtrainig.setEnabled(True)
                 self.ui.pushButton_STARTtrainig.setStyleSheet("background-color: rgb(85, 255, 127); color: black;")
             else:
@@ -449,7 +450,13 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         if not self.ROS.isRosCommunicationActive() or self.ROS.isInFaultState():
             QMessageBox.warning(self, "Warning", "No communication is active or the robot is in FAULT state.")
             return False
-        
+
+        if not self.ROS.isHomingDone():
+            QMessageBox.warning(self, "Warning",
+                "Homing has not been performed.\n"
+                "Please perform homing from the Robot tab before starting training.")
+            return False
+
         HandlePosition = self.ROS.getHandleFeedbackPosition()
         if any([abs(HandlePosition[idx]) > 3e-3 for idx in range(3)]):
             print(f"[Movement Program] Handle position is not zero, detected states: [{HandlePosition[0]}, {HandlePosition[1]}, {HandlePosition[2]}]")
@@ -457,7 +464,13 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
             return False
 
         self.ROS.setManualMode(False)
-        self.ROS.enableControllerBehaviour("FCT")
+        if not self.ROS.isPTPEnabled():
+            print("[TrainingProtocol] Auto-switching to mode 8 + joint_trajectory_controller")
+            if not self.ROS.enableControllerBehaviour("Training"):
+                QMessageBox.warning(self, "Warning",
+                    "Failed to switch to Cyclic Synchronous Position mode (mode 8) with\n"
+                    "joint_trajectory_controller. Cannot start training.")
+                return False
         self.ROS.setExerciseSuspended(False)
         self.ROS.setMovementStopped(False)
         self.ROS.setExerciseInSuspension(False)  # clear suspension warning

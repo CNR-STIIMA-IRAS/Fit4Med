@@ -4,8 +4,8 @@
 import os
 import sys
 import signal
-from PyQt5 import QtWidgets, QtCore 
-from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QLabel, QDialog, QVBoxLayout
+from PyQt5 import QtWidgets, QtCore
+from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QLabel, QDialog, QVBoxLayout, QPushButton
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 
 # mathematics
@@ -53,6 +53,155 @@ class WaitingDialog(QDialog):
         layout.addWidget(label)
         self.setLayout(layout)
         self.resize(300, 100)
+
+
+#########################################################################
+##
+##  Z-Axis Limit Recovery Dialog
+##  Shown when an emergency is caused by the Z-axis reaching its limit.
+##  Guides the operator to move Z+ until the limit switch clears.
+##
+#########################################################################
+class ZRecoveryDialog(QDialog):
+    """Modal dialog that guides the operator through Z-axis limit recovery.
+
+    Phases:
+      0. Limit hit  – system just stopped; operator must turn the reset key.
+      1. Waiting    – key turned, platform restarting; waiting for ROS connection.
+      2. Active     – jogging mode ready; operator holds manual switch + Z+ button.
+      3. Done       – second emergency cleared; operator turns key to resume.
+    """
+
+    def __init__(self, ros_manager, parent=None):
+        super().__init__(parent)
+        self.ROS = ros_manager
+        self._done = False
+        self._in_jog_phase = False
+        self._jogging_ready = False
+
+        self.setWindowTitle("Z-Axis Limit Recovery")
+        self.setModal(True)
+        self.setWindowFlags(
+            Qt.Dialog | Qt.WindowStaysOnTopHint | Qt.CustomizeWindowHint | Qt.WindowTitleHint
+        )
+
+        layout = QVBoxLayout()
+        layout.setSpacing(16)
+        layout.setContentsMargins(24, 24, 24, 24)
+
+        self._status_label = QLabel(
+            "⚠  Z-axis limit switch reached.\n\n"
+            "The system has been stopped.\n"
+            "Turn the reset key to begin the recovery procedure."
+        )
+        self._status_label.setAlignment(Qt.AlignCenter)
+        self._status_label.setWordWrap(True)
+        self._status_label.setStyleSheet(
+            "font-size: 13px; color: rgb(200,100,0); font-weight: bold; padding: 8px;"
+        )
+        layout.addWidget(self._status_label)
+
+        self._jog_btn = QPushButton("HOLD TO MOVE Z+")
+        self._jog_btn.setVisible(False)
+        self._jog_btn.setEnabled(False)
+        self._jog_btn.setStyleSheet(
+            "background-color: rgb(85,255,127); color: black; font-size: 15px; padding: 18px;"
+        )
+        self._jog_btn.pressed.connect(self._start_z_plus)
+        self._jog_btn.released.connect(self._stop_z_plus)
+        layout.addWidget(self._jog_btn)
+
+        self._ok_btn = QPushButton("OK")
+        self._ok_btn.setVisible(False)
+        self._ok_btn.setStyleSheet(
+            "background-color: rgb(85,255,127); color: black; font-size: 13px; padding: 10px;"
+        )
+        self._ok_btn.clicked.connect(self.accept)
+        layout.addWidget(self._ok_btn)
+
+        self.setLayout(layout)
+        self.resize(520, 280)
+
+        self._poll_timer = QTimer(self)
+        self._poll_timer.timeout.connect(self._poll_connection)
+        # Poll timer is started only when key is turned (enter_jog_phase)
+
+    # ------------------------------------------------------------------
+    def enter_jog_phase(self):
+        """Called when plc_manager sends Z_RECOVERY_RUNNING (key was turned, platform restarting)."""
+        if self._done or self._in_jog_phase:
+            return
+        self._in_jog_phase = True
+        self._status_label.setText(
+            "Key turned — waiting for robot connection..."
+        )
+        self._status_label.setStyleSheet(
+            "font-size: 13px; color: rgb(200,100,0); font-weight: bold; padding: 8px;"
+        )
+        self._jog_btn.setVisible(True)
+        self._poll_timer.start(500)
+
+    def _poll_connection(self):
+        """Enable Z+ button once ROS connects and jogging mode is ready."""
+        if self._done:
+            return
+        ros_ok = self.ROS.isRosCommunicationActive()
+        if ros_ok and not self._jogging_ready:
+            if self.ROS.enableControllerBehaviour("Jogging"):
+                self._jogging_ready = True
+                self._status_label.setText(
+                    "Z-axis is outside the allowed range.\n"
+                    "Hold the manual safety switch and press the button\n"
+                    "below to move Z+ until the limit switch triggers."
+                )
+                self._status_label.setStyleSheet(
+                    "font-size: 13px; color: black; padding: 8px;"
+                )
+                self._jog_btn.setEnabled(True)
+        elif not ros_ok and self._jogging_ready:
+            self._jogging_ready = False
+            self._jog_btn.setEnabled(False)
+            self._status_label.setText(
+                "Robot connection lost.\nWaiting for reconnection..."
+            )
+            self._status_label.setStyleSheet(
+                "font-size: 13px; color: rgb(200,100,0); font-weight: bold; padding: 8px;"
+            )
+
+    def _start_z_plus(self):
+        if not self.ROS.isRosCommunicationActive() or self._done:
+            return
+        self.ROS.setManualMode(True)
+        self.ROS.turnOnMotors()
+        self.ROS.toogleJoggingBehaviour(axis=2, direction=1)
+
+    def _stop_z_plus(self):
+        if not self.ROS.isRosCommunicationActive():
+            return
+        self.ROS.toogleJoggingBehaviour(axis=2, direction=0)
+        self.ROS.turnOffMotors()
+
+    def on_recovery_done(self):
+        """Called by the main window when Z_RECOVERY_DONE is received."""
+        self._done = True
+        self._poll_timer.stop()
+        self._jog_btn.setEnabled(False)
+        self._jog_btn.setVisible(False)
+        self._status_label.setText(
+            "Z-axis is back within the allowed range.\n\n"
+            "Turn the reset key to resume normal operation."
+        )
+        self._status_label.setStyleSheet(
+            "font-size: 13px; color: green; font-weight: bold; padding: 8px;"
+        )
+        self._ok_btn.setVisible(True)
+
+    def closeEvent(self, event):
+        if not self._done:
+            event.ignore()  # cannot be dismissed until recovery is complete
+        else:
+            self._poll_timer.stop()
+            event.accept()
 
 
 #########################################################################
@@ -113,6 +262,7 @@ class MainProgram(QMainWindow):
         os.makedirs(self.FMRR_Paths['Data'], exist_ok=True)
 
         self.movement_loaded : bool = False
+        self._z_recovery_dialog: ZRecoveryDialog = None  #type: ignore
 
     def connect(self):
         self.update_window_timer = QTimer()
@@ -128,9 +278,34 @@ class MainProgram(QMainWindow):
         self.udp.start_ros_communication.connect(self.ros_manager.startRosCommunication)
         self.udp.stop_ros_communication.connect(self.ros_manager.stopRosCommunication)
         self.ros_manager.stop_ros_communication_signal.connect(self.udp.onResetRosCommunication)
+        self.udp.z_recovery_start_signal.connect(self._on_z_limit_hit)
+        self.udp.z_recovery_mode_signal.connect(self._on_z_recovery_mode)
+        self.udp.z_recovery_done_signal.connect(self._on_z_recovery_done)
 
         self.update_window_timer.timeout.connect(self.updateWindow)
         self.update_window_timer.start(self._update_window_period)
+
+    def _on_z_limit_hit(self):
+        """Z-axis limit switch triggered: show phase-0 dialog (before key turn)."""
+        if self._z_recovery_dialog is not None and self._z_recovery_dialog.isVisible():
+            return
+        self._z_recovery_dialog = ZRecoveryDialog(self.ros_manager, self)
+        self._z_recovery_dialog.show()
+
+    def _on_z_recovery_mode(self):
+        """Key turned, platform restarting: advance dialog to jog phase."""
+        if self._z_recovery_dialog is not None and self._z_recovery_dialog.isVisible():
+            self._z_recovery_dialog.enter_jog_phase()
+        else:
+            # Fallback if limit-hit dialog was somehow missed
+            self._z_recovery_dialog = ZRecoveryDialog(self.ros_manager, self)
+            self._z_recovery_dialog.show()
+            self._z_recovery_dialog.enter_jog_phase()
+
+    def _on_z_recovery_done(self):
+        """Update the recovery dialog when plc_manager signals recovery is complete."""
+        if self._z_recovery_dialog is not None:
+            self._z_recovery_dialog.on_recovery_done()
 
     def updateWindow(self):
         current_tab = self.ui.tabWidget.currentIndex()

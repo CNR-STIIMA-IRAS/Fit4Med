@@ -646,7 +646,7 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
 
     def clbk_BtnGoToStartPosition(self):
         self.ROS.setManualMode(False)
-        if not self.ROS.enableControllerBehaviour("FCT"):
+        if not self.ROS.enableControllerBehaviour("GoToStart"):
             moos = self.ROS.getDriversModeOfOperations()
             ctrl = self.ROS.getCurrentControllerName()
             QMessageBox.warning(
@@ -656,10 +656,10 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
                 "Please verify that all drives are operational before starting training."
             )
             return False
-        if self.ROS.getCurrentControllerName() != self.ROS.getJointTrajectoryControllerName():
+        if self.ROS.getCurrentControllerName() != self.ROS.getGoToStartControllerName():
             QMessageBox.warning(
                 self, "Warning",
-                f"Joint trajectory controller is not active "
+                f"Go to start controller is not active "
                 f"(active: {self.ROS.getCurrentControllerName()}).\n"
                 "Cannot start training."
             )
@@ -668,9 +668,9 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
         QTimer.singleShot(500, self._goToStartPosition_afterDelay)
 
     def _goToStartPosition_afterDelay(self):
-        if self.ROS.getCurrentControllerName() != self.ROS.getJointTrajectoryControllerName():
-            if not self.ROS.enableControllerBehaviour("FCT"):
-                QMessageBox.warning(self, "Warning", "Failed in setting the joint trajectory controller")
+        if self.ROS.getCurrentControllerName() != self.ROS.getGoToStartControllerName():
+            if not self.ROS.enableControllerBehaviour("GoToStart"):
+                QMessageBox.warning(self, "Warning", "Failed in setting the go to startcontroller")
                 return
             
         if self.ROS.turnOnMotors():

@@ -128,6 +128,7 @@ class RosCommunicationManager(QObject):
         
     def turnOnMotors(self) -> bool:
         if self.rOk():
+            print("[turnOnMotors] init.")
             if self.manual_mode_activated:
                 if self.ROS.plc_states['manual_switch_pressed']:
                     # set manual mode during movement
@@ -138,8 +139,15 @@ class RosCommunicationManager(QObject):
                     return False
             else:
                 self.ROS.publish_plc_command(['PLC_node/manual_mode'], [0])
-            
-            return self.ROS.turn_on_motors() if not self.areMotorsOn() else True
+            if self.isEmergencyActive():
+                QMessageBox.warning(self.widget, "Warning",
+                                    "Cannot turn on motors while emergency stop is active!")
+                return False
+            else:
+              if not self.areMotorsOn():
+                return self.ROS.turn_on_motors()  
+              else:
+                return True
         return False
     
     def enableControllerBehaviour(self, behaviour: str):
@@ -152,6 +160,8 @@ class RosCommunicationManager(QObject):
             return self.ROS.controller_and_op_mode_switch(9, self.ROS.forward_command_controller_name)
         elif behaviour == "ManualGuidance":
             return self.ROS.controller_and_op_mode_switch(9, self.ROS.admittance_controller_name)
+        elif behaviour == "GoToStart":
+            return self.ROS.controller_and_op_mode_switch(8, self.ROS.go_to_start_controller_name)
         else:
             return self.ROS.controller_and_op_mode_switch(8, self.ROS.trajectory_controller_name)
         
@@ -192,6 +202,9 @@ class RosCommunicationManager(QObject):
     
     def getJointTrajectoryControllerName(self) -> str:
         return self.ROS.trajectory_controller_name if self.rOk() else "n/a"
+    
+    def getGoToStartControllerName(self) -> str:
+        return self.ROS.go_to_start_controller_name if self.rOk() else "n/a"
 
     def getSlaveNames(self) -> List[str]:
         return self.ROS.ec_slave_states.slave_names if self.rOk() else ['n/a'] * self.number_of_ec_slaves
@@ -239,6 +252,15 @@ class RosCommunicationManager(QObject):
     
     def isPTPEnabled(self) -> bool:
         return self.ROS.enable_ptp if self.rOk() else False
+
+    def isHomingDone(self) -> bool:
+        """True when at least one drive is not in MODE_NO_MODE (system initialized beyond startup)."""
+        if not self.rOk():
+            return False
+        modes = self.ROS.coe_drive_states.modes_of_operation
+        if not modes:
+            return False
+        return any(m not in ('MODE_NO_MODE', 'n/a', None, '') for m in modes)
     
     def triggerSoftMovementStart(self, amplitude: float, time_constant: float, target: str) -> None:
         return self.ROS.trigger_soft_movement_start(amplitude=amplitude, time_constant=time_constant, target=target) if self.rOk() else None      
@@ -267,7 +289,9 @@ class RosCommunicationManager(QObject):
         return self.ROS.plc_states if self.rOk() else ret
 
     def isEmergencyActive(self) : 
-        return not self.ROS.plc_states['estop'] if self.rOk() and 'estop' in self.ROS.plc_states else True
+        value = not self.ROS.plc_states['estop'] if self.rOk() and 'estop' in self.ROS.plc_states else True
+        print(f"[isEmergencyActive] estop value: {value}")
+        return value
     
     def driveLogicSwitchOff(self) :
         if not self.rOk():
@@ -287,7 +311,12 @@ class RosCommunicationManager(QObject):
     def brakeSwitchOn(self) :
         if not self.rOk():
             return
-        self.ROS.publish_plc_command(['PLC_node/brake_disable'], [1])
+        if not self.isEmergencyActive():
+            self.ROS.publish_plc_command(['PLC_node/brake_disable'], [1])
+        else:
+            QMessageBox.warning(self.widget, "Warning",
+                                "Cannot enable brakes while emergency stop is active!")
+            self.ROS.publish_plc_command(['PLC_node/brake_disable'], [0])
 
     def brakeSwitchOff(self) :
         if not self.rOk():

@@ -149,6 +149,7 @@ class SyncRosManager:
         self._ros_period = 1
         self._controller_list_period = 50  # milliseconds
         self.trajectory_controller_name : str = 'joint_trajectory_controller'
+        self.go_to_start_controller_name : str = 'go_to_start_controller'
         self.forward_command_controller_name : str = 'forward_velocity_controller'
         self.admittance_controller_name : str = 'admittance_controller'
         self.current_controller_name : str = None # type: ignore
@@ -437,6 +438,9 @@ class SyncRosManager:
                         break
                     elif ctrl['name'] == self.trajectory_controller_name:
                         active_controller = self.trajectory_controller_name
+                        break
+                    elif ctrl['name'] == self.go_to_start_controller_name:
+                        active_controller = self.go_to_start_controller_name
                         break
                     elif ctrl['name'] == self.admittance_controller_name:
                         active_controller = self.admittance_controller_name
