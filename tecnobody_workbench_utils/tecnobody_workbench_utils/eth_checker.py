@@ -359,7 +359,7 @@ class EthercatCheckerNode(Node):
             Trigger.Response: Response indicating success or timeout failure
         """
         self.publish_plc_command(['PLC_node/brake_disable'], [0])
-        time.sleep(0.4)  # Allow brake to engage before turning off drives
+        time.sleep(0.2)  # Allow brake to engage before turning off drives
         self.try_turn_off()
         timeout_s : float = 5.0
         start_time = time.time()

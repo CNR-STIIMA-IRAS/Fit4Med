@@ -237,7 +237,12 @@ class RosCommunicationManager(QObject):
         if not self.areMotorsOn() and not self.turnOnMotors():
             return False
         result : bool = self.ROS.send_ptp_trajectory(target_point, end_time)
-        return result       
+        return result
+
+    def sendGoToStartPTPTrajectory(self, target_point, end_time) -> bool:
+        if not self.areMotorsOn() and not self.turnOnMotors():
+            return False
+        return self.ROS.send_go_to_start_ptp_trajectory(target_point, end_time) if self.rOk() else False
 
     def isJoggingBehaviourEnabled(self) -> bool:
         return self.ROS.enable_jog_buttons if self.rOk() else False
@@ -288,9 +293,8 @@ class RosCommunicationManager(QObject):
         ret : dict = {'s_input.0' : False, 'estop' : False, 'reset': False, 'manual_switch_pressed' : False, 's_input.5' : False, 's_input.6' : False, 's_input.7' : False, 's_input.8' : False }
         return self.ROS.plc_states if self.rOk() else ret
 
-    def isEmergencyActive(self) : 
+    def isEmergencyActive(self) :
         value = not self.ROS.plc_states['estop'] if self.rOk() and 'estop' in self.ROS.plc_states else True
-        print(f"[isEmergencyActive] estop value: {value}")
         return value
     
     def driveLogicSwitchOff(self) :

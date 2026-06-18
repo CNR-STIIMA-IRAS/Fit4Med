@@ -280,8 +280,14 @@ class SyncRosManager:
         
         self.perform_homing_client : RosilibpyServiceHandler = RosilibpyServiceHandler(self.ros_client, '/state_controller/perform_homing', 'std_srvs/srv/Trigger')
 
-        self.set_trajectory_client : RosilibpyServiceHandler= RosilibpyServiceHandler(self.ros_client, "/tecnobody_workbench_utils/set_trajectory",  
+        self.set_trajectory_client : RosilibpyServiceHandler= RosilibpyServiceHandler(self.ros_client, "/tecnobody_workbench_utils/set_trajectory",
                                                                                       "tecnobody_msgs/SetTrajectory")
+
+        self.set_go_to_start_trajectory_client : RosilibpyServiceHandler = RosilibpyServiceHandler(
+            self.ros_client,
+            "/tecnobody_workbench_utils/set_go_to_start_trajectory",
+            "tecnobody_msgs/SetTrajectory"
+        )
                 
         self.reset_speed_over_client : ConstRequestServiceHandler = ConstRequestServiceHandler(self.ros_client, "/tecnobody_workbench_utils/reset_speed_ovr",
                                                                                                "std_srvs/Trigger", roslibpy.ServiceRequest())
@@ -336,6 +342,7 @@ class SyncRosManager:
         self.get_slave_state_client = None #type: ignore
         self.perform_homing_client = None #type: ignore
         self.set_trajectory_client = None #type: ignore
+        self.set_go_to_start_trajectory_client = None #type: ignore
 
         self.reset_speed_over_client = None #type: ignore
         self.set_rehab_exercise_client = None #type: ignore
@@ -464,11 +471,14 @@ class SyncRosManager:
         return self.switch_controller_client.call(switch_req)  # type: ignore
 
     def activate_controller_after_homing(self) -> None:
-        res : dict = self.switch_controller(self.current_controller_name, None)
-        if not res['ok'] == True:
+        # After zeroing, always restore joint_trajectory_controller + mode 8 (CSP).
+        # current_controller_name is None during homing (no controller active), so we
+        # cannot use it here — hardcode the known post-homing target state instead.
+        res : dict = self.switch_controller(self.trajectory_controller_name, None)
+        if res is None or not res.get('ok', False):
             print("❌ Failed to activate controller after homing")
             return
-        self.set_mode_of_operation(8) if self.current_controller_name == self.trajectory_controller_name else self.set_mode_of_operation(9)
+        self.set_mode_of_operation(8)
 
     def destroy(self):
         self.destroy_clients_init = True
@@ -545,42 +555,32 @@ class SyncRosManager:
         #     return self.set_mode_of_operation(mode_value)
 
     def perform_homing(self) -> bool:
-        print('--------------->Performing Homing for all three joints')
+        print('--------------->Performing Homing (zeroing) for all three joints')
         self.turn_on_motors()
         ok : bool = False
         request = roslibpy.ServiceRequest()
         try:
+            self.homing_process_running = True
+            print('Homing requested, waiting for the service to return...')
             result : dict = self.perform_homing_client.call(request)
-            if result['success']:
-                start_time = time.time()
-                timeout_sec = 5.0
-                print('Homing started, waiting for completion...')
-                self.homing_process_running = True
-                while True:
-                    current_time = time.time()
-                    elapsed = current_time - start_time
-
-                    if all((status_word & (1 << 12)) != 0 for status_word in self.coe_drive_states.status_words):
-                        print('Homing performed successfully')
-                        ok = True
-                        break
-                    elif elapsed > timeout_sec:
-                        print('Timeout while waiting for homing to complete')
-                        for status_word in self.coe_drive_states.status_words:
-                            print(
-                                f' - STATUS WORD: bit 12 (homing completed): {status_word & (1 << 12)}, '
-                                f'bit 13 (error): {status_word & (1 << 13)}'
-                            )
-                        ok = False
-                        break
-                    time.sleep(0.1)  # evita busy waiting
-
-                self.homing_process_running = False
-                self.activate_controller_after_homing()
+            # /state_controller/perform_homing is a BLOCKING service: it returns only after
+            # the zeroing is complete and 'success' already reflects the final outcome.
+            # This is a zeroing (sets current position as zero, no motion), so CiA402
+            # statusword bit 12 ("homing attained") is never asserted — polling it always
+            # timed out and reported failure even though the zeroing had succeeded.
+            ok = bool(result is not None and result.get('success', False))
+            if ok:
+                print('Homing (zeroing) performed successfully')
             else:
-                print('Failed to perform homing (service returned False)')
+                msg = result.get('message', '') if isinstance(result, dict) else 'no response'
+                print(f'Failed to perform homing (service returned False): {msg}')
         except Exception as e:
             print(f'Homing service call failed with exception: {e}')
+        finally:
+            self.homing_process_running = False
+
+        if ok:
+            self.activate_controller_after_homing()
 
         self.turn_off_motors()
         return ok
@@ -747,6 +747,26 @@ class SyncRosManager:
         except Exception as e:
             self.stop_movement_client.call()
 
+        return False
+
+    def send_go_to_start_ptp_trajectory(self, target_point: list, end_time: float) -> bool:
+        try:
+            _ = self.reset_speed_over_client.call()
+            points = [self.RobotJointPosition, target_point]
+            times = [0.0, end_time]
+            req = roslibpy.ServiceRequest({
+                'cartesian_positions': [
+                    {'point': points[idx], 'time_from_start': times[idx]}
+                    for idx in range(len(times))
+                ],
+                'override': 50
+            })
+            print(f"{CYAN}>>>>{NC} Set Go-To-Start Trajectory Request sent")
+            response : dict = self.set_go_to_start_trajectory_client.call(req)
+            print(f"{CYAN}<<<<{NC} Set Go-To-Start Trajectory Request [{GREEN+'OK'+NC if response is not None and 'success' in response.keys() and response['success'] else RED+'FAILED'+NC}]")
+            return response['success'] if response is not None and 'success' in response.keys() else False
+        except Exception as e:
+            self.stop_movement_client.call()
         return False
 
     def set_exercise(self, CartesianPositions, TimeFromStart, ovrs: List[float], durations: List[float], eeg_mode: bool) -> bool:

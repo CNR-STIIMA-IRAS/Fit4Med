@@ -106,6 +106,8 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
             self.ui.pushButton_GoToZERO.setChecked(False)
             self.ROS.setTrajectoryCompleted(False)
             self.ROS.turnOffMotors()
+            if self.ROS.getCurrentControllerName() == self.ROS.getGoToStartControllerName():
+                QTimer.singleShot(200, self._restoreTrajectoryController)
 
 ##############################################################################################################
 #####                                                                                                    #####  
@@ -667,6 +669,9 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
         self.Training_ON = True
         QTimer.singleShot(500, self._goToStartPosition_afterDelay)
 
+    def _restoreTrajectoryController(self):
+        self.ROS.enableControllerBehaviour("PTP")
+
     def _goToStartPosition_afterDelay(self):
         if self.ROS.getCurrentControllerName() != self.ROS.getGoToStartControllerName():
             if not self.ROS.enableControllerBehaviour("GoToStart"):
@@ -674,7 +679,7 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
                 return
             
         if self.ROS.turnOnMotors():
-            self.ROS.sendPTPTrajectory([0.0, 0.0, 0.0], 3.0)
+            self.ROS.sendGoToStartPTPTrajectory([0.0, 0.0, 0.0], 3.0)
         else:
             QMessageBox.warning(self, "Warning", "Failed in switching on the motors")
 

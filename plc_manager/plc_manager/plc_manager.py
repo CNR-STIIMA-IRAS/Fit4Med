@@ -657,11 +657,20 @@ class PLCControllerInterface(Node):
                     elif current_estop == 0 and self.ESTOP == 1:
                         self.publish_command('PLC_node/brake_disable', 0)  # Ensure brakes enabled
 
-                        if not self.in_z_recovery:
-                            # ---- First emergency: enter Z-axis recovery mode ----
+                        # Gate Z-axis recovery on the dedicated PLC input 'z_limit_switch'
+                        # (value 1 = limit active). Only a genuine Z-limit event enters the
+                        # recovery procedure; all other emergencies are a normal stop.
+                        z_limit_active = False
+                        for _i in range(len(self.interface_names)):
+                            if self.interface_names[_i] == "z_limit_switch":
+                                z_limit_active = (self.state_values[_i] == 1)
+                                break
+
+                        if z_limit_active and not self.in_z_recovery:
+                            # ---- Z-axis limit hit: enter Z-axis recovery mode ----
                             self.get_logger().info(
                                 bcolors.OKCYAN +
-                                "🛑 EMERGENCY 1→0: entering Z-axis recovery mode" +
+                                "🛑 Z-LIMIT 1→0: entering Z-axis recovery mode" +
                                 bcolors.ENDC
                             )
                             self.in_z_recovery = True
@@ -669,8 +678,8 @@ class PLCControllerInterface(Node):
                             # switch still LOW → XOR(LOW, LOW)=LOW → NOT=HIGH → no loop
                             self.publish_command('PLC_node/z_recovery', 0)
                             udp_msg = b"Z_LIMIT_HIT"
-                        else:
-                            # ---- Second emergency: Z-axis back in limits, recovery complete ----
+                        elif self.in_z_recovery:
+                            # ---- Recovery in progress: Z-axis back in limits, recovery complete ----
                             self.get_logger().info(
                                 bcolors.OKGREEN +
                                 "✅ EMERGENCY (recovery): Z-axis limit cleared, z_recovery set HIGH" +
@@ -680,6 +689,14 @@ class PLCControllerInterface(Node):
                             # Restore normal limit-switch logic: switch HIGH, z_recovery HIGH → OK
                             self.publish_command('PLC_node/z_recovery', 1)
                             udp_msg = b"Z_RECOVERY_DONE"
+                        else:
+                            # ---- Normal emergency (not a Z-limit): standard graceful stop ----
+                            self.get_logger().info(
+                                bcolors.OKCYAN +
+                                "🛑 E-STOP PRESSED: E-stop 1→0 (RUNNING→IDLE)" +
+                                bcolors.ENDC
+                            )
+                            udp_msg = b"STOP"
 
                         try:
                             # ========== Graceful GUI shutdown ==========
