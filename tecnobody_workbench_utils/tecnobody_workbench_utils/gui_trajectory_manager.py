@@ -219,6 +219,13 @@ class FollowJointTrajectoryActionManager(Node):
             FollowJointTrajectory,
             f"/{self.controller_name}/follow_joint_trajectory"
         )
+        # Dedicated client for go_to_start_controller, which shares command interfaces
+        # with joint_trajectory_controller and is only active when the GUI switches to it.
+        self.go_to_start_action_client = ActionClient(
+            self,
+            FollowJointTrajectory,
+            "/go_to_start_controller/follow_joint_trajectory"
+        )
         self.clear(0)
 
     def _init_sevices(self) -> None:
@@ -247,6 +254,11 @@ class FollowJointTrajectoryActionManager(Node):
             SetTrajectory,
             "/tecnobody_workbench_utils/set_trajectory",
             self.set_trajectory
+        )
+        self.set_go_to_start_trajectory_server = self.create_service(
+            SetTrajectory,
+            "/tecnobody_workbench_utils/set_go_to_start_trajectory",
+            self.set_go_to_start_trajectory
         )
         self.stop_movement_server = self.create_service(
             Trigger,
@@ -415,8 +427,43 @@ class FollowJointTrajectoryActionManager(Node):
         # ========== Apply speed override and submit goal ==========
         self.get_logger().info(f'Set Trajectory -> sending the new FJT Goal')
         response.success = self.sendFollowJointTrajectoryGoal(self.on_trajectory_goal_accepted)
-        self.get_logger().info(f"Trajectory sento to FCT with result: {response.success}") 
-        response.success = True 
+        self.get_logger().info(f"Trajectory sento to FCT with result: {response.success}")
+        response.success = True
+        return response
+
+    def set_go_to_start_trajectory(
+        self,
+        request: SetTrajectory.Request,
+        response: SetTrajectory.Response
+    ) -> SetTrajectory.Response:
+        """Execute a single-shot trajectory to the go_to_start_controller action server.
+
+        Identical interpolation pipeline to set_trajectory, but routes the goal to
+        /go_to_start_controller/follow_joint_trajectory instead of the default controller.
+        Called when the GUI "Go To Start" button is pressed and go_to_start_controller
+        is the active controller (joint_trajectory_controller is inactive).
+        """
+        self.clear(size=1)
+
+        _P = [r.point for r in request.cartesian_positions]
+        _t = [r.time_from_start for r in request.cartesian_positions]
+
+        self.goal_fjt[0].trajectory.joint_names = self._joint_names
+        t, p, v, a = self.resample_with_speed_override(
+            P=_P, t=_t, dt=self._dt, total_time=_t[-1], speed_ovr=int(request.override)
+        )
+        for i, tau in enumerate(t):
+            self.addPoint(
+                self.goal_fjt[0],
+                p[i], v[i], a[i],
+                Duration(sec=int(tau), nanosec=int((tau - int(tau)) * 1e9))
+            )
+        self._total_time_s[0] = t[-1]
+
+        self.get_logger().info('Set Go-To-Start Trajectory -> sending FJT goal to go_to_start_controller')
+        self._send_goal_future = self.go_to_start_action_client.send_goal_async(self.goal_fjt[0])
+        self._send_goal_future.add_done_callback(self.on_trajectory_goal_accepted)
+        response.success = True
         return response
 
     def set_rehab_exercise(
