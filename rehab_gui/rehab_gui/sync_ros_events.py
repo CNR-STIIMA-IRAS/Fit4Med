@@ -149,6 +149,7 @@ class SyncRosManager:
         self._ros_period = 1
         self._controller_list_period = 50  # milliseconds
         self.trajectory_controller_name : str = 'joint_trajectory_controller'
+        self.go_to_start_controller_name : str = 'go_to_start_controller'
         self.forward_command_controller_name : str = 'forward_velocity_controller'
         self.admittance_controller_name : str = 'admittance_controller'
         self.current_controller_name : str = None # type: ignore
@@ -281,6 +282,12 @@ class SyncRosManager:
 
         self.set_trajectory_client : RosilibpyServiceHandler= RosilibpyServiceHandler(self.ros_client, "/tecnobody_workbench_utils/set_trajectory",  
                                                                                       "tecnobody_msgs/SetTrajectory")
+
+        self.set_go_to_start_trajectory_client : RosilibpyServiceHandler = RosilibpyServiceHandler(
+            self.ros_client,
+            "/tecnobody_workbench_utils/set_go_to_start_trajectory",
+            "tecnobody_msgs/SetTrajectory"
+        )
                 
         self.reset_speed_over_client : ConstRequestServiceHandler = ConstRequestServiceHandler(self.ros_client, "/tecnobody_workbench_utils/reset_speed_ovr",
                                                                                                "std_srvs/Trigger", roslibpy.ServiceRequest())
@@ -335,6 +342,7 @@ class SyncRosManager:
         self.get_slave_state_client = None #type: ignore
         self.perform_homing_client = None #type: ignore
         self.set_trajectory_client = None #type: ignore
+        self.set_go_to_start_trajectory_client = None #type: ignore
 
         self.reset_speed_over_client = None #type: ignore
         self.set_rehab_exercise_client = None #type: ignore
@@ -437,6 +445,9 @@ class SyncRosManager:
                         break
                     elif ctrl['name'] == self.trajectory_controller_name:
                         active_controller = self.trajectory_controller_name
+                        break
+                    elif ctrl['name'] == self.go_to_start_controller_name:
+                        active_controller = self.go_to_start_controller_name
                         break
                     elif ctrl['name'] == self.admittance_controller_name:
                         active_controller = self.admittance_controller_name
@@ -743,6 +754,26 @@ class SyncRosManager:
         except Exception as e:
             self.stop_movement_client.call()
 
+        return False
+
+    def send_go_to_start_ptp_trajectory(self, target_point: list, end_time: float) -> bool:
+        try:
+            _ = self.reset_speed_over_client.call()
+            points = [self.RobotJointPosition, target_point]
+            times = [0.0, end_time]
+            req = roslibpy.ServiceRequest({
+                'cartesian_positions': [
+                    {'point': points[idx], 'time_from_start': times[idx]}
+                    for idx in range(len(times))
+                ],
+                'override': 50
+            })
+            print(f"{CYAN}>>>>{NC} Set Go-To-Start Trajectory Request sent")
+            response : dict = self.set_go_to_start_trajectory_client.call(req)
+            print(f"{CYAN}<<<<{NC} Set Go-To-Start Trajectory Request [{GREEN+'OK'+NC if response is not None and 'success' in response.keys() and response['success'] else RED+'FAILED'+NC}]")
+            return response['success'] if response is not None and 'success' in response.keys() else False
+        except Exception as e:
+            self.stop_movement_client.call()
         return False
 
     def set_exercise(self, CartesianPositions, TimeFromStart, ovrs: List[float], durations: List[float], eeg_mode: bool) -> bool:

@@ -152,6 +152,8 @@ class RosCommunicationManager(QObject):
             return self.ROS.controller_and_op_mode_switch(9, self.ROS.forward_command_controller_name)
         elif behaviour == "ManualGuidance":
             return self.ROS.controller_and_op_mode_switch(9, self.ROS.admittance_controller_name)
+        elif behaviour == "GoToStart":
+            return self.ROS.controller_and_op_mode_switch(8, self.ROS.go_to_start_controller_name)
         else:
             return self.ROS.controller_and_op_mode_switch(8, self.ROS.trajectory_controller_name)
         
@@ -192,6 +194,9 @@ class RosCommunicationManager(QObject):
     
     def getJointTrajectoryControllerName(self) -> str:
         return self.ROS.trajectory_controller_name if self.rOk() else "n/a"
+    
+    def getGoToStartControllerName(self) -> str:
+        return self.ROS.go_to_start_controller_name if self.rOk() else "n/a"
 
     def getSlaveNames(self) -> List[str]:
         return self.ROS.ec_slave_states.slave_names if self.rOk() else ['n/a'] * self.number_of_ec_slaves
@@ -224,7 +229,12 @@ class RosCommunicationManager(QObject):
         if not self.areMotorsOn() and not self.turnOnMotors():
             return False
         result : bool = self.ROS.send_ptp_trajectory(target_point, end_time)
-        return result       
+        return result
+
+    def sendGoToStartPTPTrajectory(self, target_point, end_time) -> bool:
+        if not self.areMotorsOn() and not self.turnOnMotors():
+            return False
+        return self.ROS.send_go_to_start_ptp_trajectory(target_point, end_time) if self.rOk() else False
 
     def isJoggingBehaviourEnabled(self) -> bool:
         return self.ROS.enable_jog_buttons if self.rOk() else False
