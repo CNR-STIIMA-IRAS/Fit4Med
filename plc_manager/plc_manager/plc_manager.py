@@ -351,7 +351,7 @@ class PLCControllerInterface(Node):
         self.shutdown_requested = False
 
         # ========== EtherCAT State Service Client ==========
-        self.declare_parameter('ethercat_slave_state_services', ['/tecnobody/get_slave_states'])
+        self.declare_parameter('ethercat_slave_state_services', ['/tecnobody/get_slave_states_master0'])
         self.declare_parameter('ethercat_plc_slave_names', ['sickPLC', 'FLX0-GETC100'])
         self.ethercat_slave_state_services : list[str] = list(
             self.get_parameter('ethercat_slave_state_services').value
