@@ -461,7 +461,7 @@ class PLCControllerInterface(Node):
 
         for service_name, states in cached_states.items():
             for slave_name, slave_state in states.items():
-            if any(plc_name in slave_name for plc_name in self.ethercat_slave_names):
+                if any(plc_name in slave_name for plc_name in self.ethercat_slave_names):
                     matches.append((service_name, slave_name, slave_state))
                     if slave_state == 'OP':
                         self.get_logger().info(
