@@ -310,9 +310,9 @@ class PLCControllerInterface(Node):
         self.lock = threading.Lock()            # Protects state_callback() concurrent access
         
         # ========== Command Message Structure ==========
-        # Pre-allocate PlcController message with 8 outputs
+        # Pre-allocate PlcController message with 10 outputs (matches plc_controller.yaml)
         self.command_msg = PlcController()
-        self.command_msg.values = [0] * 8
+        self.command_msg.values = [0] * 10
         self.command_msg.interface_names = [
             'PLC_node/mode_of_operation',       # [0] unused
             'PLC_node/power_cutoff',            # [1] unused
@@ -321,7 +321,9 @@ class PLCControllerInterface(Node):
             'PLC_node/estop',                   # [4] main E-stop signal
             'PLC_node/manual_mode',             # [5] unused
             'PLC_node/force_sensors_pwr',       # [6] F/T sensor power control
-            'PLC_node/brake_disable'            # [7] Brake Disable (0=enabled, 1=disabled)
+            'PLC_node/brake_disable',           # [7] Brake Disable (0=enabled, 1=disabled)
+            'PLC_node/eeg_sync',                # [8] EEG sync pulse
+            'PLC_node/z_recovery'               # [9] Z-axis limit switch recovery flag
         ]
 
         # ========== Launcher Health Monitoring ==========
