@@ -68,7 +68,7 @@
             <command_interface name="position" />
             <command_interface name="control_word" />
             <command_interface name="mode_of_operation" />
-            <ec_module name="delta1">
+            <ec_module name="delta3">
                 <plugin>ethercat_generic_plugins/EcCiA402Drive</plugin>
                 <param name="alias">0</param>
                 <param name="position">2</param>
@@ -76,21 +76,6 @@
                 <param name="slave_config">$(find tecnobody_workbench)/config/delta750.yaml</param>
             </ec_module>
         </joint>
-
-        <!-- sensor name="torsiometer_y">
-            <state_interface name="status1"/>
-            <state_interface name="status2"/>
-            <state_interface name="torque"/>
-            <state_interface name="live_counter"/>
-            <state_interface name="array_counter"/>
-            <command_interface name="ctrl1"/>
-            <ec_module name="AtiAxia90">
-                <plugin>ethercat_generic_plugins/GenericEcSlave</plugin>
-                <param name="alias">0</param>
-                <param name="position">3</param>
-                <param name="slave_config">$(find tecnobody_workbench)/config/burster9251.yaml</param>
-            </ec_module>
-        </sensor -->
 
         <sensor name="ft_sensor">
             <state_interface name="force.x" />
