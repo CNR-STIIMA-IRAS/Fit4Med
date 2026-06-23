@@ -352,12 +352,12 @@ class PLCControllerInterface(Node):
 
         # ========== EtherCAT State Service Client ==========
         self.declare_parameter('ethercat_slave_state_services', ['/tecnobody/get_slave_states_master0'])
-        self.declare_parameter('ethercat_plc_slave_names', ['sickPLC', 'FLX0-GETC100'])
+        self.declare_parameter('ethercat_slave_names', ['delta1-0:0', 'delta2-0:1', 'delta3-0:2', 'AtiAxia90-0:3'])
         self.ethercat_slave_state_services : list[str] = list(
             self.get_parameter('ethercat_slave_state_services').value
         )
-        self.ethercat_plc_slave_names : list[str] = list(
-            self.get_parameter('ethercat_plc_slave_names').value
+        self.ethercat_slave_names : list[str] = list(
+            self.get_parameter('ethercat_slave_names').value
         )
         self.ethercat_state_clients : dict[str, rclpy.client.Client] = {}
         self.ethercat_state_inflight = {}
@@ -461,7 +461,7 @@ class PLCControllerInterface(Node):
 
         for service_name, states in cached_states.items():
             for slave_name, slave_state in states.items():
-                if any(plc_name in slave_name for plc_name in self.ethercat_plc_slave_names):
+            if any(plc_name in slave_name for plc_name in self.ethercat_slave_names):
                     matches.append((service_name, slave_name, slave_state))
                     if slave_state == 'OP':
                         self.get_logger().info(
