@@ -45,6 +45,15 @@ if command -v fuser >/dev/null 2>&1 && [ -e /dev/EtherCAT1 ]; then
     fi
 fi
 
+# Wait until every drive on master 1 has a responsive CoE mailbox before doing
+# anything that talks to the slaves. Prevents the PREOP->SAFEOP startup race.
+WAIT_READY_SCRIPT="$(dirname "$0")/ec_wait_ready.sh"
+if [ -x "$WAIT_READY_SCRIPT" ]; then
+    "$WAIT_READY_SCRIPT" || echo "WARNING: ec_wait_ready gate did not pass cleanly." >&2
+else
+    echo "WARNING: ec_wait_ready.sh not found/executable at $WAIT_READY_SCRIPT, skipping gate." >&2
+fi
+
 echo "*** Resetting EtherCAT CoE drive faults (master 1) before launching ROS2 ***"
 if [ ! -x "$RESET_BINARY" ]; then
     echo "WARNING: reset_coe_faults binary not found at $RESET_BINARY, skipping." >&2
