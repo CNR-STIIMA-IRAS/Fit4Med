@@ -205,6 +205,7 @@ class EthercatCheckerNode(Node):
         # Node configuration
         self.error_auto_reset_enabled = False
         self.dof_names = ['joint_x', 'joint_y', 'joint_z']
+        self.declare_parameter('plc_slave_identifier', 'sickPLC')
 
         # Current drive feedback container
         self.feedback : DriverStates = DriverStates(self.dof_names)
@@ -333,8 +334,13 @@ class EthercatCheckerNode(Node):
             executor.remove_node(check_node)
             check_node.destroy_node()
 
-        response.slave_names = slave_names  # type: ignore
-        response.slave_states = slave_states  # type: ignore
+        plc_id = self.get_parameter('plc_slave_identifier').value
+        filtered = [
+            (n, s) for n, s in zip(slave_names, slave_states)
+            if plc_id not in n
+        ]
+        response.slave_names = [n for n, _ in filtered]   # type: ignore
+        response.slave_states = [s for _, s in filtered]  # type: ignore
         return response
 
 
