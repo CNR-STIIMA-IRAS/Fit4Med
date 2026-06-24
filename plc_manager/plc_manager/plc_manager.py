@@ -376,7 +376,7 @@ class PLCControllerInterface(Node):
 
         # Use an isolated temporary node+executor to make synchronous service calls
         # without conflicting with this node's MultiThreadedExecutor.
-        check_node = rclpy.create_node('_plc_ec_check')
+        check_node = rclpy.create_node('_plc_ec_check', use_global_arguments=False)
         executor = SingleThreadedExecutor()
         executor.add_node(check_node)
 

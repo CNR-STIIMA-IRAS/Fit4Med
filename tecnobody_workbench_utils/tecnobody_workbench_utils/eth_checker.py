@@ -119,7 +119,7 @@ class EthercatCheckerNode(Node):
             callback_group=driver_group
         )
 
-	# Publisher for PLC commands (brake control, etc.)
+	    # Publisher for PLC commands (brake control, etc.)
         qos = rclpy.qos.QoSProfile(depth=10, reliability=rclpy.qos.ReliabilityPolicy.RELIABLE)  # Adjust as necessary
         self.plc_command_publisher = self.create_publisher(
             PlcController, 
@@ -295,7 +295,7 @@ class EthercatCheckerNode(Node):
         Returns:
             GetSlaveStates.Response: Aggregated slave names and states from all masters
         """
-        check_node = rclpy.create_node('_ethercat_checker_slave_query')
+        check_node = rclpy.create_node('_ethercat_checker_slave_query', use_global_arguments=False)
         executor = SingleThreadedExecutor()
         executor.add_node(check_node)
 
