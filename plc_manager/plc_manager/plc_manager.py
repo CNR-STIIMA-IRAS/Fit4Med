@@ -506,27 +506,30 @@ class PLCControllerInterface(Node):
         if self.shutdown_requested:
             return False
 
-        launcher_name = "run_platform_control.launch.py"
-        
+        launcher_names = [
+            "run_platform_control.launch.py",
+            "run_z_recovery_control.launch.py",
+        ]
+
         try:
             # ========== Query for ros2 launch processes ==========
             output = subprocess.check_output(
                 ["pgrep", "-af", "ros2 launch"],
                 text=True
             )
-            
-            # ========== Search for run_platform_control launcher ==========
+
+            # ========== Search for any known launcher ==========
             for line in output.splitlines():
-                if launcher_name in line:
-                    # Launcher is running
-                    if not self.ros_launched:
-                        self.get_logger().info(
-                            '✅ Ros control launcher detected!',
-                            throttle_duration_sec=20.0
-                        )
-                        self.ros_launched = True
-                        self.ros_launched_prev = self.ros_launched
-                    return True
+                for launcher_name in launcher_names:
+                    if launcher_name in line:
+                        if not self.ros_launched:
+                            self.get_logger().info(
+                                f'✅ Ros control launcher detected: {launcher_name}',
+                                throttle_duration_sec=20.0
+                            )
+                            self.ros_launched = True
+                            self.ros_launched_prev = self.ros_launched
+                        return True
             
             # ========== Launcher not found (or not in expected state) ==========
             self.get_logger().info(
