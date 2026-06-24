@@ -22,6 +22,7 @@ PLC_controller:
           - force_sensors_pwr
           - brake_disable
           - eeg_sync
+          - z_recovery
     state_interfaces:
       PLC_node:
         - interfaces:

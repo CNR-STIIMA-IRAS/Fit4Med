@@ -328,6 +328,12 @@ class PLCControllerInterface(Node):
             'PLC_node/z_recovery'               # [9] Z-axis limit switch recovery flag
         ]
 
+        # ========== Z-axis Recovery State ==========
+        # True while recovering from a Z-axis limit-switch emergency.
+        # First emergency (1→0): z_recovery set LOW, in_z_recovery=True.
+        # Second emergency during recovery (switch clears): z_recovery set HIGH, in_z_recovery=False.
+        self.in_z_recovery = False
+
         # ========== Launcher Health Monitoring ==========
         self.ros_launched = False
         self.ros_launched_prev = False
@@ -431,13 +437,14 @@ class PLCControllerInterface(Node):
         Called once during system bringup to:
         1. Release E-stop (set to 1 = normal operation)
         2. Enable force/torque sensor power
-        
+        3. Enable Z recovery flag to add vertical switch axis limit to safety chain
         These commands prepare the PLC for motion control.
         
         Returns:
             None. Publishes commands via self.publish_command()
         """
         self.publish_command('PLC_node/estop', 1)
+        self.publish_command('PLC_node/z_recovery', 1)
         self.publish_command('PLC_node/force_sensors_pwr', 1)
 
 
@@ -657,20 +664,21 @@ class PLCControllerInterface(Node):
                     
                     # ========== TRANSITION: 1→0 (E-STOP PRESS: RUNNING → IDLE) ==========
                     elif current_estop == 0 and self.ESTOP == 1:
+                        self.publish_command('PLC_node/brake_disable', 0)  # Ensure brakes enabled
+                        
+                        # ---- Normal emergency (not a Z-limit): standard graceful stop ----
                         self.get_logger().info(
                             bcolors.OKCYAN +
                             "🛑 E-STOP PRESSED: E-stop 1→0 (RUNNING→IDLE)" +
                             bcolors.ENDC
                         )
-                        
-                        try:
-                            self.publish_command('PLC_node/brake_disable', 0)  # Ensure brakes enabled
+                        udp_msg = b"STOP"
 
+                        try:
                             # ========== Graceful GUI shutdown ==========
-                            self.get_logger().info("📡 Sending STOP signal to rehab_gui...")
-                            self.client.send(b"STOP")
-                            
-                            # Wait for GUI to acknowledge (10 second timeout)
+                            self.get_logger().info(f"📡 Sending {udp_msg} to rehab_gui...")
+                            self.client.send(udp_msg)
+
                             timeout = time.time() + 10
                             while True:
                                 data, addr = self.client.receive()
@@ -680,7 +688,7 @@ class PLCControllerInterface(Node):
                                 time.sleep(0.5)
                                 if time.time() > timeout:
                                     self.get_logger().warn(
-                                        "PLC Manager: No acknowledgment from FMRR GUI for STOP command.",
+                                        "PLC Manager: No acknowledgment from FMRR GUI.",
                                         throttle_duration_sec=5.0
                                     )
                                     break
@@ -712,16 +720,69 @@ class PLCControllerInterface(Node):
                             node_list = self.get_node_names()
                             if 'tecnobody_ethercat_checker_node' in node_list:
                                 self.send_running_cnt = self.send_running_cnt + 1
-                                # Send RUNNING status every 10 ticks (50 Hz / 10 = 5 Hz)
+                                # Send status every 10 ticks (50 Hz / 10 = 5 Hz)
                                 if self.send_running_cnt % self.send_running_dec == 0:
                                     self.client.send(b"RUNNING")
                         except Exception as e:
                             self.get_logger().error(
                                 f"Exception when sending message to UDP Server: {e}"
-                            )
-                    
+                            )                   
                     # Update cached E-stop value for next transition detection
                     self.ESTOP = current_estop
+
+                elif self.interface_names[int_idx] == "z_limit_switch":
+                    z_limit_active = (self.state_values[int_idx] == 1)
+                    # Gate Z-axis recovery on the dedicated PLC input 'z_limit_switch'
+                        # (value 1 = limit active). Only a genuine Z-limit event enters the
+                        # recovery procedure; all other emergencies are a normal stop.
+
+                    if z_limit_active and not self.in_z_recovery:
+                        # ---- Z-axis limit hit: enter Z-axis recovery mode ----
+                        self.get_logger().info(
+                            bcolors.OKCYAN +
+                            "🛑 Z-LIMIT 1→0: entering Z-axis recovery mode" +
+                            bcolors.ENDC
+                        )
+                        self.in_z_recovery = True
+                        # Prevent re-trigger when user turns reset key:
+                        # switch still LOW → XOR(LOW, LOW)=LOW → NOT=HIGH → no loop
+                        self.publish_command('PLC_node/z_recovery', 0)
+                        udp_msg = b"Z_LIMIT_HIT"
+                    elif z_limit_active and self.in_z_recovery:
+                        self.client.send(b"Z_RECOVERY_RUNNING")
+                    elif not z_limit_active and self.in_z_recovery:
+                        # ---- Recovery in progress: Z-axis back in limits, recovery complete ----
+                        self.get_logger().info(
+                            bcolors.OKGREEN +
+                            "✅ EMERGENCY (recovery): Z-axis limit cleared, z_recovery set HIGH" +
+                            bcolors.ENDC
+                        )
+                        self.in_z_recovery = False
+                        # Restore normal limit-switch logic: switch HIGH, z_recovery HIGH → OK
+                        self.publish_command('PLC_node/z_recovery', 1)
+                        udp_msg = b"Z_RECOVERY_DONE"
+
+                    try:
+                        # ========== Graceful GUI shutdown ==========
+                        self.get_logger().info(f"📡 Sending {udp_msg} to rehab_gui...")
+                        self.client.send(udp_msg)
+
+                        timeout = time.time() + 10
+                        while True:
+                            data, addr = self.client.receive()
+                            if data == b"STOPPED":
+                                self.get_logger().info("✅ GUI shutdown acknowledged")
+                                break
+                            time.sleep(0.5)
+                            if time.time() > timeout:
+                                self.get_logger().warn(
+                                    "PLC Manager: No acknowledgment from FMRR GUI.",
+                                    throttle_duration_sec=5.0
+                                )
+                                break
+                    except Exception as e:
+                        self.get_logger().warn(f"Error communicating with GUI: {e}")
+
                     
         finally:
             self.lock.release()
