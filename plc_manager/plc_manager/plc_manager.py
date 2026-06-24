@@ -787,10 +787,12 @@ class PLCControllerInterface(Node):
                                 self.in_z_recovery = True
                                 self.publish_command('PLC_node/z_recovery', 0)
                                 self._notify_gui(b"Z_LIMIT_HIT")
+                                # AUTO_RECOVER=1 enables auto_z_recovery_node (headless startup case)
                                 subprocess.Popen(
                                     [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env_z_recovery.sh"],
                                     shell=True,
-                                    executable="/bin/bash"
+                                    executable="/bin/bash",
+                                    env={**os.environ, 'AUTO_RECOVER': '1'}
                                 )
                     elif current_estop == 1 and self.ESTOP == 1:
                         # ========== Check z_limit clearing during recovery (jogging phase) ==========

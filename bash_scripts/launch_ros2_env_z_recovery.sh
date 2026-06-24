@@ -31,4 +31,5 @@ else
 fi
 
 echo "*** Launching Z-axis recovery environment (minimal stack, forward_velocity_controller only) ***"
-ros2 launch tecnobody_workbench run_z_recovery_control.launch.py
+ros2 launch tecnobody_workbench run_z_recovery_control.launch.py \
+    auto_recover:=${AUTO_RECOVER:-false}

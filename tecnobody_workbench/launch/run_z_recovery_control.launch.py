@@ -9,11 +9,12 @@
 #               bag_recorder_node, homing nodes.
 
 from launch import LaunchDescription
-from launch.substitutions import Command, FindExecutable, PathJoinSubstitution
+from launch.substitutions import Command, FindExecutable, PathJoinSubstitution, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch.event_handlers import OnProcessExit, OnShutdown
-from launch.actions import RegisterEventHandler, LogInfo, IncludeLaunchDescription
+from launch.actions import RegisterEventHandler, LogInfo, IncludeLaunchDescription, DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.launch_description_sources import AnyLaunchDescriptionSource
 
 import os
@@ -21,6 +22,11 @@ os.sched_setaffinity(0, {3})
 
 
 def generate_launch_description():
+    declare_auto_recover = DeclareLaunchArgument(
+        'auto_recover', default_value='false',
+        description='If true, run auto_z_recovery_node (headless startup); false when GUI handles recovery')
+    auto_recover = LaunchConfiguration('auto_recover')
+
     ros2_controllers = 'safemod_controllers.yaml'
     description_package = 'tecnobody_workbench'
 
@@ -116,12 +122,13 @@ def generate_launch_description():
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'filter_commands_node_%p_%t.log'}
     )
 
-    # Automatically jogs Z+ by 5 cm once filter_commands_node is ready
+    # Automatically jogs Z+ by 5 cm — only in headless startup mode (AUTO_RECOVER=1 env var)
     auto_z_recovery_node = Node(
         package='tecnobody_workbench_utils',
         executable='auto_z_recovery_node',
         output='screen',
-        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'auto_z_recovery_%p_%t.log'}
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'auto_z_recovery_%p_%t.log'},
+        condition=IfCondition(auto_recover),
     )
 
     # After state_controller is spawned: bring up joint/ft broadcasters, vel controller, checker
@@ -171,6 +178,7 @@ def generate_launch_description():
     )
 
     ld = LaunchDescription()
+    ld.add_action(declare_auto_recover)
     ld.add_action(ros2_control_node)
     ld.add_action(ssb)
     ld.add_action(rsp)
