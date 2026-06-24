@@ -30,7 +30,7 @@ PLC_controller:
           - estop
           - reset
           - manual_switch_pressed
-          - s_input.5
+          - z_limit_switch
           - s_input.6
           - s_input.7
           - s_input.8
