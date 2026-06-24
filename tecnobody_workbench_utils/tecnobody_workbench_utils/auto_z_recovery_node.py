@@ -9,8 +9,8 @@ Replicates what plc_manager + rehab_gui do together during z_recovery:
    z_limit interlock, allowing the estop key to be turned even with the
    limit switch active.  (plc_manager did this to the OLD ros2_control_node;
    we must repeat it to the NEW one that just started in the recovery env.)
-2. Waits until drives exit STATE_SWITCH_ON_DISABLED  ← key has been turned,
-   drives now have power.
+2. Waits until ALL drives reach STATE_SWITCH_ON_DISABLED ← key has been turned,
+   emergency cleared.
 3. Self-healing check loop (never aborts):
      fault_present  →  reset_fault
      mode != CSV    →  switch_mode_of_operation
@@ -57,7 +57,7 @@ class _S(enum.Enum):
     WAITING          = 0
     SETTLING         = 1
     INIT_RECOVERY    = 2   # publish z_recovery=0, then wait for power
-    WAIT_FOR_POWER   = 3   # poll until drives leave STATE_SWITCH_ON_DISABLED
+    WAIT_FOR_POWER   = 3   # poll until drives reach STATE_SWITCH_ON_DISABLED (key turned)
     CHECKING         = 4   # read hardware → route to correct fix
     RESETTING_FAULTS = 5
     SETTING_MODE     = 6
@@ -192,8 +192,9 @@ class AutoZRecoveryNode(Node):
             self._active_future = self._get_states_cli.call_async(GetDriveStates.Request())
             self._state = _S.WAIT_FOR_POWER
 
-        # ── 4. Spin until drives leave STATE_SWITCH_ON_DISABLED ──────────
-        #       (that transition means the key was turned, drives have power)
+        # ── 4. Wait until drives reach STATE_SWITCH_ON_DISABLED (key turned) ────────
+        #       When z_limit fires, drives enter STATE_FAULT.
+        #       Turning the key clears the emergency → drives transition to STATE_SWITCH_ON_DISABLED.
         elif s == _S.WAIT_FOR_POWER:
             if not self._active_future.done():
                 return
@@ -202,17 +203,16 @@ class AutoZRecoveryNode(Node):
             self._active_future = None
 
             if all(d == DISABLED_STR for d in dstates):
+                self.get_logger().info(
+                    f'Key turned — all drives in SWITCH_ON_DISABLED. Proceeding to check loop.')
+                self._go_check()
+            else:
                 self._throttled_log(
                     'power',
-                    f'Emergency still active (states={dstates}). '
-                    'Turn the recovery key to proceed...')
+                    f'Emergency active (states={dstates}). Turn the recovery key to proceed...')
                 # Re-publish z_recovery=0 each poll cycle so it is never lost
                 self._publish_plc('PLC_node/z_recovery', 0)
                 self._active_future = self._get_states_cli.call_async(GetDriveStates.Request())
-            else:
-                self.get_logger().info(
-                    f'Emergency cleared — drives have power (states={dstates}).')
-                self._go_check()
 
         # ── 5. Central check: read hardware, route to correct fix ────────
         elif s == _S.CHECKING:

@@ -529,6 +529,8 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
                 MovTime =  self.TrjYamlData.get("a_movement_definition").get("total_time")[0]
                 Vmax =  self.TrjYamlData.get("a_movement_definition").get("max_velocity")[0]
 
+                self.ui.doubleSpinBox_MoveTime.setValue(MovTime)
+
                 self.main_app.Vmax = Vmax
                 self.main_app.PhaseDuration = 2* MovTime
 

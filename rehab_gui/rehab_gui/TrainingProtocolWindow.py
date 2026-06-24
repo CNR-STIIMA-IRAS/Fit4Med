@@ -252,12 +252,14 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
                 self.ui.radioButton_TypeOfExercise_Reaching.setChecked(True)
                 self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(False)
                 self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(False)
+                self.ROS.setModeOfOperation(2) # 2: switch sensor
             elif movement_type == 2:
                 self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(True)
                 self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(True)
                 self.ui.radioButton_TypeOfExercise_HandtoMouth.setChecked(True)
                 self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(False)
                 self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(False)
+                self.ROS.setModeOfOperation(1) # 1: proximity sensor
             else:
                 self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(True)
                 self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(True)
