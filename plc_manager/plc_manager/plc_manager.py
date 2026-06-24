@@ -664,16 +664,85 @@ class PLCControllerInterface(Node):
                                 executable="/bin/bash"
                             )
                     
-                    # ========== TRANSITION: 1→0 (E-STOP PRESS: RUNNING → IDLE) ==========
+                    # ========== TRANSITION: 1→0 (E-STOP / LIMIT SWITCH: RUNNING → IDLE) ==========
                     elif current_estop == 0 and self.ESTOP == 1:
                         self.publish_command('PLC_node/brake_disable', 0)  # Ensure brakes enabled
-                        self.get_logger().info(
-                            bcolors.OKCYAN +
-                            "🛑 E-STOP PRESSED: E-stop 1→0 (RUNNING→IDLE)" +
-                            bcolors.ENDC
-                        )
-                        events.add("estop_stop")
-                        kill_launcher = True
+
+                        # Gate Z-axis recovery on the dedicated PLC input 'z_limit_switch'
+                        # (value 1 = limit active). Only a genuine Z-limit event enters the
+                        # recovery procedure; all other emergencies are a normal stop.
+                        z_limit_active = False
+                        for _i in range(len(self.interface_names)):
+                            if self.interface_names[_i] == "z_limit_switch":
+                                z_limit_active = (self.state_values[_i] == 1)
+                                break
+
+                        if z_limit_active and not self.in_z_recovery:
+                            # ---- Z-axis limit hit: enter Z-axis recovery mode ----
+                            self.get_logger().info(
+                                bcolors.OKCYAN +
+                                "🛑 Z-LIMIT 1→0: entering Z-axis recovery mode" +
+                                bcolors.ENDC
+                            )
+                            self.in_z_recovery = True
+                            # Prevent re-trigger when user turns reset key:
+                            # switch still LOW → XOR(LOW, LOW)=LOW → NOT=HIGH → no loop
+                            self.publish_command('PLC_node/z_recovery', 0)
+                            udp_msg = b"Z_LIMIT_HIT"
+                        elif self.in_z_recovery:
+                            # ---- Recovery in progress: Z-axis back in limits, recovery complete ----
+                            self.get_logger().info(
+                                bcolors.OKGREEN +
+                                "✅ EMERGENCY (recovery): Z-axis limit cleared, z_recovery set HIGH" +
+                                bcolors.ENDC
+                            )
+                            self.in_z_recovery = False
+                            # Restore normal limit-switch logic: switch HIGH, z_recovery HIGH → OK
+                            self.publish_command('PLC_node/z_recovery', 1)
+                            udp_msg = b"Z_RECOVERY_DONE"
+                        else:
+                            # ---- Normal emergency (not a Z-limit): standard graceful stop ----
+                            self.get_logger().info(
+                                bcolors.OKCYAN +
+                                "🛑 E-STOP PRESSED: E-stop 1→0 (RUNNING→IDLE)" +
+                                bcolors.ENDC
+                            )
+                            udp_msg = b"STOP"
+
+                        try:
+                            # ========== Graceful GUI shutdown ==========
+                            self.get_logger().info(f"📡 Sending {udp_msg} to rehab_gui...")
+                            self.client.send(udp_msg)
+
+                            timeout = time.time() + 10
+                            while True:
+                                data, addr = self.client.receive()
+                                if data == b"STOPPED":
+                                    self.get_logger().info("✅ GUI shutdown acknowledged")
+                                    break
+                                time.sleep(0.5)
+                                if time.time() > timeout:
+                                    self.get_logger().warn(
+                                        "PLC Manager: No acknowledgment from FMRR GUI.",
+                                        throttle_duration_sec=5.0
+                                    )
+                                    break
+                        except Exception as e:
+                            self.get_logger().warn(f"Error communicating with GUI: {e}")
+
+                        try:
+                            # ========== Kill launcher process ==========
+                            self.get_logger().info("🔪 Killing run_platform_control.launch.py...")
+                            platform_launcher_pid = subprocess.check_output(
+                                ["pgrep", "-f", "ros2 launch tecnobody_workbench run_platform_control.launch.py"]
+                            )
+                            os.kill(int(platform_launcher_pid.strip()), signal.SIGINT)
+                            time.sleep(2)
+                            self.get_logger().info("✅ Launcher process terminated")
+                        except ValueError as e:
+                            self.get_logger().info(f"Exception caught: {e}")
+                        except subprocess.CalledProcessError:
+                            self.get_logger().info("No platform_control.launch.py process found.")
                     
                     # ========== STABLE STATES: No action ==========
                     elif current_estop == 0 and self.ESTOP == 0:
@@ -688,75 +757,19 @@ class PLCControllerInterface(Node):
                                 self.send_running_cnt = self.send_running_cnt + 1
                                 # Send status every 10 ticks (50 Hz / 10 = 5 Hz)
                                 if self.send_running_cnt % self.send_running_dec == 0:
-                                    self.client.send(b"RUNNING")
+                                    if self.in_z_recovery:
+                                        # Tell GUI to start ROS AND show recovery popup
+                                        self.client.send(b"Z_RECOVERY_RUNNING")
+                                    else:
+                                        self.client.send(b"RUNNING")
                         except Exception as e:
                             self.get_logger().error(
                                 f"Exception when sending message to UDP Server: {e}"
-                            )                   
+                            )
+                    
                     # Update cached E-stop value for next transition detection
                     self.ESTOP = current_estop
-
-                elif self.interface_names[int_idx] == "z_limit_switch":
-                    z_limit_active = (self.state_values[int_idx] == 1)
-                    # Gate Z-axis recovery on the dedicated PLC input 'z_limit_switch'
-                        # (value 1 = limit active). Only a genuine Z-limit event enters the
-                        # recovery procedure; all other emergencies are a normal stop.
-
-                    if z_limit_active and not self.in_z_recovery:
-                        # ---- Z-axis limit hit: enter Z-axis recovery mode ----
-                        self.get_logger().info(
-                            bcolors.OKCYAN +
-                            "🛑 Z-LIMIT 1→0: entering Z-axis recovery mode" +
-                            bcolors.ENDC
-                        )
-                        self.in_z_recovery = True
-                        # Prevent re-trigger when user turns reset key:
-                        # switch still LOW → XOR(LOW, LOW)=LOW → NOT=HIGH → no loop
-                        self.publish_command('PLC_node/z_recovery', 0)
-                        events.add("z_limit_hit")
-                    elif z_limit_active and self.in_z_recovery:
-                        self.client.send(b"Z_RECOVERY_RUNNING")  # fire-and-forget, no ack needed
-                    elif not z_limit_active and self.in_z_recovery:
-                        # ---- Recovery in progress: Z-axis back in limits, recovery complete ----
-                        self.get_logger().info(
-                            bcolors.OKGREEN +
-                            "✅ EMERGENCY (recovery): Z-axis limit cleared, z_recovery set HIGH" +
-                            bcolors.ENDC
-                        )
-                        self.in_z_recovery = False
-                        # Restore normal limit-switch logic: switch HIGH, z_recovery HIGH → OK
-                        self.publish_command('PLC_node/z_recovery', 1)
-                        events.add("z_recovery_done")
-
-
-            # ---- Resolve combined events → single UDP message (priority-ordered) ----
-            _EVENT_TO_MSG = [
-                ({"estop_stop", "z_limit_hit"}, b"STOP"),
-                ({"estop_stop"},                b"STOP"),
-                ({"z_limit_hit"},               b"Z_LIMIT_HIT"),
-                ({"z_recovery_done"},           b"Z_RECOVERY_DONE"),
-            ]
-            udp_msg = next(
-                (msg for trigger, msg in _EVENT_TO_MSG if trigger <= events),
-                None
-            )
-            if udp_msg is not None:
-                self._notify_gui(udp_msg)
-
-            if kill_launcher:
-                try:
-                    self.get_logger().info("🔪 Killing run_platform_control.launch.py...")
-                    platform_launcher_pid = subprocess.check_output(
-                        ["pgrep", "-f", "ros2 launch tecnobody_workbench run_platform_control.launch.py"]
-                    )
-                    os.kill(int(platform_launcher_pid.strip()), signal.SIGINT)
-                    time.sleep(2)
-                    self.get_logger().info("✅ Launcher process terminated")
-                except ValueError as e:
-                    self.get_logger().info(f"Exception caught: {e}")
-                except subprocess.CalledProcessError:
-                    self.get_logger().info("No platform_control.launch.py process found.")
-
+                    
         finally:
             self.lock.release()
 
