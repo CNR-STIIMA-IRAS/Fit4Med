@@ -33,16 +33,16 @@ from typing import List
 import rclpy
 import time
 from rclpy.node import Node
-from rclpy.executors import MultiThreadedExecutor
+from rclpy.executors import MultiThreadedExecutor, SingleThreadedExecutor
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from std_srvs.srv import Trigger
 from ethercat_controller_msgs.msg import Cia402DriveStates
 from ethercat_controller_msgs.srv import GetModesOfOperation, GetDriveStates
 from tecnobody_msgs.srv import GetSlaveStates
+from ethercat_msgs.srv import GetSlaveStates as EthercatGetSlaveStates
 from std_msgs.msg import Bool
 from std_srvs.srv import SetBool, Trigger
 from tecnobody_msgs.msg import PlcController
-from .boot_hw import get_ethercat_slaves_status
 
 # Global flag for coordinating node shutdown across threads
 _shutdown_request = False
@@ -283,18 +283,58 @@ class EthercatCheckerNode(Node):
     def get_slave_states_callback(self, request: GetSlaveStates.Request, response: GetSlaveStates.Response):
         """
         Service callback to query current ethercat slave states.
-        
+
+        Discovers all active EthercatGetSlaveStates services (one per EtherCAT master/driver)
+        and aggregates their responses. Uses a temporary node + SingleThreadedExecutor so the
+        synchronous wait does not conflict with this node's MultiThreadedExecutor.
+
         Args:
-            request (GetDriveStates.Request): Empty request
-            response (GetDriveStates.Response): Response populated with current state and slave names
-            
+            request (GetSlaveStates.Request): Empty request
+            response (GetSlaveStates.Response): Response populated with slave names and states
+
         Returns:
-            GetDriveStates.Response: Response containing current drive states
+            GetSlaveStates.Response: Aggregated slave names and states from all masters
         """
-        ethercat_states : List[dict] = get_ethercat_slaves_status(self._logger)
-        response = GetSlaveStates.Response()
-        response.slave_names =  [info['name'] for info in ethercat_states] #type: ignore
-        response.slave_states = [info['state'] for info in ethercat_states] #type: ignore
+        check_node = rclpy.create_node('_ethercat_checker_slave_query')
+        executor = SingleThreadedExecutor()
+        executor.add_node(check_node)
+
+        slave_names: List[str] = []
+        slave_states: List[str] = []
+
+        try:
+            all_services = check_node.get_service_names_and_types()
+            slave_state_services = [
+                name for name, types in all_services
+                if any('GetSlaveStates' in t for t in types)
+                and name != '/ethercat_checker/get_slave_states'
+            ]
+
+            if not slave_state_services:
+                self.get_logger().warn('No EtherCAT GetSlaveStates services found on the ROS graph')
+
+            for svc_name in slave_state_services:
+                client = check_node.create_client(EthercatGetSlaveStates, svc_name)
+                if not client.wait_for_service(timeout_sec=2.0):
+                    self.get_logger().warn(f'Service {svc_name} not available')
+                    continue
+
+                future = client.call_async(EthercatGetSlaveStates.Request())
+                executor.spin_until_future_complete(future, timeout_sec=5.0)
+
+                if not future.done():
+                    self.get_logger().warn(f'Service call to {svc_name} timed out')
+                    continue
+
+                resp = future.result()
+                slave_names.extend(resp.slave_names)
+                slave_states.extend(resp.slave_states)
+        finally:
+            executor.remove_node(check_node)
+            check_node.destroy_node()
+
+        response.slave_names = slave_names  # type: ignore
+        response.slave_states = slave_states  # type: ignore
         return response
 
 
