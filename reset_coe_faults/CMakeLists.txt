@@ -62,6 +62,10 @@ target_link_libraries(reset_coe_faults
     rt
 )
 
+install(TARGETS reset_coe_faults
+    RUNTIME DESTINATION bin
+)
+
 # uncomment the following section in order to fill in
 # further dependencies manually.
 # find_package(<dependency> REQUIRED)
