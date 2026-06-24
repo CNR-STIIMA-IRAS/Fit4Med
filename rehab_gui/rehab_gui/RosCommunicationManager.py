@@ -84,22 +84,24 @@ class RosCommunicationManager(QObject):
 
     def stopRosCommunication(self) -> None:
         print("Stopping ROS processes...")
-        
+
         self.ROS_active = False
 
-        # Destroy ROS clients
         if hasattr(self, 'ROS') and self.rOk():
             if not self.ROS.destroy():
                 print('Error trying to destroy ROS class.')
                 return
             self.ros_client.close()
-            
             del self.ROS
             gc.collect()
-
-        #self.ros_waiting_dialog.show()
-        print("[MainProgram] ROS processes stopped.")
-        self.worker_thread.stop_thread()
+            print("[MainProgram] ROS processes stopped.")
+            self.worker_thread.stop_thread()
+            # stop_ros_communication_signal emitted by onUpdateWorkerThreadFinished when thread exits
+        else:
+            # ROS was never started — emit immediately so plc_manager receives its STOPPED ack
+            # and UdpCommunicationManager resets its flags for the next Z_RECOVERY_RUNNING message
+            print("[MainProgram] ROS was not running — signaling stop immediately.")
+            self.stop_ros_communication_signal.emit()
         
             
     def isRosCommunicationActive(self) -> bool:

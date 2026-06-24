@@ -278,10 +278,7 @@ class MainProgram(QMainWindow):
             self._z_recovery_dlg.on_recovery_done()
 
     def _manual_z_recovery(self):
-        if self._z_recovery_dlg is None or not self._z_recovery_dlg.isVisible():
-            self._z_recovery_dlg = ZRecoveryDialog(self.ros_manager, self)
-            self._z_recovery_dlg.show()
-        self._z_recovery_dlg.enter_jog_phase()
+        self._on_z_recovery_start()
 
     def connect(self):
         self.update_window_timer = QTimer()
