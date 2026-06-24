@@ -629,25 +629,36 @@ class PLCControllerInterface(Node):
                     # ========== TRANSITION: 0→1 ==========
                     if current_estop == 1 and self.ESTOP == 0:
                         if self.in_z_recovery:
-                            # ---- z_limit just cleared during startup recovery: recovery done ----
-                            self.get_logger().info(
-                                bcolors.OKGREEN +
-                                "✅ Z-LIMIT CLEARED (startup recovery): sending Z_RECOVERY_DONE" +
-                                bcolors.ENDC
+                            z_limit_still_active = any(
+                                self.state_values[_i] == 1
+                                for _i, _name in enumerate(self.interface_names)
+                                if _name == "z_limit_switch"
                             )
-                            self.in_z_recovery = False
-                            self.publish_command('PLC_node/z_recovery', 1)
-                            self._notify_gui(b"Z_RECOVERY_DONE")
-                            # kill the minimal Z recovery environment
-                            try:
-                                pid = subprocess.check_output(
-                                    ["pgrep", "-f", "run_z_recovery_control.launch.py"]
+                            if z_limit_still_active:
+                                # Key turned but z_limit still active → enable jogging (NOT done yet)
+                                self.get_logger().info(
+                                    bcolors.OKCYAN +
+                                    "🔑 KEY TURN (z_limit still active): Z_RECOVERY_RUNNING — enter jog mode" +
+                                    bcolors.ENDC
                                 )
-                                os.kill(int(pid.strip()), signal.SIGINT)
-                                time.sleep(2)
-                                self.get_logger().info("✅ Z-recovery launcher terminated")
-                            except (ValueError, subprocess.CalledProcessError):
-                                self.get_logger().info("No run_z_recovery_control.launch.py process found.")
+                                self.client.send(b"Z_RECOVERY_RUNNING")  # direct; no STOPPED ack expected
+                            else:
+                                # Key turned AND z_limit already cleared → recovery done (edge case)
+                                self.get_logger().info(
+                                    bcolors.OKGREEN +
+                                    "✅ KEY TURN + z_limit cleared → Z_RECOVERY_DONE" +
+                                    bcolors.ENDC
+                                )
+                                self.in_z_recovery = False
+                                self.publish_command('PLC_node/z_recovery', 1)
+                                self._notify_gui(b"Z_RECOVERY_DONE")
+                                self._kill_recovery_env()
+                                subprocess.Popen(
+                                    [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"],
+                                    shell=True,
+                                    executable="/bin/bash"
+                                )
+                                self.FIRST_TIME = True
                         else:
                             # ---- Normal key turn: IDLE → RUNNING ----
                             self.get_logger().info(
@@ -747,6 +758,17 @@ class PLCControllerInterface(Node):
                             self.get_logger().info(f"Exception caught: {e}")
                         except subprocess.CalledProcessError:
                             self.get_logger().info("No platform_control.launch.py process found.")
+
+                        if udp_msg == b"Z_LIMIT_HIT":
+                            # Launch recovery env so forward_velocity_controller is ready when
+                            # the user turns the key. The script's EtherCAT preamble handles
+                            # any lingering lock from the now-dying platform launcher.
+                            self.get_logger().info("🚀 Launching Z-recovery env for jogging...")
+                            subprocess.Popen(
+                                [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env_z_recovery.sh"],
+                                shell=True,
+                                executable="/bin/bash"
+                            )
                     
                     # ========== STABLE EMERGENCY: check if z_limit caused it ==========
                     elif current_estop == 0 and self.ESTOP == 0:
@@ -770,20 +792,32 @@ class PLCControllerInterface(Node):
                                     shell=True,
                                     executable="/bin/bash"
                                 )
-                        else:
-                            # ---- Minimal Z-recovery env running: send periodic heartbeat to GUI ----
-                            try:
-                                node_list = self.get_node_names()
-                                if 'tecnobody_ethercat_checker_node' in node_list:
-                                    self.send_running_cnt = self.send_running_cnt + 1
-                                    if self.send_running_cnt % self.send_running_dec == 0:
-                                        self.client.send(b"Z_RECOVERY_RUNNING")
-                            except Exception as e:
-                                self.get_logger().error(
-                                    f"Exception when sending Z_RECOVERY_RUNNING (startup recovery): {e}"
-                                )
-                    
                     elif current_estop == 1 and self.ESTOP == 1:
+                        # ========== Check z_limit clearing during recovery (jogging phase) ==========
+                        if self.in_z_recovery:
+                            z_limit_still_active = any(
+                                self.state_values[_i] == 1
+                                for _i, _name in enumerate(self.interface_names)
+                                if _name == "z_limit_switch"
+                            )
+                            if not z_limit_still_active:
+                                # z_limit cleared during jogging → recovery complete
+                                self.get_logger().info(
+                                    bcolors.OKGREEN +
+                                    "✅ z_limit cleared during jogging → Z_RECOVERY_DONE" +
+                                    bcolors.ENDC
+                                )
+                                self.in_z_recovery = False
+                                self.publish_command('PLC_node/z_recovery', 1)
+                                self._notify_gui(b"Z_RECOVERY_DONE")
+                                self._kill_recovery_env()
+                                subprocess.Popen(
+                                    [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"],
+                                    shell=True,
+                                    executable="/bin/bash"
+                                )
+                                self.FIRST_TIME = True
+
                         # ========== RUNNING state: Send periodic status ==========
                         try:
                             node_list = self.get_node_names()
@@ -792,7 +826,6 @@ class PLCControllerInterface(Node):
                                 # Send status every 10 ticks (50 Hz / 10 = 5 Hz)
                                 if self.send_running_cnt % self.send_running_dec == 0:
                                     if self.in_z_recovery:
-                                        # Tell GUI to start ROS AND show recovery popup
                                         self.client.send(b"Z_RECOVERY_RUNNING")
                                     else:
                                         self.client.send(b"RUNNING")
@@ -807,6 +840,15 @@ class PLCControllerInterface(Node):
         finally:
             self.lock.release()
 
+
+    def _kill_recovery_env(self) -> None:
+        try:
+            pid = subprocess.check_output(["pgrep", "-f", "run_z_recovery_control.launch.py"])
+            os.kill(int(pid.strip()), signal.SIGINT)
+            time.sleep(2)
+            self.get_logger().info("✅ Z-recovery launcher terminated")
+        except (ValueError, subprocess.CalledProcessError):
+            self.get_logger().info("No run_z_recovery_control.launch.py process found.")
 
     def _notify_gui(self, udp_msg: bytes) -> None:
         try:

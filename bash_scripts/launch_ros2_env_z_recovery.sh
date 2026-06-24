@@ -30,20 +30,5 @@ else
     echo "WARNING: ec_wait_ready.sh not found/executable at $WAIT_READY_SCRIPT, skipping gate." >&2
 fi
 
-echo "*** Resetting EtherCAT CoE drive faults (master 1) before launching ROS2 ***"
-if [ ! -x "$RESET_BINARY" ]; then
-    echo "WARNING: reset_coe_faults binary not found at $RESET_BINARY, skipping." >&2
-else
-    timeout "$RESET_TIMEOUT" "$RESET_BINARY"
-    reset_exit=$?
-    if [ $reset_exit -eq 0 ]; then
-        echo "*** CoE fault reset completed: all drives healthy ***"
-    elif [ $reset_exit -eq 124 ]; then
-        echo "WARNING: reset_coe_faults timed out after ${RESET_TIMEOUT}s, proceeding anyway." >&2
-    else
-        echo "WARNING: reset_coe_faults exited with code $reset_exit, proceeding anyway." >&2
-    fi
-fi
-
 echo "*** Launching Z-axis recovery environment (minimal stack, forward_velocity_controller only) ***"
 ros2 launch tecnobody_workbench run_z_recovery_control.launch.py

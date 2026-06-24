@@ -80,10 +80,10 @@ class ZRecoveryDialog(QDialog):
         self._jogging_ready = False
 
         self.setWindowTitle("Z-Axis Limit Recovery")
-        self.setModal(True)
         self.setWindowFlags(
             Qt.Dialog | Qt.WindowStaysOnTopHint | Qt.CustomizeWindowHint | Qt.WindowTitleHint
         )
+        self.setWindowModality(Qt.ApplicationModal)
 
         layout = QVBoxLayout()
         layout.setSpacing(16)
@@ -92,7 +92,7 @@ class ZRecoveryDialog(QDialog):
         self._status_label = QLabel(
             "⚠  Z-axis limit switch reached.\n\n"
             "The system has been stopped.\n"
-            "Begin the recovery procedure."
+            "Turn the reset key to begin recovery."
         )
         self._status_label.setAlignment(Qt.AlignCenter)
         self._status_label.setWordWrap(True)
@@ -133,7 +133,7 @@ class ZRecoveryDialog(QDialog):
             return
         self._in_jog_phase = True
         self._status_label.setText(
-            "Key turned — waiting for robot connection..."
+            "Press the button to initiate Z+ recovery..."
         )
         self._status_label.setStyleSheet(
             "font-size: 13px; color: rgb(200,100,0); font-weight: bold; padding: 8px;"
@@ -277,9 +277,6 @@ class MainProgram(QMainWindow):
         if self._z_recovery_dlg is not None:
             self._z_recovery_dlg.on_recovery_done()
 
-    def _manual_z_recovery(self):
-        self._on_z_recovery_start()
-
     def connect(self):
         self.update_window_timer = QTimer()
         self.motorWindow.connect(self.ros_manager, self.update_window_timer)
@@ -298,13 +295,6 @@ class MainProgram(QMainWindow):
         self.udp.z_recovery_start_signal.connect(self._on_z_recovery_start)
         self.udp.z_recovery_mode_signal.connect(self._on_z_recovery_mode)
         self.udp.z_recovery_done_signal.connect(self._on_z_recovery_done)
-
-        self._z_recovery_btn = QPushButton("Manual Z-Axis Recovery")
-        self._z_recovery_btn.setStyleSheet(
-            "background-color: rgb(255,140,0); color: white; font-size: 12px; padding: 6px;"
-        )
-        self._z_recovery_btn.clicked.connect(self._manual_z_recovery)
-        self.ui.verticalLayout_MotorsManagement.addWidget(self._z_recovery_btn)
 
         self.update_window_timer.timeout.connect(self.updateWindow)
         self.update_window_timer.start(self._update_window_period)
