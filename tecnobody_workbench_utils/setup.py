@@ -36,6 +36,7 @@ setup(
             'filter_commands_node = tecnobody_workbench_utils.filter_commands:main',
             'sonar_teach_node = tecnobody_workbench_utils.sonar_teach:main',
             'bag_recorder_node = tecnobody_workbench_utils.bag_recorder_node:main',
+            'auto_z_recovery_node = tecnobody_workbench_utils.auto_z_recovery_node:main',
         ],
     },
 )

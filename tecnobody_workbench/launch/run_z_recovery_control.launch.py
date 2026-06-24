@@ -116,6 +116,14 @@ def generate_launch_description():
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'filter_commands_node_%p_%t.log'}
     )
 
+    # Automatically jogs Z+ by 5 cm once filter_commands_node is ready
+    auto_z_recovery_node = Node(
+        package='tecnobody_workbench_utils',
+        executable='auto_z_recovery_node',
+        output='screen',
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'auto_z_recovery_%p_%t.log'}
+    )
+
     # After state_controller is spawned: bring up joint/ft broadcasters, vel controller, checker
     after_ssb = RegisterEventHandler(
         event_handler=OnProcessExit(
@@ -124,11 +132,11 @@ def generate_launch_description():
         )
     )
 
-    # After forward_velocity_controller is spawned: start filter_commands_node
+    # After forward_velocity_controller is spawned: start filter_commands_node + auto recovery
     after_forward_vel = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=forward_vel_controller_node,
-            on_exit=[filter_commands_node],
+            on_exit=[filter_commands_node, auto_z_recovery_node],
         )
     )
 
