@@ -204,10 +204,11 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
             self._last_load_enabled = load_enabled
             self.ui.pushButton_LoadCreateProtocol.setEnabled(load_enabled)
 
-        start_state = (bool(self.ui_main.movement_loaded), self.ProtocolData is not None)
+        mode_set = self.ROS.isModeSet()
+        start_state = (bool(self.ui_main.movement_loaded), self.ProtocolData is not None, mode_set)
         if start_state != self._last_start_state:
             self._last_start_state = start_state
-            if start_state[0] and start_state[1]:
+            if start_state[0] and start_state[1] and start_state[2]:
                 self.ui.pushButton_STARTtrainig.setEnabled(True)
                 self.ui.pushButton_STARTtrainig.setStyleSheet("background-color: rgb(85, 255, 127); color: black;")
             else:

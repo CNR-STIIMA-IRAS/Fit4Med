@@ -249,6 +249,15 @@ class RosCommunicationManager(QObject):
     
     def isPTPEnabled(self) -> bool:
         return self.ROS.enable_ptp if self.rOk() else False
+
+    def isModeSet(self) -> bool:
+        """True when all drives are not in MODE_NO_MODE (system initialized beyond startup)."""
+        if not self.rOk():
+            return False
+        modes = self.ROS.coe_drive_states.modes_of_operation
+        if not modes:
+            return False
+        return all(m not in ('MODE_NO_MODE', 'n/a', None, '') for m in modes)
     
     def triggerSoftMovementStart(self, amplitude: float, time_constant: float, target: str) -> None:
         return self.ROS.trigger_soft_movement_start(amplitude=amplitude, time_constant=time_constant, target=target) if self.rOk() else None      
