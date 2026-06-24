@@ -261,6 +261,27 @@ class MainProgram(QMainWindow):
         os.makedirs(self.FMRR_Paths['Data'], exist_ok=True)
 
         self.movement_loaded : bool = False
+        self._z_recovery_dlg = None
+
+    def _on_z_recovery_start(self):
+        if self._z_recovery_dlg is not None and self._z_recovery_dlg.isVisible():
+            return
+        self._z_recovery_dlg = ZRecoveryDialog(self.ros_manager, self)
+        self._z_recovery_dlg.show()
+
+    def _on_z_recovery_mode(self):
+        if self._z_recovery_dlg is not None:
+            self._z_recovery_dlg.enter_jog_phase()
+
+    def _on_z_recovery_done(self):
+        if self._z_recovery_dlg is not None:
+            self._z_recovery_dlg.on_recovery_done()
+
+    def _manual_z_recovery(self):
+        if self._z_recovery_dlg is None or not self._z_recovery_dlg.isVisible():
+            self._z_recovery_dlg = ZRecoveryDialog(self.ros_manager, self)
+            self._z_recovery_dlg.show()
+        self._z_recovery_dlg.enter_jog_phase()
 
     def connect(self):
         self.update_window_timer = QTimer()
@@ -276,6 +297,17 @@ class MainProgram(QMainWindow):
         self.udp.start_ros_communication.connect(self.ros_manager.startRosCommunication)
         self.udp.stop_ros_communication.connect(self.ros_manager.stopRosCommunication)
         self.ros_manager.stop_ros_communication_signal.connect(self.udp.onResetRosCommunication)
+
+        self.udp.z_recovery_start_signal.connect(self._on_z_recovery_start)
+        self.udp.z_recovery_mode_signal.connect(self._on_z_recovery_mode)
+        self.udp.z_recovery_done_signal.connect(self._on_z_recovery_done)
+
+        self._z_recovery_btn = QPushButton("Manual Z-Axis Recovery")
+        self._z_recovery_btn.setStyleSheet(
+            "background-color: rgb(255,140,0); color: white; font-size: 12px; padding: 6px;"
+        )
+        self._z_recovery_btn.clicked.connect(self._manual_z_recovery)
+        self.ui.verticalLayout_MotorsManagement.addWidget(self._z_recovery_btn)
 
         self.update_window_timer.timeout.connect(self.updateWindow)
         self.update_window_timer.start(self._update_window_period)

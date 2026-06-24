@@ -619,50 +619,70 @@ class PLCControllerInterface(Node):
             self.state_values = list(msg.values)
             
             # ========== Search for E-stop signal in state message ==========
-            events: set = set()
-            kill_launcher = False
             for int_idx in range(len(self.interface_names)):
                 if self.interface_names[int_idx] == "estop":
                     current_estop = self.state_values[int_idx]
                     
-                    # ========== TRANSITION: 0→1 (KEY TURN: IDLE → RUNNING) ==========
+                    # ========== TRANSITION: 0→1 ==========
                     if current_estop == 1 and self.ESTOP == 0:
-                        self.get_logger().info(
-                            bcolors.OKBLUE +
-                            "🔑 KEY TURN DETECTED: E-stop 0→1 (IDLE→RUNNING)" +
-                            bcolors.ENDC
-                        )
-                        
-                        # Verify EtherCAT PLC is ready
-                        if not self.check_ethercat_plc_node():
-                            self.get_logger().warn("EtherCAT PLC not ready, deferring launch")
-                            break
-                        
-                        # ========== First-time startup: perform homing ==========
-                        if not self.FIRST_TIME:
-                            self.get_logger().info("🏠 First startup: launching with homing calibration")
-                            subprocess.Popen(
-                                [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"],
-                                shell=True,
-                                executable="/bin/bash"
+                        if self.in_z_recovery:
+                            # ---- z_limit just cleared during startup recovery: recovery done ----
+                            self.get_logger().info(
+                                bcolors.OKGREEN +
+                                "✅ Z-LIMIT CLEARED (startup recovery): sending Z_RECOVERY_DONE" +
+                                bcolors.ENDC
                             )
-                            # REMOVED THE AUTOMATIC HOMING ALSO IN THE FIRST BOOT. 
-                            #   > CAIMMI GENERATES TOO MANY ERRORS, AND A FULL REBOOT IS OFTEN REQUIRED TO RECOVER BUT THE 
-                            #   > HOMOING SHOULD NOT START SINCE IT WOULD ZERO THE POSITION
-                            # subprocess.Popen(
-                            #     [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh --perform-homing"],
-                            #     shell=True,
-                            #     executable="/bin/bash"
-                            # )
-                            self.FIRST_TIME = True
-                        # ========== Subsequent startups: skip homing (faster) ==========
+                            self.in_z_recovery = False
+                            self.publish_command('PLC_node/z_recovery', 1)
+                            self._notify_gui(b"Z_RECOVERY_DONE")
+                            # kill the minimal Z recovery environment
+                            try:
+                                pid = subprocess.check_output(
+                                    ["pgrep", "-f", "run_z_recovery_control.launch.py"]
+                                )
+                                os.kill(int(pid.strip()), signal.SIGINT)
+                                time.sleep(2)
+                                self.get_logger().info("✅ Z-recovery launcher terminated")
+                            except (ValueError, subprocess.CalledProcessError):
+                                self.get_logger().info("No run_z_recovery_control.launch.py process found.")
                         else:
-                            self.get_logger().info("⚡ Restart: launching without homing")
-                            subprocess.Popen(
-                                [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"],
-                                shell=True,
-                                executable="/bin/bash"
+                            # ---- Normal key turn: IDLE → RUNNING ----
+                            self.get_logger().info(
+                                bcolors.OKBLUE +
+                                "🔑 KEY TURN DETECTED: E-stop 0→1 (IDLE→RUNNING)" +
+                                bcolors.ENDC
                             )
+
+                            # Verify EtherCAT PLC is ready
+                            if not self.check_ethercat_plc_node():
+                                self.get_logger().warn("EtherCAT PLC not ready, deferring launch")
+                                break
+
+                            # ========== First-time startup: perform homing ==========
+                            if not self.FIRST_TIME:
+                                self.get_logger().info("🏠 First startup: launching with homing calibration")
+                                subprocess.Popen(
+                                    [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"],
+                                    shell=True,
+                                    executable="/bin/bash"
+                                )
+                                # REMOVED THE AUTOMATIC HOMING ALSO IN THE FIRST BOOT.
+                                #   > CAIMMI GENERATES TOO MANY ERRORS, AND A FULL REBOOT IS OFTEN REQUIRED TO RECOVER BUT THE
+                                #   > HOMOING SHOULD NOT START SINCE IT WOULD ZERO THE POSITION
+                                # subprocess.Popen(
+                                #     [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh --perform-homing"],
+                                #     shell=True,
+                                #     executable="/bin/bash"
+                                # )
+                                self.FIRST_TIME = True
+                            # ========== Subsequent startups: skip homing (faster) ==========
+                            else:
+                                self.get_logger().info("⚡ Restart: launching without homing")
+                                subprocess.Popen(
+                                    [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"],
+                                    shell=True,
+                                    executable="/bin/bash"
+                                )
                     
                     # ========== TRANSITION: 1→0 (E-STOP / LIMIT SWITCH: RUNNING → IDLE) ==========
                     elif current_estop == 0 and self.ESTOP == 1:
@@ -709,26 +729,7 @@ class PLCControllerInterface(Node):
                             )
                             udp_msg = b"STOP"
 
-                        try:
-                            # ========== Graceful GUI shutdown ==========
-                            self.get_logger().info(f"📡 Sending {udp_msg} to rehab_gui...")
-                            self.client.send(udp_msg)
-
-                            timeout = time.time() + 10
-                            while True:
-                                data, addr = self.client.receive()
-                                if data == b"STOPPED":
-                                    self.get_logger().info("✅ GUI shutdown acknowledged")
-                                    break
-                                time.sleep(0.5)
-                                if time.time() > timeout:
-                                    self.get_logger().warn(
-                                        "PLC Manager: No acknowledgment from FMRR GUI.",
-                                        throttle_duration_sec=5.0
-                                    )
-                                    break
-                        except Exception as e:
-                            self.get_logger().warn(f"Error communicating with GUI: {e}")
+                        self._notify_gui(udp_msg)
 
                         try:
                             # ========== Kill launcher process ==========
@@ -744,10 +745,40 @@ class PLCControllerInterface(Node):
                         except subprocess.CalledProcessError:
                             self.get_logger().info("No platform_control.launch.py process found.")
                     
-                    # ========== STABLE STATES: No action ==========
+                    # ========== STABLE EMERGENCY: check if z_limit caused it ==========
                     elif current_estop == 0 and self.ESTOP == 0:
-                        # E-stop already inactive, no transition
-                        pass
+                        if not self.in_z_recovery:
+                            z_limit_active = False
+                            for _i in range(len(self.interface_names)):
+                                if self.interface_names[_i] == "z_limit_switch":
+                                    z_limit_active = (self.state_values[_i] == 1)
+                                    break
+                            if z_limit_active:
+                                self.get_logger().info(
+                                    bcolors.OKCYAN +
+                                    "🛑 Z-LIMIT active at startup/restart: launching minimal Z-recovery environment" +
+                                    bcolors.ENDC
+                                )
+                                self.in_z_recovery = True
+                                self.publish_command('PLC_node/z_recovery', 0)
+                                self._notify_gui(b"Z_LIMIT_HIT")
+                                subprocess.Popen(
+                                    [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env_z_recovery.sh"],
+                                    shell=True,
+                                    executable="/bin/bash"
+                                )
+                        else:
+                            # ---- Minimal Z-recovery env running: send periodic heartbeat to GUI ----
+                            try:
+                                node_list = self.get_node_names()
+                                if 'tecnobody_ethercat_checker_node' in node_list:
+                                    self.send_running_cnt = self.send_running_cnt + 1
+                                    if self.send_running_cnt % self.send_running_dec == 0:
+                                        self.client.send(b"Z_RECOVERY_RUNNING")
+                            except Exception as e:
+                                self.get_logger().error(
+                                    f"Exception when sending Z_RECOVERY_RUNNING (startup recovery): {e}"
+                                )
                     
                     elif current_estop == 1 and self.ESTOP == 1:
                         # ========== RUNNING state: Send periodic status ==========
