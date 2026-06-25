@@ -862,7 +862,7 @@ class PLCControllerInterface(Node):
             self.lock.release()
 
         if self.check_ros_status_timer.timer.is_canceled():
-            self.timer.reset()   # starts/restarts the timer
+            self.check_ros_status_timer.reset()   # starts/restarts the timer
 
     def _kill_recovery_env(self) -> None:
         self._stop_launch_environment(
