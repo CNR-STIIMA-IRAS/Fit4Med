@@ -498,7 +498,7 @@ class FilterCommands(Node):
         
         ##### Jog Ramp #####
         elif self.running_behaviour == 'jog':
-            self.get_logger().info(f"************************ Soft Jog Start called ************************")
+            self.get_logger().info(f"************************ Soft Jog Start called  - Request: {request}************************")
 
             # Verify that velocity controller is subscribed
             if self.forward_velocity_controller_commands_publisher.get_subscription_count()==0:
