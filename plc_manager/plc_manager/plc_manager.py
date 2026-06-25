@@ -745,19 +745,10 @@ class PLCControllerInterface(Node):
 
                         self._notify_gui(udp_msg)
 
-                        try:
-                            # ========== Kill launcher process ==========
-                            self.get_logger().info("🔪 Killing run_platform_control.launch.py...")
-                            platform_launcher_pid = subprocess.check_output(
-                                ["pgrep", "-f", "ros2 launch tecnobody_workbench run_platform_control.launch.py"]
-                            )
-                            os.kill(int(platform_launcher_pid.strip()), signal.SIGINT)
-                            time.sleep(2)
-                            self.get_logger().info("✅ Launcher process terminated")
-                        except ValueError as e:
-                            self.get_logger().info(f"Exception caught: {e}")
-                        except subprocess.CalledProcessError:
-                            self.get_logger().info("No platform_control.launch.py process found.")
+                        self._stop_launch_environment(
+                            "ros2 launch tecnobody_workbench run_platform_control.launch.py",
+                            "run_platform_control.launch.py"
+                        )
 
                         if udp_msg == b"Z_LIMIT_HIT":
                             # Launch recovery env so forward_velocity_controller is ready when
@@ -844,13 +835,108 @@ class PLCControllerInterface(Node):
 
 
     def _kill_recovery_env(self) -> None:
+        self._stop_launch_environment(
+            "run_z_recovery_control.launch.py",
+            "run_z_recovery_control.launch.py"
+        )
+
+    def _find_matching_pids(self, pattern: str) -> list[int]:
         try:
-            pid = subprocess.check_output(["pgrep", "-f", "run_z_recovery_control.launch.py"])
-            os.kill(int(pid.strip()), signal.SIGINT)
-            time.sleep(2)
-            self.get_logger().info("✅ Z-recovery launcher terminated")
-        except (ValueError, subprocess.CalledProcessError):
-            self.get_logger().info("No run_z_recovery_control.launch.py process found.")
+            output = subprocess.check_output(
+                ["pgrep", "-f", pattern],
+                text=True
+            )
+        except subprocess.CalledProcessError:
+            return []
+
+        return [
+            int(pid)
+            for pid in output.split()
+            if pid.isdigit() and int(pid) != os.getpid()
+        ]
+
+    def _find_tcp_port_pids(self, port: int) -> list[int]:
+        try:
+            output = subprocess.check_output(
+                ["fuser", "-n", "tcp", str(port)],
+                stderr=subprocess.DEVNULL,
+                text=True
+            )
+        except subprocess.CalledProcessError:
+            return []
+        except FileNotFoundError:
+            self.get_logger().error(
+                f"Cannot clean TCP port {port}: the 'fuser' command is not installed."
+            )
+            return []
+
+        return sorted({
+            int(pid)
+            for pid in output.split()
+            if pid.isdigit() and int(pid) != os.getpid()
+        })
+
+    def _signal_pids(self, pids: list[int], sig: signal.Signals) -> None:
+        for pid in pids:
+            try:
+                os.kill(pid, sig)
+            except ProcessLookupError:
+                pass
+            except PermissionError:
+                self.get_logger().error(
+                    f"Permission denied sending {sig.name} to PID {pid}."
+                )
+
+    def _wait_for_tcp_port(self, port: int, timeout_sec: float) -> list[int]:
+        deadline = time.monotonic() + timeout_sec
+        remaining_pids = self._find_tcp_port_pids(port)
+
+        while remaining_pids and time.monotonic() < deadline:
+            time.sleep(0.2)
+            remaining_pids = self._find_tcp_port_pids(port)
+
+        return remaining_pids
+
+    def _clear_tcp_port(self, port: int = 9090) -> bool:
+        remaining_pids = self._find_tcp_port_pids(port)
+        if not remaining_pids:
+            self.get_logger().info(f"✅ TCP port {port} is free")
+            return True
+
+        for sig, timeout_sec in (
+            (signal.SIGINT, 2.0),
+            (signal.SIGTERM, 2.0),
+            (signal.SIGKILL, 1.0),
+        ):
+            self.get_logger().warn(
+                f"TCP port {port} still used by PID(s) {remaining_pids}; "
+                f"sending {sig.name}."
+            )
+            self._signal_pids(remaining_pids, sig)
+            remaining_pids = self._wait_for_tcp_port(port, timeout_sec)
+            if not remaining_pids:
+                self.get_logger().info(f"✅ TCP port {port} released")
+                return True
+
+        self.get_logger().error(
+            f"TCP port {port} is still used by PID(s) {remaining_pids}."
+        )
+        return False
+
+    def _stop_launch_environment(self, pattern: str, label: str) -> None:
+        launcher_pids = self._find_matching_pids(pattern)
+        if launcher_pids:
+            self.get_logger().info(
+                f"🔪 Stopping {label}, PID(s): {launcher_pids}"
+            )
+            self._signal_pids(launcher_pids, signal.SIGINT)
+        else:
+            self.get_logger().info(f"No {label} process found.")
+
+        # Give ROS launch time to stop its child processes gracefully before
+        # escalating against any rosbridge instance still holding port 9090.
+        self._wait_for_tcp_port(9090, 2.0)
+        self._clear_tcp_port(9090)
 
     def _notify_gui(self, udp_msg: bytes) -> None:
         try:
