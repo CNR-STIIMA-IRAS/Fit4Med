@@ -829,7 +829,9 @@ class PLCControllerInterface(Node):
                     
                     # Update cached E-stop value for next transition detection
                     self.ESTOP = current_estop
-                    
+                else:
+                    udp_msg = b"IDLE"
+                    self._notify_gui(udp_msg)    
         finally:
             self.lock.release()
 

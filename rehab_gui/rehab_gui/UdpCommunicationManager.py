@@ -125,7 +125,7 @@ class UdpCommunicationManager(QObject):
                 self.stop_ros_communication_emitted = True
             self.z_recovery_done_signal.emit()
         else:
-            print(f"[UdpServer] Unknown UDP packet received from UDP client: {data}")
+            print(f"[UdpServer] UDP packet received from UDP client: {data}")
 
 def main(args=None):
     # TODO
