@@ -659,6 +659,11 @@ class PLCControllerInterface(Node):
                                     shell=True,
                                     executable="/bin/bash"
                                 )
+                                subprocess.Popen(
+                                    [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_bridge.sh"],
+                                    shell=True,
+                                    executable="/bin/bash"
+                                )
                                 self.FIRST_TIME = True
                         else:
                             # ---- Normal key turn: IDLE → RUNNING ----
@@ -749,6 +754,11 @@ class PLCControllerInterface(Node):
                         self._stop_launch_environment(
                             "ros2 launch tecnobody_workbench run_platform_control.launch.py",
                             "run_platform_control.launch.py"
+                        )
+                        
+                        self._stop_launch_environment(
+                            "ros2 launch tecnobody_workbench run_rosbridge.launch.py",
+                            "run_rosbridge.launch.py"
                         )
 
                         if udp_msg == b"Z_LIMIT_HIT":

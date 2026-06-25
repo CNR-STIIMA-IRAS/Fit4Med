@@ -347,12 +347,12 @@ def generate_launch_description():
         )
     )
 
-    rosbridge_pkg = FindPackageShare('tecnobody_workbench').find('tecnobody_workbench')
-    xml_launch = os.path.join(rosbridge_pkg, 'launch', 'rosbridge_websocket_launch.xml')
+    #rosbridge_pkg = FindPackageShare('tecnobody_workbench').find('tecnobody_workbench')
+    #xml_launch = os.path.join(rosbridge_pkg, 'launch', 'rosbridge_websocket_launch.xml')
 
-    rosbridge_launch = IncludeLaunchDescription(
-        AnyLaunchDescriptionSource(xml_launch)
-    )
+    #rosbridge_launch = IncludeLaunchDescription(
+    #    AnyLaunchDescriptionSource(xml_launch)
+    #)
 
     node_names_launcher = RegisterEventHandler(
         OnProcessExit(
@@ -381,5 +381,5 @@ def generate_launch_description():
     ld.add_action(fct_manager_launcher)
     ld.add_action(joint_controller_launcher)
     ld.add_action(ft_offset_updater_launcher)
-    ld.add_action(rosbridge_launch)
+    #ld.add_action(rosbridge_launch)
     return ld
