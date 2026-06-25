@@ -173,12 +173,18 @@ class ZRecoveryDialog(QDialog):
             return
         self.ROS.setManualMode(True)
         self.ROS.turnOnMotors()
+        self._jog_btn.setStyleSheet(
+                "color: rgb(200,100,0);"
+            )
         self.ROS.toogleJoggingBehaviour(axis=2, direction=1)
 
     def _stop_z_plus(self):
         if not self.ROS.isRosCommunicationActive():
             return
         self.ROS.toogleJoggingBehaviour(axis=2, direction=0)
+        self._jog_btn.setStyleSheet(
+            "background-color: rgb(85,255,127);"
+        )
         self.ROS.turnOffMotors()
 
     def on_recovery_done(self):
