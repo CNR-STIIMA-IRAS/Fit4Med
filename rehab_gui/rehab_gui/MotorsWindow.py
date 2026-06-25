@@ -56,6 +56,11 @@ class MotorsWindow(QtWidgets.QWidget):
         self._last_emergency_state = None
         self._last_controller_name = None
 
+    @QtCore.pyqtSlot(bytes, tuple)
+    def onUdpMessageReceived(self, data, addr):
+        message = data.decode("utf-8", errors="replace")
+        self.ui.plainTextEdit_udp_channel.setPlainText(message)
+
     def resetFaults(self) -> None:
         if self.ui.comboBox_ResetFaults.currentIndex() == 2:
             print('Switch Off Logic Power')
@@ -150,5 +155,4 @@ class MotorsWindow(QtWidgets.QWidget):
             self._ec_items[i][0].setText(name)
         for i, state in enumerate(self.ROS.getSlaveStates()):
             self._ec_items[i][1].setText(state)
-
 

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'MotorsWindow.ui'
+# Form implementation generated from reading ui file 'ui/MotorsWindow.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.10
 #
@@ -108,6 +108,22 @@ class Ui_MotorsWindow(object):
         self.tableWidget_MotorsInfo.verticalHeader().setVisible(False)
         self.tableWidget_MotorsInfo.verticalHeader().setHighlightSections(False)
         self.tabWidget.addTab(self.tab, "")
+        self.tab_3 = QtWidgets.QWidget()
+        self.tab_3.setObjectName("tab_3")
+        self.plainTextEdit_udp_channel = QtWidgets.QPlainTextEdit(self.tab_3)
+        self.plainTextEdit_udp_channel.setGeometry(QtCore.QRect(0, 0, 601, 31))
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.plainTextEdit_udp_channel.sizePolicy().hasHeightForWidth())
+        self.plainTextEdit_udp_channel.setSizePolicy(sizePolicy)
+        font = QtGui.QFont()
+        font.setPointSize(8)
+        self.plainTextEdit_udp_channel.setFont(font)
+        self.plainTextEdit_udp_channel.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self.plainTextEdit_udp_channel.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
+        self.plainTextEdit_udp_channel.setObjectName("plainTextEdit_udp_channel")
+        self.tabWidget.addTab(self.tab_3, "")
         self.tab_2 = QtWidgets.QWidget()
         self.tab_2.setObjectName("tab_2")
         self.tableWidget_EthercatNodesInfo = QtWidgets.QTableWidget(self.tab_2)
@@ -143,7 +159,7 @@ class Ui_MotorsWindow(object):
         self.tabWidget.addTab(self.tab_2, "")
 
         self.retranslateUi(MotorsWindow)
-        self.tabWidget.setCurrentIndex(1)
+        self.tabWidget.setCurrentIndex(0)
         QtCore.QMetaObject.connectSlotsByName(MotorsWindow)
 
     def retranslateUi(self, MotorsWindow):
@@ -156,4 +172,5 @@ class Ui_MotorsWindow(object):
         self.lineEdit_Emergency.setText(_translate("MotorsWindow", "EMERGENCY"))
         self.pushButton_ResetFaults.setText(_translate("MotorsWindow", "Reset Faults"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab), _translate("MotorsWindow", "Joint States"))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_3), _translate("MotorsWindow", "Udp Comm"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_2), _translate("MotorsWindow", "Ethercat States"))

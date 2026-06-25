@@ -67,16 +67,27 @@ class RosCommunicationManager(QObject):
             print("ROS_MANAGER already initialized.")
             return 
         # Initialize ROS_MANAGER client
-        if self.roslib_first_time_connection:
-            self.ros_client = roslibpy.Ros(host=self.remote_ip, port=self.remote_port)
-            self.ros_client.run(20)
-            self.roslib_first_time_connection = False
-        else:
-            self.ros_client.connect()
+        # if self.roslib_first_time_connection:
+        #     self.ros_client = roslibpy.Ros(host=self.remote_ip, port=self.remote_port)
+        #     self.ros_client.run(20)
+        #     self.roslib_first_time_connection = False
+        # else:
+        #     self.ros_client.connect()
 
-        if self.rOk():
-            del self.ROS
-            self.ROS = None #type: ignore
+        # if self.rOk():
+        #     del self.ROS
+        #     self.ROS = None #type: ignore
+        
+        self.ros_client = roslibpy.Ros(
+            host=self.remote_ip,
+            port=self.remote_port
+        )
+        self.ros_client.run(20)
+
+        if not self.ros_client.is_connected:
+            print("Failed to connect to rosbridge.")
+            return
+
 
         self.ROS = SyncRosManager(self.number_of_ec_slaves, self.joint_names, self.ros_client)
 
@@ -105,7 +116,12 @@ class RosCommunicationManager(QObject):
         
             
     def isRosCommunicationActive(self) -> bool:
-        return hasattr(self, 'ROS') and self.ROS is not None
+        return (
+            hasattr(self, 'ROS')
+            and self.ROS is not None
+            and hasattr(self, 'ros_client')
+            and self.ros_client.is_connected
+        )
 
     def rOk(self) -> bool:
         return self.isRosCommunicationActive()

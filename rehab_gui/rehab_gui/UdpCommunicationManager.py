@@ -1,8 +1,7 @@
 # Copyright 2026 CNR-STIIMA
 # SPDX-License-Identifier: Apache-2.0
 
-from PyQt5.QtCore import QThread, QObject, pyqtSignal
-from PyQt5.QtCore import QObject, pyqtSignal
+from PyQt5.QtCore import QThread, QObject, pyqtSignal, pyqtSlot
 import socket
 
 ################################################
@@ -66,6 +65,7 @@ class UdpCommunicationManager(QObject):
     z_recovery_start_signal : pyqtSignal = pyqtSignal()
     z_recovery_mode_signal : pyqtSignal = pyqtSignal()
     z_recovery_done_signal : pyqtSignal = pyqtSignal()
+    udp_message_received : pyqtSignal = pyqtSignal(bytes, tuple)
 
     def __init__(self, remote_ip, remote_port): #port=5005
         super().__init__()
@@ -80,8 +80,13 @@ class UdpCommunicationManager(QObject):
         self.server.moveToThread(self.udp_thread)
         self.udp_thread.started.connect(self.server.start)
 
-        self.server.message_received.connect(lambda d,a : self.udpRequestReceived(d))
+        self.server.message_received.connect(self.onUdpMessageReceived)
         self.udp_thread.start()
+
+    @pyqtSlot(bytes, tuple)
+    def onUdpMessageReceived(self, data, addr):
+        self.udp_message_received.emit(data, addr)
+        self.udpRequestReceived(data)
 
     def onResetRosCommunication(self):
         self.server.send_response(b"STOPPED")
