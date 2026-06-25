@@ -98,20 +98,37 @@ class RosCommunicationManager(QObject):
 
         self.ROS_active = False
 
-        if hasattr(self, 'ROS') and self.rOk():
-            if not self.ROS.destroy():
-                print('Error trying to destroy ROS class.')
-                return
-            self.ros_client.close()
-            del self.ROS
+        ros_manager = self.ROS if hasattr(self, 'ROS') else None
+        ros_client = self.ros_client if hasattr(self, 'ros_client') else None
+
+        if ros_manager is not None:
+            try:
+                if not ros_manager.destroy():
+                    print('Error trying to destroy ROS class.')
+            except Exception as exc:
+                # An unexpected rosbridge loss makes unsubscribe/unadvertise fail.
+                # Continue clearing the local objects so the next RUNNING message
+                # can build a completely new connection.
+                print(f"Error while destroying disconnected ROS objects: {exc}")
+
+            self.ROS = None  # type: ignore
             gc.collect()
             print("[MainProgram] ROS processes stopped.")
+
+        if ros_client is not None:
+            try:
+                ros_client.close()
+            except Exception as exc:
+                print(f"Error while closing rosbridge client: {exc}")
+            del self.ros_client
+
+        if self.worker_thread.isRunning():
             self.worker_thread.stop_thread()
             # stop_ros_communication_signal emitted by onUpdateWorkerThreadFinished when thread exits
         else:
-            # ROS was never started — emit immediately so plc_manager receives its STOPPED ack
-            # and UdpCommunicationManager resets its flags for the next Z_RECOVERY_RUNNING message
-            print("[MainProgram] ROS was not running — signaling stop immediately.")
+            # ROS was never started, or its worker already stopped. Emit immediately
+            # so plc_manager receives STOPPED and the UDP flags are reset.
+            print("[MainProgram] ROS worker was not running — signaling stop immediately.")
             self.stop_ros_communication_signal.emit()
         
             

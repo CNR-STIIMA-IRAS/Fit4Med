@@ -93,12 +93,22 @@ class UdpCommunicationManager(QObject):
         self.start_ros_communication_emitted = False
         self.stop_ros_communication_emitted = False
 
+    def requestRosCommunicationStop(self, reason):
+        print(f"[UdpServer] {reason}")
+        if not self.stop_ros_communication_emitted:
+            self.stop_ros_communication.emit()
+            self.stop_ros_communication_emitted = True
+
     def udpRequestReceived(self, data):
         if data == b'STOP':
-            print("[UdpServer] UDP STOP request received.")
-            if not self.stop_ros_communication_emitted:
-                self.stop_ros_communication.emit()
-                self.stop_ros_communication_emitted = True
+            self.requestRosCommunicationStop("UDP STOP request received.")
+        elif data == b'READY_TO_START___TURN_THE_KEY':
+            # Fallback for an abnormal platform/bridge shutdown where the normal
+            # STOP packet was lost. The PLC manager is idle, so the GUI must not
+            # keep stale rosbridge subscriptions, services, or worker state.
+            self.requestRosCommunicationStop(
+                "READY_TO_START___TURN_THE_KEY received — stopping stale ROS communication."
+            )
         elif data == b'Z_LIMIT_HIT':
             # Z-axis limit switch triggered: stop ROS and show initial limit-hit dialog
             print("[UdpServer] Z_LIMIT_HIT received — Z-axis limit switch triggered.")

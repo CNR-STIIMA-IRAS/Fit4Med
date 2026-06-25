@@ -452,13 +452,17 @@ class PLCControllerInterface(Node):
         """Perform graceful cleanup and resource deallocation.
         
         Called before node destruction to:
-        1. Cancel launcher health check timer
-        2. Close UDP socket
-        3. Destroy node resources
+        1. Ask the GUI to stop its ROS communication
+        2. Cancel launcher health check timer
+        3. Close UDP socket
+        4. Destroy node resources
         
         Returns:
             None. Leaves node in destroyed state.
         """
+        self.get_logger().info("Cleanup: Stopping GUI ROS communication.")
+        self._notify_gui(b"STOP")
+
         self.get_logger().info("Cleanup: Cancelling timers and destroying node.")
         if not self.check_ros_status_timer.is_canceled():
             self.check_ros_status_timer.cancel()
@@ -705,6 +709,11 @@ class PLCControllerInterface(Node):
                                 self.get_logger().info("⚡ Restart: launching without homing")
                                 subprocess.Popen(
                                     [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"],
+                                    shell=True,
+                                    executable="/bin/bash"
+                                )
+                                subprocess.Popen(
+                                    [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_bridge.sh"],
                                     shell=True,
                                     executable="/bin/bash"
                                 )
