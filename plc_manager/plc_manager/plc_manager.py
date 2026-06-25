@@ -646,6 +646,13 @@ class PLCControllerInterface(Node):
                                     "🔑 KEY TURN (z_limit still active): Z_RECOVERY_RUNNING — enter jog mode" +
                                     bcolors.ENDC
                                 )
+                                # AUTO_RECOVER=1 enables auto_z_recovery_node (headless startup case)
+                                subprocess.Popen(
+                                    [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env_z_recovery.sh"],
+                                    shell=True,
+                                    executable="/bin/bash",
+                                    env={**os.environ, 'AUTO_RECOVER': '1'}
+                                )
                                 self.client.send(b"Z_RECOVERY_RUNNING")  # direct; no STOPPED ack expected
                             else:
                                 # Key turned AND z_limit already cleared → recovery done (edge case)
@@ -797,19 +804,13 @@ class PLCControllerInterface(Node):
                             if z_limit_active:
                                 self.get_logger().info(
                                     bcolors.OKCYAN +
-                                    "🛑 Z-LIMIT active at startup/restart: launching minimal Z-recovery environment" +
+                                    "🛑 Z-LIMIT active at startup/restart" +
                                     bcolors.ENDC
                                 )
                                 self.in_z_recovery = True
                                 self.publish_command('PLC_node/z_recovery', 0)
                                 self._notify_gui(b"Z_LIMIT_HIT")
-                                # AUTO_RECOVER=1 enables auto_z_recovery_node (headless startup case)
-                                subprocess.Popen(
-                                    [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env_z_recovery.sh"],
-                                    shell=True,
-                                    executable="/bin/bash",
-                                    env={**os.environ, 'AUTO_RECOVER': '1'}
-                                )
+                                
                     elif current_estop == 1 and self.ESTOP == 1:
                         # ========== Check z_limit clearing during recovery (jogging phase) ==========
                         if self.in_z_recovery:
