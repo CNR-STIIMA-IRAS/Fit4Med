@@ -536,6 +536,7 @@ class PLCControllerInterface(Node):
                 '\033[1;35mWaiting for ros controllers to start!\033[0m',
                 throttle_duration_sec=5.0
             )
+            self._notify_gui(b"READY_TO_START___TURN_THE_KEY")
             self.ros_launched = False
             
             # ========== Detect transition: RUNNING → IDLE (launcher crash) ==========
@@ -829,9 +830,6 @@ class PLCControllerInterface(Node):
                     
                     # Update cached E-stop value for next transition detection
                     self.ESTOP = current_estop
-                else:
-                    udp_msg = b"IDLE"
-                    self._notify_gui(udp_msg)    
         finally:
             self.lock.release()
 
