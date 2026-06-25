@@ -659,11 +659,6 @@ class PLCControllerInterface(Node):
                                     shell=True,
                                     executable="/bin/bash"
                                 )
-                                self.get_logger().info(
-                                    bcolors.OKBLUE +
-                                    ">>>> Ros Bridge launched" +
-                                    bcolors.ENDC
-                                )
                                 subprocess.Popen(
                                     [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_bridge.sh"],
                                     shell=True,
@@ -688,6 +683,11 @@ class PLCControllerInterface(Node):
                                 self.get_logger().info("🏠 First startup: launching with homing calibration")
                                 subprocess.Popen(
                                     [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"],
+                                    shell=True,
+                                    executable="/bin/bash"
+                                )
+                                subprocess.Popen(
+                                    [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_bridge.sh"],
                                     shell=True,
                                     executable="/bin/bash"
                                 )
