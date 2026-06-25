@@ -358,7 +358,9 @@ class MainProgram(QMainWindow):
         self.remote_ip : str = remote_ip
         self.udp_port : int = udp_port
         self.roslibpy_port : int = roslibpy_port
+        print(f"FMRRMainProgram: remote_ip={self.remote_ip}, udp_port={self.udp_port}, roslibpy_port={self.roslibpy_port}")
         self.udp = UdpCommunicationManager(self.remote_ip, self.udp_port)
+        print(f"upd:{self.udp}
         
         self.ros_manager = RosCommunicationManager(JOINT_NAMES,  self.number_of_ec_slaves,  self.remote_ip, self.roslibpy_port, self)
 
