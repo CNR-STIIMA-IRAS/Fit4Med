@@ -340,7 +340,8 @@ class PLCControllerInterface(Node):
         self.check_ros_status_timer = self.create_timer(
             1.0,
             self.check_ros_launch_status,
-            self.timer_group
+            self.,
+            autostart=False
         )
         self.FIRST_TIME = False
 
@@ -360,6 +361,7 @@ class PLCControllerInterface(Node):
         # Default matches the configured ros2_control name for the SICK GetC100 PLC.
         self.declare_parameter('plc_slave_identifier', 'sickPLC')
 
+        self.z_limit_still_active = False
 
     def check_ethercat_plc_node(self) -> bool:
         """Verify EtherCAT PLC slave is active and operational across all masters.
@@ -540,7 +542,8 @@ class PLCControllerInterface(Node):
                 '\033[1;35mWaiting for ros controllers to start!\033[0m',
                 throttle_duration_sec=5.0
             )
-            self._notify_gui(b"READY_TO_START___TURN_THE_KEY")
+            if(self.z_limit_still_active == False):
+                self._notify_gui(b"READY_TO_START___TURN_THE_KEY")
             self.ros_launched = False
             
             # ========== Detect transition: RUNNING → IDLE (launcher crash) ==========
@@ -634,12 +637,12 @@ class PLCControllerInterface(Node):
                     # ========== TRANSITION: 0→1 ==========
                     if current_estop == 1 and self.ESTOP == 0:
                         if self.in_z_recovery:
-                            z_limit_still_active = any(
+                            self.z_limit_still_active = any(
                                 self.state_values[_i] == 1
                                 for _i, _name in enumerate(self.interface_names)
                                 if _name == "z_limit_switch"
                             )
-                            if z_limit_still_active:
+                            if self.z_limit_still_active:
                                 # Key turned but z_limit still active → enable jogging (NOT done yet)
                                 self.get_logger().info(
                                     bcolors.OKCYAN +
@@ -814,12 +817,12 @@ class PLCControllerInterface(Node):
                     elif current_estop == 1 and self.ESTOP == 1:
                         # ========== Check z_limit clearing during recovery (jogging phase) ==========
                         if self.in_z_recovery:
-                            z_limit_still_active = any(
+                            self.z_limit_still_active = any(
                                 self.state_values[_i] == 1
                                 for _i, _name in enumerate(self.interface_names)
                                 if _name == "z_limit_switch"
                             )
-                            if not z_limit_still_active:
+                            if not self.z_limit_still_active:
                                 # z_limit cleared during jogging → recovery complete
                                 self.get_logger().info(
                                     bcolors.OKGREEN +
@@ -858,6 +861,8 @@ class PLCControllerInterface(Node):
         finally:
             self.lock.release()
 
+        if self.check_ros_status_timer.timer.is_canceled():
+            self.timer.reset()   # starts/restarts the timer
 
     def _kill_recovery_env(self) -> None:
         self._stop_launch_environment(
