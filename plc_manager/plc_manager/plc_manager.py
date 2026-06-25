@@ -340,12 +340,12 @@ class PLCControllerInterface(Node):
         self.check_ros_status_timer = self.create_timer(
             1.0,
             self.check_ros_launch_status,
-            self.,
+            self.timer_group,
             autostart=False
         )
         self.FIRST_TIME = False
 
-        # ========== UDP Status Client ==========
+        # ========== UDP Status Client ==========#  
         # Coordinates with rehab_gui for emergency stop and status
         self.client = UdpClient(target_ip, 5005)
         self.send_running_cnt = 0
