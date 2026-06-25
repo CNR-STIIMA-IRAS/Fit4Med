@@ -4,9 +4,10 @@
 import os
 import sys
 import signal
+import threading
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QLabel, QDialog, QVBoxLayout, QPushButton
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from PyQt5.QtCore import QObject, Qt, QThread, QTimer, pyqtSignal, pyqtSlot
 
 # mathematics
 import numpy as np
@@ -55,6 +56,71 @@ class WaitingDialog(QDialog):
         self.resize(300, 100)
 
 
+class ZRecoveryJogWorker(QObject):
+    """Run blocking Z-recovery ROS commands away from the Qt GUI thread."""
+
+    shutdown_finished = pyqtSignal()
+
+    def __init__(self, ros_manager):
+        super().__init__()
+        self.ROS = ros_manager
+        self._motors_started = False
+        self._jog_active = False
+
+    def _stop_motion(self):
+        if not self._motors_started and not self._jog_active:
+            return
+        if not self.ROS.isRosCommunicationActive():
+            return
+        if self._jog_active:
+            self.ROS.toogleJoggingBehaviour(axis=2, direction=0)
+            self._jog_active = False
+        if self._motors_started:
+            self.ROS.turnOffMotors()
+            self._motors_started = False
+
+    @pyqtSlot(object)
+    def start_z_plus(self, hold_event):
+        try:
+            if not hold_event.is_set() or not self.ROS.isRosCommunicationActive():
+                return
+
+            self.ROS.setManualMode(True)
+            if not self.ROS.turnOnMotors(show_warning=False):
+                return
+            self._motors_started = True
+
+            # The operator may have released while the motor service was running.
+            if not hold_event.is_set():
+                self._stop_motion()
+                return
+
+            self._jog_active = True
+            self.ROS.toogleJoggingBehaviour(axis=2, direction=1)
+
+            # The release may also have occurred during the jog service call.
+            if not hold_event.is_set():
+                self._stop_motion()
+        except Exception as exc:
+            print(f"Z+ recovery start failed: {exc}")
+            try:
+                self._stop_motion()
+            except Exception as stop_exc:
+                print(f"Z+ recovery cleanup failed: {stop_exc}")
+
+    @pyqtSlot()
+    def stop_z_plus(self):
+        try:
+            self._stop_motion()
+        except Exception as exc:
+            print(f"Z+ recovery stop failed: {exc}")
+
+    @pyqtSlot()
+    def shutdown(self):
+        self.stop_z_plus()
+        self.shutdown_finished.emit()
+
+
 #########################################################################
 ##
 ##  Z-Axis Limit Recovery Dialog
@@ -72,12 +138,29 @@ class ZRecoveryDialog(QDialog):
       3. Done       – second emergency cleared; operator turns key to resume.
     """
 
+    _start_jog_requested = pyqtSignal(object)
+    _stop_jog_requested = pyqtSignal()
+    _shutdown_jog_requested = pyqtSignal()
+
     def __init__(self, ros_manager, parent=None):
         super().__init__(parent)
         self.ROS = ros_manager
         self._done = False
         self._in_jog_phase = False
         self._jogging_ready = False
+        self._jog_button_held = False
+        self._jog_hold_event = None
+        self._jog_worker_shutting_down = False
+
+        self._jog_thread = QThread(self)
+        self._jog_worker = ZRecoveryJogWorker(self.ROS)
+        self._jog_worker.moveToThread(self._jog_thread)
+        self._start_jog_requested.connect(self._jog_worker.start_z_plus)
+        self._stop_jog_requested.connect(self._jog_worker.stop_z_plus)
+        self._shutdown_jog_requested.connect(self._jog_worker.shutdown)
+        self._jog_worker.shutdown_finished.connect(self._jog_thread.quit)
+        self._jog_thread.finished.connect(self._jog_worker.deleteLater)
+        self._jog_thread.start()
 
         self.setWindowTitle("Z-Axis Limit Recovery")
         self.setWindowFlags(
@@ -105,7 +188,18 @@ class ZRecoveryDialog(QDialog):
         self._jog_btn.setVisible(False)
         self._jog_btn.setEnabled(False)
         self._jog_btn.setStyleSheet(
-            "background-color: rgb(85,255,127); color: black; font-size: 15px; padding: 18px;"
+            """
+            QPushButton {
+                background-color: rgb(85,255,127);
+                color: black;
+                font-size: 15px;
+                padding: 18px;
+            }
+            QPushButton:pressed {
+                background-color: rgb(200,100,0);
+                color: black;
+            }
+            """
         )
         self._jog_btn.pressed.connect(self._start_z_plus)
         self._jog_btn.released.connect(self._stop_z_plus)
@@ -124,6 +218,7 @@ class ZRecoveryDialog(QDialog):
 
         self._poll_timer = QTimer(self)
         self._poll_timer.timeout.connect(self._poll_connection)
+        self.finished.connect(self._on_dialog_finished)
         # Poll timer is started only when key is turned (enter_jog_phase)
 
     # ------------------------------------------------------------------
@@ -160,6 +255,7 @@ class ZRecoveryDialog(QDialog):
                 self._jog_btn.setEnabled(True)
         elif not ros_ok and self._jogging_ready:
             self._jogging_ready = False
+            self._request_jog_stop()
             self._jog_btn.setEnabled(False)
             self._status_label.setText(
                 "Robot connection lost.\nWaiting for reconnection..."
@@ -169,28 +265,53 @@ class ZRecoveryDialog(QDialog):
             )
 
     def _start_z_plus(self):
-        if not self.ROS.isRosCommunicationActive() or self._done:
+        if (
+            self._done
+            or self._jog_worker_shutting_down
+            or self._jog_button_held
+            or not self.ROS.isRosCommunicationActive()
+        ):
             return
-        self.ROS.setManualMode(True)
-        self.ROS.turnOnMotors()
-        self._jog_btn.setStyleSheet(
-                "color: rgb(200,100,0);"
-            )
-        self.ROS.toogleJoggingBehaviour(axis=2, direction=1)
+
+        self._jog_button_held = True
+        self._jog_hold_event = threading.Event()
+        self._jog_hold_event.set()
+        self._start_jog_requested.emit(self._jog_hold_event)
 
     def _stop_z_plus(self):
-        if not self.ROS.isRosCommunicationActive():
+        self._request_jog_stop()
+
+    def _request_jog_stop(self):
+        self._jog_button_held = False
+        if self._jog_hold_event is not None:
+            self._jog_hold_event.clear()
+            self._jog_hold_event = None
+
+        if not self._jog_worker_shutting_down and self._jog_thread.isRunning():
+            self._stop_jog_requested.emit()
+
+    def _shutdown_jog_worker(self):
+        if self._jog_worker_shutting_down or not self._jog_thread.isRunning():
             return
-        self.ROS.toogleJoggingBehaviour(axis=2, direction=0)
-        self._jog_btn.setStyleSheet(
-            "background-color: rgb(85,255,127);"
-        )
-        self.ROS.turnOffMotors()
+
+        self._jog_button_held = False
+        if self._jog_hold_event is not None:
+            self._jog_hold_event.clear()
+            self._jog_hold_event = None
+
+        self._jog_worker_shutting_down = True
+        self._shutdown_jog_requested.emit()
+
+    @pyqtSlot(int)
+    def _on_dialog_finished(self, _result):
+        self._poll_timer.stop()
+        self._shutdown_jog_worker()
 
     def on_recovery_done(self):
         """Called by the main window when Z_RECOVERY_DONE is received."""
         self._done = True
         self._poll_timer.stop()
+        self._request_jog_stop()
         self._jog_btn.setEnabled(False)
         self._jog_btn.setVisible(False)
         self._status_label.setText(
@@ -206,6 +327,7 @@ class ZRecoveryDialog(QDialog):
             event.ignore()  # cannot be dismissed until recovery is complete
         else:
             self._poll_timer.stop()
+            self._shutdown_jog_worker()
             event.accept()
 
 

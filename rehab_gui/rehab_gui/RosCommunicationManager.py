@@ -144,15 +144,16 @@ class RosCommunicationManager(QObject):
         self.ROS.publish_plc_command(['PLC_node/mode_of_operation'], [mode])
         return True
         
-    def turnOnMotors(self) -> bool:
+    def turnOnMotors(self, show_warning: bool = True) -> bool:
         if self.rOk():
             if self.manual_mode_activated:
                 if self.ROS.plc_states['manual_switch_pressed']:
                     # set manual mode during movement
                     self.ROS.publish_plc_command(['PLC_node/manual_mode'], [1])
                 else:
-                    QMessageBox.warning(self.widget, "Warning",
-                                        "Please hold the manual mode emergency button before moving the robot!")
+                    if show_warning:
+                        QMessageBox.warning(self.widget, "Warning",
+                                            "Please hold the manual mode emergency button before moving the robot!")
                     return False
             else:
                 self.ROS.publish_plc_command(['PLC_node/manual_mode'], [0])
