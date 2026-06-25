@@ -361,6 +361,7 @@ class PLCControllerInterface(Node):
         # Default matches the configured ros2_control name for the SICK GetC100 PLC.
         self.declare_parameter('plc_slave_identifier', 'sickPLC')
 
+        self.z_limit_active = False
         self.z_limit_still_active = False
 
     def check_ethercat_plc_node(self) -> bool:
@@ -542,7 +543,7 @@ class PLCControllerInterface(Node):
                 '\033[1;35mWaiting for ros controllers to start!\033[0m',
                 throttle_duration_sec=5.0
             )
-            if(self.z_limit_still_active == False):
+            if(self.z_limit_active == False and self.z_limit_still_active == False):
                 self._notify_gui(b"READY_TO_START___TURN_THE_KEY")
             self.ros_launched = False
             
@@ -735,13 +736,13 @@ class PLCControllerInterface(Node):
                         # Gate Z-axis recovery on the dedicated PLC input 'z_limit_switch'
                         # (value 1 = limit active). Only a genuine Z-limit event enters the
                         # recovery procedure; all other emergencies are a normal stop.
-                        z_limit_active = False
+                        self.z_limit_activez_limit_active = False
                         for _i in range(len(self.interface_names)):
                             if self.interface_names[_i] == "z_limit_switch":
                                 z_limit_active = (self.state_values[_i] == 1)
                                 break
 
-                        if z_limit_active and not self.in_z_recovery:
+                        if self.z_limit_active and not self.in_z_recovery:
                             # ---- Z-axis limit hit: enter Z-axis recovery mode ----
                             self.get_logger().info(
                                 bcolors.OKCYAN +
@@ -799,12 +800,12 @@ class PLCControllerInterface(Node):
                     # ========== STABLE EMERGENCY: check if z_limit caused it ==========
                     elif current_estop == 0 and self.ESTOP == 0:
                         if not self.in_z_recovery:
-                            z_limit_active = False
+                            self.z_limit_active = False
                             for _i in range(len(self.interface_names)):
                                 if self.interface_names[_i] == "z_limit_switch":
-                                    z_limit_active = (self.state_values[_i] == 1)
+                                    self.z_limit_active = (self.state_values[_i] == 1)
                                     break
-                            if z_limit_active:
+                            if self.z_limit_active:
                                 self.get_logger().info(
                                     bcolors.OKCYAN +
                                     "🛑 Z-LIMIT active at startup/restart" +
