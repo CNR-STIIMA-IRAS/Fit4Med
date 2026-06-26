@@ -2,7 +2,11 @@ from enum import Enum, auto
 from dataclasses import dataclass
 from typing import Callable, Optional
 from rclpy.impl.rcutils_logger import RcutilsLogger as Logger
-from utils import bcolors
+
+if __package__:
+    from plc_manager.utils import bcolors
+else:
+    from utils import bcolors  # type: ignore
 
 
 class InvalidTransition(Exception):

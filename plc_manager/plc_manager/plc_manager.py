@@ -23,16 +23,34 @@ import threading
 import signal
 from enum import Enum
 
-from fsm import StateMachine, State, Event, InvalidTransition, GuardFailed, TransitionTimeout, PendingTransition
-from udp_client import UdpClient
-from utils import (
-    check_env_running, 
-    check_env_running_recovery, 
-    check_env_running_stopped,
-    check_env_running_recovery_stopped, 
-    stop_launch_environment
-)
-from utils import bcolors as bc
+if __package__:
+    from plc_manager.fsm import (
+        StateMachine, State, Event, InvalidTransition, GuardFailed,
+        TransitionTimeout, PendingTransition
+    )
+    from plc_manager.udp_client import UdpClient
+    from plc_manager.utils import (
+        check_env_running,
+        check_env_running_recovery,
+        check_env_running_stopped,
+        check_env_running_recovery_stopped,
+        stop_launch_environment
+    )
+    from plc_manager.utils import bcolors as bc
+else:
+    from fsm import (  # type: ignore
+        StateMachine, State, Event, InvalidTransition, GuardFailed,
+        TransitionTimeout, PendingTransition
+    )
+    from udp_client import UdpClient  # type: ignore
+    from utils import (  # type: ignore
+        check_env_running,
+        check_env_running_recovery,
+        check_env_running_stopped,
+        check_env_running_recovery_stopped,
+        stop_launch_environment
+    )
+    from utils import bcolors as bc  # type: ignore
 
 class EStopState(Enum):
     OK = 1
