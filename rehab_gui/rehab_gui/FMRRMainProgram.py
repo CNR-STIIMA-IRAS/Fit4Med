@@ -447,6 +447,7 @@ class MainProgram(QMainWindow):
     def _shutdown_communications(self):
         self.ros_manager.turnOffMotors()
         self.ros_manager.stopRosCommunication()
+        self.udp.onResetRosCommunication()
         self.udp.shutdown()
 
     def closeEvent(self, event):

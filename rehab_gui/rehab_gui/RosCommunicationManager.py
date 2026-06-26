@@ -69,18 +69,12 @@ class RosCommunicationManager(QObject):
             print("ROS_MANAGER already initialized.")
             self.ros_communication_established_signal.emit()
             return 
-        # Initialize ROS_MANAGER client
-        # if self.roslib_first_time_connection:
-        #     self.ros_client = roslibpy.Ros(host=self.remote_ip, port=self.remote_port)
-        #     self.ros_client.run(20)
-        #     self.roslib_first_time_connection = False
-        # else:
-        #     self.ros_client.connect()
 
-        # if self.rOk():
-        #     del self.ROS
-        #     self.ROS = None #type: ignore
-        
+        if self.worker_thread.isRunning():
+            print("ROS worker is still stopping.")
+            self.ros_communication_failed_signal.emit()
+            return
+
         self.ros_client = roslibpy.Ros(
             host=self.remote_ip,
             port=self.remote_port
@@ -89,9 +83,13 @@ class RosCommunicationManager(QObject):
 
         if not self.ros_client.is_connected:
             print("Failed to connect to rosbridge.")
+            try:
+                self.ros_client.close()
+            except Exception as exc:
+                print(f"Error while closing failed rosbridge client: {exc}")
+            del self.ros_client
             self.ros_communication_failed_signal.emit()
             return
-
 
         self.ROS = SyncRosManager(self.number_of_ec_slaves, self.joint_names, self.ros_client)
 
@@ -100,6 +98,13 @@ class RosCommunicationManager(QObject):
 
     def stopRosCommunication(self) -> None:
         print("Stopping ROS processes...")
+        
+        if self.worker_thread.isRunning():
+            self.worker_thread.stop_thread()
+            if not self.worker_thread.wait(1000):
+                print("ROS worker did not stop in time.")
+                self.ros_communication_failed_signal.emit()
+                return
 
         self.ROS_active = False
 
@@ -127,14 +132,10 @@ class RosCommunicationManager(QObject):
                 print(f"Error while closing rosbridge client: {exc}")
             del self.ros_client
 
-        if self.worker_thread.isRunning():
-            self.worker_thread.stop_thread()
-            # stop_ros_communication_signal emitted by onUpdateWorkerThreadFinished when thread exits
-        else:
-            # ROS was never started, or its worker already stopped. Emit immediately
-            # so plc_manager receives STOPPED and the UDP flags are reset.
-            print("[MainProgram] ROS worker was not running — signaling stop immediately.")
-            self.stop_ros_communication_signal.emit()
+        # ROS was never started, or its worker already stopped. Emit immediately
+        # so plc_manager receives STOPPED and the UDP flags are reset.
+        print("[MainProgram] ROS worker was not running — signaling stop immediately.")
+        self.stop_ros_communication_signal.emit()
         
             
     def isRosCommunicationActive(self) -> bool:

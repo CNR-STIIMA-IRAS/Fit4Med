@@ -23,7 +23,7 @@ import threading
 import signal
 from enum import Enum
 
-from fsm import StateMachine, State, Event, InvalidTransition, GuardFailed, TransitionTimeout
+from fsm import StateMachine, State, Event, InvalidTransition, GuardFailed, TransitionTimeout, PendingTransition
 from udp_client import UdpClient
 from utils import (
     check_env_running, 
@@ -324,13 +324,12 @@ class PLCControllerInterface(Node):
             return Event.START
 
         if self.estop_cached == EStopState.OK and estop_value == EStopState.OK:
-            if (
-                sw_estop_value == EStopState.EMERGENCY
-                and self.sw_estop_cached != sw_estop_value
-            ):
-                self.publish_command('PLC_node/estop', 0)           # Emergency stop (deactivate)
-                self.publish_command('PLC_node/manual_mode', 0)     # Return to automatic
-                self.get_logger().info(bc.FAIL + 'Raised a SW ESTOP!' + bc.ENDC) #type: ignore
+            if self.sw_estop_cached != sw_estop_value:
+                if sw_estop_value == EStopState.EMERGENCY:
+                    self.publish_command('PLC_node/estop', 0)           # Emergency stop (deactivate)
+                    self.publish_command('PLC_node/manual_mode', 0)     # Return to automatic
+                    self.get_logger().info(bc.FAIL + 'Raised a SW ESTOP!' + bc.ENDC) #type: ignore
+                self.sw_estop_cached = sw_estop_value
             return Event.NONE
 
         if self.estop_cached == EStopState.OK and estop_value == EStopState.EMERGENCY:
@@ -361,8 +360,9 @@ class PLCControllerInterface(Node):
                 self.get_logger().error(f"Guard condition failed: {e}") #type: ignore
             
         else:
+            pending = self.fsm.pending
             try:
-                if event == Event.STOP and self.fsm.pending.event == Event.START:
+                if event == Event.STOP and pending.event == Event.START:
                     self.get_logger().warning( #type: ignore
                         "Emergency stop requested while START transition is pending. "
                         "Cancelling startup and triggering STOP."
@@ -380,9 +380,17 @@ class PLCControllerInterface(Node):
                 self.get_logger().error(f"Guard condition failed: {e}") #type: ignore
             except TransitionTimeout as e:
                 self.get_logger().error(f"Timeout transition: {e}") #type: ignore
-                self.fsm.trigger(Event.FAIL)
+                self._cleanup_timed_out_transition(pending)
             
+    def _cleanup_timed_out_transition(self, pending: PendingTransition | None) -> None:
+        if pending is None:
+            return
 
+        if pending.event == Event.START:
+            if pending.source == State.IDLE:
+                self._kill_env()
+            elif pending.source == State.IDLE_RECOVERY:
+                self._kill_recovery_env()
 
     def state_callback(self, msg: PlcStates) -> None:
         # ========== Acquire lock to prevent concurrent execution ==========
