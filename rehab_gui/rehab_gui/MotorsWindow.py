@@ -1,6 +1,8 @@
 # Copyright 2026 CNR-STIIMA
 # SPDX-License-Identifier: Apache-2.0
 
+import json
+
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import QTimer
@@ -13,6 +15,8 @@ class MotorsWindow(QtWidgets.QWidget):
         super().__init__()
         self.ui = Ui_MotorsWindow()
         self.ui.setupUi(self)  # Set up the UI for the secondary widget
+        self._last_plc_state = None
+        self._last_plc_pending = None
 
     def connect(self, ROS: RosCommunicationManager, parent_timer: QTimer):
         self.ROS : RosCommunicationManager = ROS
@@ -58,8 +62,53 @@ class MotorsWindow(QtWidgets.QWidget):
 
     @QtCore.pyqtSlot(bytes, tuple)
     def onUdpMessageReceived(self, data, addr):
-        message = data.decode("utf-8", errors="replace")
+        previous_plc_status = (self._last_plc_state, self._last_plc_pending)
+        message = self._format_udp_message(data)
         self.ui.plainTextEdit_udp_channel.setPlainText(message)
+        current_plc_status = (self._last_plc_state, self._last_plc_pending)
+        if current_plc_status != previous_plc_status:
+            self._last_emergency_state = None
+
+    def _format_udp_message(self, data: bytes) -> str:
+        message = data.decode("utf-8", errors="replace")
+        try:
+            payload = json.loads(message)
+        except json.JSONDecodeError:
+            self._last_plc_state = message.strip()
+            self._last_plc_pending = None
+            return message
+
+        if not isinstance(payload, dict):
+            self._last_plc_state = message.strip()
+            self._last_plc_pending = None
+            return message
+
+        if payload.get("schema") != "fit4med.plc_fsm_status.v1":
+            self._last_plc_state = message.strip()
+            self._last_plc_pending = None
+            return message
+
+        state = payload.get("state")
+        state = state if isinstance(state, str) else ""
+        self._last_plc_state = state
+
+        pending = payload.get("pending")
+        if not isinstance(pending, dict):
+            self._last_plc_pending = None
+            return state
+        self._last_plc_pending = pending
+
+        event = pending.get("event")
+        source = pending.get("source")
+        target = pending.get("target")
+        steps = pending.get("steps")
+
+        event = event if isinstance(event, str) else "UNKNOWN"
+        source = source if isinstance(source, str) else "UNKNOWN"
+        target = target if isinstance(target, str) else "UNKNOWN"
+        steps_text = f" [{steps}]" if steps is not None else ""
+
+        return f"{state} | pending {event}: {source} -> {target}{steps_text}"
 
     def resetFaults(self) -> None:
         if self.ui.comboBox_ResetFaults.currentIndex() == 2:
@@ -112,8 +161,10 @@ class MotorsWindow(QtWidgets.QWidget):
         if state_key != self._last_emergency_state:
             self._last_emergency_state = state_key
             if state_key == 'disconnected':
-                if self.ui.plainTextEdit_udp_channel.toPlainText().strip() == "IDLE_RECOVERY" or\
-                    self.ui.plainTextEdit_udp_channel.toPlainText().strip() == "IDLE":
+                if (
+                    self._last_plc_pending is None
+                    and self._last_plc_state in ("IDLE_RECOVERY", "IDLE")
+                ):
                     self.ui.lineEdit_Emergency.setText('PLC Ready -- Turn the Key to Start')
                     self.ui.lineEdit_Emergency.setStyleSheet("background-color: rgb(0,128,0); color: white")
                 else:
@@ -160,4 +211,3 @@ class MotorsWindow(QtWidgets.QWidget):
             self._ec_items[i][0].setText(name)
         for i, state in enumerate(self.ROS.getSlaveStates()):
             self._ec_items[i][1].setText(state)
-

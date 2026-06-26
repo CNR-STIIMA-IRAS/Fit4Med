@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from PyQt5.QtCore import QThread, QObject, pyqtSignal, pyqtSlot
+import json
 import socket
 from typing import Any
 
@@ -125,6 +126,26 @@ class UdpCommunicationManager(QObject):
             self.stop_ros_communication.emit()
             self.stop_ros_communication_emitted = True
 
+    def _parse_plc_status(self, data: bytes) -> tuple[str, dict[str, Any] | None]:
+        decoded = data.decode(errors="replace")
+        try:
+            payload = json.loads(decoded)
+        except json.JSONDecodeError:
+            return decoded, None
+
+        if not isinstance(payload, dict):
+            return decoded, None
+
+        if payload.get("schema") != "fit4med.plc_fsm_status.v1":
+            return decoded, None
+
+        state = payload.get("state")
+        pending = payload.get("pending")
+        return (
+            state if isinstance(state, str) else "",
+            pending if isinstance(pending, dict) else None,
+        )
+
     def udpMessageReceived(self, data: bytes) -> None:
         """
         Handle UDP requests from the PLC manager. The PLC manager sends status updates
@@ -137,26 +158,34 @@ class UdpCommunicationManager(QObject):
             RECOVERED = auto()
             ERROR = auto()
         """
-        print(f"[UdpServer] {data.decode()} received from UDP client.")
-        if data in (b'IDLE', b'IDLE_RECOVERY', b'ERROR', b'STOP', b'RECOVERED'):
+        state, pending = self._parse_plc_status(data)
+        pending_event = pending.get("event") if pending is not None else None
+
+        print(f"[UdpServer] {data.decode(errors='replace')} received from UDP client.")
+
+        if pending_event in ("STOP", "FAIL"):
+            self.requestRosCommunicationStop("UDP pending stop/fail transition received.")
+            return
+
+        if state in ('IDLE', 'IDLE_RECOVERY', 'ERROR', 'STOP', 'RECOVERED') and pending is None:
             self.requestRosCommunicationStop("UDP STOP request received.")
-            if data == b'IDLE_RECOVERY' and not self.z_recovery_start_signal_emitted:
+            if state == 'IDLE_RECOVERY' and not self.z_recovery_start_signal_emitted:
                 self.z_recovery_start_signal.emit()
                 self.z_recovery_start_signal_emitted = True
                 self.z_recovery_done_signal_emitted = False
-            elif data == b'RECOVERED' and not self.z_recovery_done_signal_emitted:
+            elif state == 'RECOVERED' and not self.z_recovery_done_signal_emitted:
                 self.z_recovery_done_signal.emit()
                 self.z_recovery_done_signal_emitted = True
                 self.z_recovery_mode_signal_emitted = False
                 self.z_recovery_start_signal_emitted = False
 
-        elif data == b'RUNNING' or data == b'RUNNING_RECOVERY':
+        elif state in ('RUNNING', 'RUNNING_RECOVERY') and pending is None:
             self.stop_ros_communication_emitted = False
 
             if not self.start_ros_communication_emitted:
                 self.start_ros_communication.emit()
                 self.start_ros_communication_emitted = True
-                if data == b'RUNNING_RECOVERY' and not self.z_recovery_mode_signal_emitted:
+                if state == 'RUNNING_RECOVERY' and not self.z_recovery_mode_signal_emitted:
                     self.z_recovery_mode_signal.emit()
                     self.z_recovery_mode_signal_emitted = True
                     self.z_recovery_done_signal_emitted = False

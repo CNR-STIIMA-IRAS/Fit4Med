@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
  
 import os
+import json
 import types
 
 # Must be BEFORE importing rclpy (sets logging format globally)
@@ -529,8 +530,7 @@ class PLCControllerInterface(Node):
             self.get_logger().error(f"Exception in state_callback: {e}") #type: ignore
         finally:
             # ========== FSM States info ==========
-            _msg : str = self.fsm.state.name
-            self._notify_gui(_msg.encode())
+            self._notify_gui(self._fsm_status_payload())
             self.lock.release()
 
     def _kill_recovery_env(self) -> None:
@@ -565,6 +565,24 @@ class PLCControllerInterface(Node):
                 "run_rosbridge.launch", 
                 9090
         )
+
+    def _fsm_status_payload(self) -> bytes:
+        pending = self.fsm.pending
+        payload: dict[str, object] = {
+            "schema": "fit4med.plc_fsm_status.v1",
+            "state": self.fsm.state.name,
+            "pending": None,
+        }
+
+        if pending is not None:
+            payload["pending"] = {
+                "event": pending.event.name,
+                "source": pending.source.name,
+                "target": pending.transition.destination.name,
+                "steps": pending.steps,
+            }
+
+        return json.dumps(payload, separators=(",", ":")).encode()
 
     def _notify_gui(self, udp_msg: bytes) -> None:
         try:
