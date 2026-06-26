@@ -154,62 +154,73 @@ class PLCControllerInterface(Node):
         self.start_environment_requested = True
 
         self.fsm : StateMachine = StateMachine(State.IDLE, self.get_logger()) #type: ignore
-        self.fsm.add_transition(Event.SWITCH_MODE,
-                        State.IDLE, 
-                        State.IDLE_RECOVERY, 
-                        msg="🔑 Change mode (IDLE=>IDLE_RECOVERY)",
+        self.fsm.add_transition(
+            Event.SWITCH_MODE,
+            State.IDLE, 
+            State.IDLE_RECOVERY, 
+            msg="🔑 Change mode (IDLE=>IDLE_RECOVERY)",
         )
-        self.fsm.add_transition(Event.SWITCH_MODE,
-                        State.RECOVERED, 
-                        State.IDLE, 
-                        msg="🔑 Change mode (RECOVERED=>IDLE)",
+        self.fsm.add_transition(
+            Event.SWITCH_MODE,
+            State.RECOVERED, 
+            State.IDLE, 
+            msg="🔑 Change mode (RECOVERED=>IDLE)",
         )
-        self.fsm.add_transition(Event.START,
-                                State.IDLE, 
-                                State.RUNNING, 
-                                msg="🔑 KEY TURN DETECTED: E-stop 0=>1 (IDLE=>RUNNING)",
-                                guard=self._ready_to_start, 
-                                action=self._bringup_env,
-                                success_check=check_env_running,
-                                max_steps=100,
-                                failure_destination=State.ERROR,
+        self.fsm.add_transition(
+            Event.START,
+            State.IDLE, 
+            State.RUNNING, 
+            msg="🔑 KEY TURN DETECTED: E-stop 0=>1 (IDLE=>RUNNING)",
+            guard=self._ready_to_start, 
+            action=self._bringup_env,
+            success_check=check_env_running,
+            max_steps=100,
+            failure_destination=State.ERROR,
         )
-        self.fsm.add_transition(Event.START,
-                                State.IDLE_RECOVERY, 
-                                State.RUNNING_RECOVERY, 
-                                msg="🔑 KEY TURN DETECTED: E-stop 0=>1 (IDLE_RECOVERY=>RUNNING_RECOVERY)",
-                                guard=self._ready_to_start, 
-                                action=self._bringup_recovery_env,
-                                success_check=check_env_running_recovery,
-                                max_steps=100,
-                                failure_destination=State.ERROR)
+        self.fsm.add_transition(
+            Event.START,
+            State.IDLE_RECOVERY, 
+            State.RUNNING_RECOVERY, 
+            msg="🔑 KEY TURN DETECTED: E-stop 0=>1 (IDLE_RECOVERY=>RUNNING_RECOVERY)",
+            guard=self._ready_to_start, 
+            action=self._bringup_recovery_env,
+            success_check=check_env_running_recovery,
+            max_steps=100,
+            failure_destination=State.ERROR
+        )
         
-        self.fsm.add_transition(Event.STOP,
-                        State.RUNNING_RECOVERY,
-                        State.RECOVERED,
-                        msg="🛑 EMERGENCY STOP REQUESTED (RUNNING_RECOVERY=>RECOVERED)",
-                        action=self._kill_recovery_env,
-                        success_check=check_env_running_recovery_stopped,
-                        max_steps=100,
-                        failure_destination=State.ERROR)
+        self.fsm.add_transition(
+            Event.STOP,
+            State.RUNNING_RECOVERY,
+            State.RECOVERED,
+            msg="🛑 EMERGENCY STOP REQUESTED (RUNNING_RECOVERY=>RECOVERED)",
+            action=self._kill_recovery_env,
+            success_check=check_env_running_recovery_stopped,
+            max_steps=100,
+            failure_destination=State.ERROR
+        )
 
-        self.fsm.add_transition(Event.STOP,
-                State.RUNNING, 
-                State.IDLE, 
-                msg="🛑 EMERGENCY STOP REQUESTED (RUNNING=>IDLE)",
-                action=self._kill_env,
-                success_check=check_env_running_stopped,
-                max_steps=100,
-                failure_destination=State.ERROR)
+        self.fsm.add_transition(
+            Event.STOP,
+            State.RUNNING, 
+            State.IDLE, 
+            msg="🛑 EMERGENCY STOP REQUESTED (RUNNING=>IDLE)",
+            action=self._kill_env,
+            success_check=check_env_running_stopped,
+            max_steps=100,
+            failure_destination=State.ERROR
+        )
 
-        self.fsm.add_transition(Event.FAIL,
-                State.RUNNING, 
-                State.ERROR, 
-                msg="� SYSTEM FAILURE (RUNNING=>ERROR)",
-                action=self._kill_env,
-                success_check=check_env_running_stopped,
-                max_steps=100,
-                failure_destination=State.ERROR)
+        self.fsm.add_transition(
+            Event.FAIL,
+            State.RUNNING, 
+            State.ERROR, 
+            msg="� SYSTEM FAILURE (RUNNING=>ERROR)",
+            action=self._kill_env,
+            success_check=check_env_running_stopped,
+            max_steps=100,
+            failure_destination=State.ERROR
+        )
         
         self.fsm.add_transition(Event.FAIL,
                 State.RUNNING_RECOVERY, 
@@ -258,10 +269,11 @@ class PLCControllerInterface(Node):
         self.destroy_node()
     
     def _ros_gui_disconnected(self) -> bool:
-        """Handle ROS GUI disconnection event.
+        """
+        Handle ROS GUI disconnection event.
         """
         msg = self.client.last_received_message
-        if msg == b"ROS_DISCONNECTED":
+        if msg is not None and msg == b"ROS_DISCONNECTED":
             return True
         
         return False
