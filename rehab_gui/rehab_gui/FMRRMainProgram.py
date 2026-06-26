@@ -444,13 +444,17 @@ class MainProgram(QMainWindow):
         elif current_tab == 2:
             self.trainingProtocolWindow.updateWindow()
 
+    def _shutdown_communications(self):
+        self.ros_manager.turnOffMotors()
+        self.ros_manager.stopRosCommunication()
+        self.udp.shutdown()
+
     def closeEvent(self, event):
         MyString = "Do you want to exit?"
         question = QMessageBox(QMessageBox.Question, "Exit Program", MyString, QMessageBox.Yes | QMessageBox.No)
         decision = question.exec_()
         if decision == QMessageBox.Yes:
-            self.ros_manager.turnOffMotors()
-            self.ros_manager.stopRosCommunication()
+            self._shutdown_communications()
             event.accept() 
         else:
             event.ignore()  # Ignore the close event
@@ -460,9 +464,8 @@ class MainProgram(QMainWindow):
         question = QMessageBox(QMessageBox.Question, "Exit Program", MyString, QMessageBox.Yes | QMessageBox.No)
         decision = question.exec_()
         if decision == QMessageBox.Yes:
-              self.ros_manager.turnOffMotors()
-              self.ros_manager.stopRosCommunication()
-              quit()
+            self._shutdown_communications()
+            QApplication.quit()
 
     def onTabChange(self, value: int):
         # This method is called whenever the current tab is changed

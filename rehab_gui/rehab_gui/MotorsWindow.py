@@ -112,7 +112,7 @@ class MotorsWindow(QtWidgets.QWidget):
         if state_key != self._last_emergency_state:
             self._last_emergency_state = state_key
             if state_key == 'disconnected':
-                if self.ui.plainTextEdit_udp_channel.toPlainText().strip() == "READY_TO_START___TURN_THE_KEY":
+                if self.ui.plainTextEdit_udp_channel.toPlainText().strip() == "IDLE_RECOVERY":
                     self.ui.lineEdit_Emergency.setText('Ready to Start -- Turn the Key')
                     self.ui.lineEdit_Emergency.setStyleSheet("background-color: rgb(0,128,0); color: white")
                 else:

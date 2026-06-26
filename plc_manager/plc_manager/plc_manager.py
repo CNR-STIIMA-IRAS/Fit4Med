@@ -201,6 +201,24 @@ class PLCControllerInterface(Node):
                 success_check=check_env_running_recovery_stopped,
                 max_steps=100,
                 failure_destination=State.ERROR)
+
+        self.fsm.add_transition(Event.STOP,
+                State.IDLE,
+                State.IDLE,
+                msg="🛑 EMERGENCY STOP REQUESTED (IDLE=>IDLE)",
+                action=self._kill_env,
+                success_check=check_env_running_stopped,
+                max_steps=100,
+                failure_destination=State.ERROR)
+        
+        self.fsm.add_transition(Event.STOP,
+                State.IDLE_RECOVERY,
+                State.IDLE_RECOVERY,
+                msg="🛑 EMERGENCY STOP REQUESTED (IDLE_RECOVERY=>IDLE_RECOVERY)",
+                action=self._kill_recovery_env,
+                success_check=check_env_running_recovery_stopped,
+                max_steps=100,
+                failure_destination=State.ERROR)
     
     def cleanup(self) -> None:
         """Perform graceful cleanup and resource deallocation.
@@ -293,6 +311,34 @@ class PLCControllerInterface(Node):
         )
 
 
+    def _detect_estop_event(
+        self,
+        estop_value: EStopState,
+        sw_estop_value: EStopState,
+    ) -> Event:
+        if (
+            self.estop_cached == EStopState.EMERGENCY
+            and estop_value == EStopState.OK
+            and sw_estop_value == EStopState.OK
+        ):
+            return Event.START
+
+        if self.estop_cached == EStopState.OK and estop_value == EStopState.OK:
+            if (
+                sw_estop_value == EStopState.EMERGENCY
+                and self.sw_estop_cached != sw_estop_value
+            ):
+                self.publish_command('PLC_node/estop', 0)           # Emergency stop (deactivate)
+                self.publish_command('PLC_node/manual_mode', 0)     # Return to automatic
+                self.get_logger().info(bc.FAIL + 'Raised a SW ESTOP!' + bc.ENDC) #type: ignore
+            return Event.NONE
+
+        if self.estop_cached == EStopState.OK and estop_value == EStopState.EMERGENCY:
+            return Event.STOP
+
+        return Event.NONE
+
+
     def _state_callback_estop(self, estop_value: EStopState, 
                               z_limit_active: bool, 
                               sw_estop_value: EStopState) -> None:
@@ -300,69 +346,41 @@ class PLCControllerInterface(Node):
         ESTOP : EStopState = estop_value
         SW_ESTOP: EStopState = sw_estop_value
        
-        ################### DEFINE IF A TRANSITION IS TRIGGERED ##############
-        event = Event.NONE
+        
+        event = self._detect_estop_event(ESTOP, SW_ESTOP)
         if self.fsm.pending is None:
-            # In the recovery mode, to prevent re-trigger 
-            # when user turns reset key, there is a NOT(XOR) logic between the estop 
-            # and z_limit_switch:
-            # EMERGENCY = 0, z_limit_switch = 1 -> NOT(1) -> ESTOP 0
-            #       => One of the emergency is active, so we must stop all
-            # EMERGENCY = 1, z_limit_switch = 0 -> NOT(1) -> ESTOP 0 
-            #       => We achieved the z limit. The emergency is active, so we must stop all
-            #          However, after having stopped all, the user must turn the key to
-            #          reset the emergency. Indeed, we must tell the PLC to not consider 
-            #          for a while the value of the z_limit, otherwise we could not move the machine
-            #          In the recovery mode, therefore, the ESTOP is == EMERGENCY and do not cosider
-            #          the z_limit.   
-            # EMERGENCY = 1, z_limit_switch = 1 -> NOT(0) -> ESTOP 1
-            #       => If we are in the recovery mode, it does mean that we solved the range of motion issue.
-            #          THerefore, we must STOP the recovery mode and RESTART the normal operation.
-            #       => if we are not in the recovery mode, it does mean that everithing is OK
-            # EMERGENCY = 0, z_limit_switch = 0 -> NOT(0) -> ESTOP 1
-            #       => THere is an emergency, and we must stop all in recovery mode, since the z_limit_switch
-            #          is not active. We must also clear the other emergency.
-            #
-            # ========== TRANSITION: 0=>1 ==========
-            if( self.estop_cached == EStopState.EMERGENCY and 
-                ESTOP == EStopState.OK and
-                SW_ESTOP == EStopState.OK):
-                event = Event.START 
-                self.estop_cached = ESTOP
-            # ==========  ==========
-            elif self.estop_cached == EStopState.OK and ESTOP == EStopState.OK:
-                if( SW_ESTOP== EStopState.EMERGENCY and
-                    self.sw_estop_cached != SW_ESTOP):
-                    self.publish_command('PLC_node/estop', 0)           # Emergency stop (deactivate)
-                    self.publish_command('PLC_node/manual_mode', 0)     # Return to automatic
-                    self.get_logger().info(bc.FAIL + 'Raised a SW ESTOP!' +bc.ENDC) #type: ignore
-                    self.sw_estop_cached = SW_ESTOP
-                    event = Event.NONE
-            # ========== TRANSITION: 1=>0 (E-STOP) ==========
-            elif self.estop_cached == EStopState.OK and ESTOP == EStopState.EMERGENCY:
-                event = Event.STOP
-                self.estop_cached = ESTOP
-
-            # ========== STABLE EMERGENCY: check if z_limit caused it ==========
-            elif ESTOP == EStopState.EMERGENCY and self.estop_cached == EStopState.EMERGENCY:
-                event = Event.NONE
             
-            ########################################################################
             try:
                 if event != Event.NONE:
-                    self.fsm.trigger(event) #type: ignore                                 ) 
+                    self.fsm.trigger(event) #type: ignore 
+                    self.estop_cached = ESTOP
+                    self.sw_estop_cached = SW_ESTOP
             except InvalidTransition as e:
                 self.get_logger().error(f"Invalid transition: {e}") #type: ignore
             except GuardFailed as e:
                 self.get_logger().error(f"Guard condition failed: {e}") #type: ignore
-            ########################################################################
+            
         else:
             try:
+                if event == Event.STOP and self.fsm.pending.event == Event.START:
+                    self.get_logger().warning( #type: ignore
+                        "Emergency stop requested while START transition is pending. "
+                        "Cancelling startup and triggering STOP."
+                    )
+                    self.fsm.cancel_pending()
+                    self.fsm.trigger(Event.STOP) #type: ignore
+                    self.estop_cached = ESTOP
+                    self.sw_estop_cached = SW_ESTOP
+                    return
+
                 status = self.fsm.step() #type: ignore
             except InvalidTransition as e:
                 self.get_logger().error(f"Invalid transition: {e}") #type: ignore
+            except GuardFailed as e:
+                self.get_logger().error(f"Guard condition failed: {e}") #type: ignore
             except TransitionTimeout as e:
                 self.get_logger().error(f"Timeout transition: {e}") #type: ignore
+                self.fsm.trigger(Event.FAIL)
             
 
 

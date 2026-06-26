@@ -88,6 +88,16 @@ class UdpCommunicationManager(QObject):
         self.server.message_received.connect(self.onUdpMessageReceived)
         self.udp_thread.start()
 
+    def shutdown(self, wait_msec: int = 2000) -> None:
+        """Stop the UDP socket and wait for the worker thread to exit."""
+        if not self.udp_thread.isRunning():
+            return
+
+        self.server.stop()
+        self.udp_thread.quit()
+        if not self.udp_thread.wait(wait_msec):
+            print("[UdpServer] UDP thread did not stop cleanly.")
+
     @pyqtSlot(bytes, tuple)
     def onUdpMessageReceived(self, data: bytes, addr: str) -> None:
         self.udp_message_received.emit(data, addr)
