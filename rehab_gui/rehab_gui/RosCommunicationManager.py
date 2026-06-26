@@ -57,11 +57,19 @@ class RosCommunicationManager(QObject):
         self.roslib_first_time_connection = True
         self.manual_mode_activated = False
         self._exercise_in_suspension: bool = False
+        self._stop_signal_emitted = False
 
         self.worker_thread = Worker(self.updateState, loop_period_s=0.2)
         self.worker_thread.finished.connect(self.onUpdateWorkerThreadFinished)
     
     def onUpdateWorkerThreadFinished(self):
+        self._emit_stop_ros_communication_once()
+
+    def _emit_stop_ros_communication_once(self) -> None:
+        if self._stop_signal_emitted:
+            return
+
+        self._stop_signal_emitted = True
         self.stop_ros_communication_signal.emit()
 
     def startRosCommunication(self) -> None:
@@ -93,12 +101,13 @@ class RosCommunicationManager(QObject):
 
         self.ROS = SyncRosManager(self.number_of_ec_slaves, self.joint_names, self.ros_client)
 
+        self._stop_signal_emitted = False
         self.worker_thread.start_thread()
         self.ros_communication_established_signal.emit()
 
     def stopRosCommunication(self) -> None:
         print("Stopping ROS processes...")
-        
+
         if self.worker_thread.isRunning():
             self.worker_thread.stop_thread()
             if not self.worker_thread.wait(1000):
@@ -135,7 +144,7 @@ class RosCommunicationManager(QObject):
         # ROS was never started, or its worker already stopped. Emit immediately
         # so plc_manager receives STOPPED and the UDP flags are reset.
         print("[MainProgram] ROS worker was not running — signaling stop immediately.")
-        self.stop_ros_communication_signal.emit()
+        self._emit_stop_ros_communication_once()
         
             
     def isRosCommunicationActive(self) -> bool:
