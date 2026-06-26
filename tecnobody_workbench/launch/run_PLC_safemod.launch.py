@@ -141,7 +141,7 @@ def generate_launch_description():
         package='robot_state_publisher',
         executable='robot_state_publisher',
         output='screen',
-        parameters=[robot_description]
+        parameters=[robot_description],
         additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
     )
     
