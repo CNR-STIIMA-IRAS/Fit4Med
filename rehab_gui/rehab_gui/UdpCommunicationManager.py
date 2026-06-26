@@ -13,7 +13,7 @@ from typing import Any
 class UdpServer(QObject):
     message_received = pyqtSignal(bytes, tuple)  # data, addr
 
-    def __init__(self, host="0.0.0.0", port=5005, parent=None):
+    def __init__(self, host:str="0.0.0.0", port:int=5005, parent:Any=None):
         super().__init__(parent)
         self.host = host
         self.port = port
@@ -94,19 +94,19 @@ class UdpCommunicationManager(QObject):
         self.udpMessageReceived(data)
 
     def onResetRosCommunication(self) -> None:
-        self.server.send_response(b"ROS_DISCONNECTED", (self.remote_ip, self.remote_port))
+        self.server.send_response(b"ROS_DISCONNECTED")
         self.start_ros_communication_emitted = False
-        self.stop_ros_communication_emitted = False
+        # self.stop_ros_communication_emitted = False
 
     @pyqtSlot()
     def onRosCommunicationEstablished(self) -> None:
         print("[UdpServer] ROS communication established.")
-        self.server.send_response(b"ROS_CONNECTED", (self.remote_ip, self.remote_port))
+        self.server.send_response(b"ROS_CONNECTED")
 
     @pyqtSlot()
     def onRosCommunicationFailed(self) -> None:
         print("[UdpServer] ROS communication failed to start.")
-        self.server.send_response(b"ROS_CONNECTION_FAILED", (self.remote_ip, self.remote_port))
+        self.server.send_response(b"ROS_CONNECTION_FAILED")
         self.start_ros_communication_emitted = False
 
     def requestRosCommunicationStop(self, reason: str) -> None:
@@ -128,28 +128,28 @@ class UdpCommunicationManager(QObject):
             ERROR = auto()
         """
         print(f"[UdpServer] {data.decode()} received from UDP client.")
-        if data == b'IDLE' or data == b'IDLE_RECOVERY':
+        if data in (b'IDLE', b'IDLE_RECOVERY', b'ERROR', b'STOP', b'RECOVERED'):
             self.requestRosCommunicationStop("UDP STOP request received.")
-            if data == b'IDLE_RECOVERY' and not self.z_recovery_mode_signal_emitted:
-                self.z_recovery_mode_signal.emit()
-                self.z_recovery_mode_signal_emitted = True
+            if data == b'IDLE_RECOVERY' and not self.z_recovery_start_signal_emitted:
+                self.z_recovery_start_signal.emit()
+                self.z_recovery_start_signal_emitted = True
                 self.z_recovery_done_signal_emitted = False
-
-        elif data == b'RUNNING' or data == b'RUNNING_RECOVERY':
-            if not self.start_ros_communication_emitted:
-                self.start_ros_communication.emit()
-                self.start_ros_communication_emitted = True
-                if data == b'RUNNING_RECOVERY' and not self.z_recovery_start_signal_emitted:
-                    self.z_recovery_start_signal.emit()
-                    self.z_recovery_start_signal_emitted = True
-                    self.z_recovery_done_signal_emitted = False
-
-        elif data == b'RECOVERED':
-            if not self.z_recovery_done_signal_emitted:
+            elif data == b'RECOVERED' and not self.z_recovery_done_signal_emitted:
                 self.z_recovery_done_signal.emit()
                 self.z_recovery_done_signal_emitted = True
                 self.z_recovery_mode_signal_emitted = False
                 self.z_recovery_start_signal_emitted = False
+
+        elif data == b'RUNNING' or data == b'RUNNING_RECOVERY':
+            self.stop_ros_communication_emitted = False
+
+            if not self.start_ros_communication_emitted:
+                self.start_ros_communication.emit()
+                self.start_ros_communication_emitted = True
+                if data == b'RUNNING_RECOVERY' and not self.z_recovery_mode_signal_emitted:
+                    self.z_recovery_mode_signal.emit()
+                    self.z_recovery_mode_signal_emitted = True
+                    self.z_recovery_done_signal_emitted = False
         else:
             print(f"[UdpServer] UDP packet received from UDP client: {data}")
 

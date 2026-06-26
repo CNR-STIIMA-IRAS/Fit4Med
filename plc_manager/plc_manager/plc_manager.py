@@ -7,8 +7,6 @@ import types
 # Must be BEFORE importing rclpy (sets logging format globally)
 os.environ['RCUTILS_CONSOLE_OUTPUT_FORMAT'] = '[{severity}] [{name}]: {message}'
 
-SKIP_ETHERCAT_CHECK = os.environ.get("PLC_MANAGER_SKIP_ETHERCAT", "0") == "1"
-
 import rclpy
 from rclpy.signals import SignalHandlerOptions
 from rclpy.node import Node
@@ -172,7 +170,6 @@ class PLCControllerInterface(Node):
                         State.RUNNING_RECOVERY,
                         State.RECOVERED,
                         msg="🛑 EMERGENCY STOP REQUESTED (RUNNING_RECOVERY=>RECOVERED)",
-                        guard=self._ethercat_slaves_status_ok, 
                         action=self._kill_recovery_env,
                         success_check=check_env_running_recovery_stopped,
                         max_steps=100,
@@ -182,9 +179,26 @@ class PLCControllerInterface(Node):
                 State.RUNNING, 
                 State.IDLE, 
                 msg="🛑 EMERGENCY STOP REQUESTED (RUNNING=>IDLE)",
-                guard=self._ethercat_slaves_status_ok, 
                 action=self._kill_env,
                 success_check=check_env_running_stopped,
+                max_steps=100,
+                failure_destination=State.ERROR)
+
+        self.fsm.add_transition(Event.FAIL,
+                State.RUNNING, 
+                State.ERROR, 
+                msg="� SYSTEM FAILURE (RUNNING=>ERROR)",
+                action=self._kill_env,
+                success_check=check_env_running_stopped,
+                max_steps=100,
+                failure_destination=State.ERROR)
+        
+        self.fsm.add_transition(Event.FAIL,
+                State.RUNNING_RECOVERY, 
+                State.ERROR, 
+                msg=" SYSTEM FAILURE (RUNNING_RECOVERY=>ERROR)",
+                action=self._kill_recovery_env,
+                success_check=check_env_running_recovery_stopped,
                 max_steps=100,
                 failure_destination=State.ERROR)
     
@@ -215,6 +229,9 @@ class PLCControllerInterface(Node):
             return True
         
         return False
+
+    def _ros_gui_connection_failed(self) -> bool:
+        return self.client.last_received_message == b"ROS_CONNECTION_FAILED"
     
     def _ethercat_slaves_status_ok(self) -> bool:
         return self.ethercat_check_state == EthercatCheckState.READY
@@ -284,8 +301,8 @@ class PLCControllerInterface(Node):
         SW_ESTOP: EStopState = sw_estop_value
        
         ################### DEFINE IF A TRANSITION IS TRIGGERED ##############
+        event = Event.NONE
         if self.fsm.pending is None:
-            
             # In the recovery mode, to prevent re-trigger 
             # when user turns reset key, there is a NOT(XOR) logic between the estop 
             # and z_limit_switch:
@@ -332,7 +349,8 @@ class PLCControllerInterface(Node):
             
             ########################################################################
             try:
-                self.fsm.trigger(event) #type: ignore                                 ) 
+                if event != Event.NONE:
+                    self.fsm.trigger(event) #type: ignore                                 ) 
             except InvalidTransition as e:
                 self.get_logger().error(f"Invalid transition: {e}") #type: ignore
             except GuardFailed as e:
@@ -350,11 +368,12 @@ class PLCControllerInterface(Node):
 
     def state_callback(self, msg: PlcStates) -> None:
         # ========== Acquire lock to prevent concurrent execution ==========
+        if not self.lock.acquire(blocking=False):
+            self.get_logger().warn("state_callback already in execution, ignore.") #type: ignore
+            return
+        
         try:
-            if not self.lock.acquire(blocking=False):
-                self.get_logger().warn("state_callback already in execution, ignore.") #type: ignore
-                return
-            
+    
             # ========== Extract PLC state from message ==========
             self.interface_names = list(msg.interface_names) #type: ignore
             self.state_values = list(msg.values) #type: ignore
@@ -366,32 +385,36 @@ class PLCControllerInterface(Node):
             z_limit_active = self._get_z_limit_switch_state()
             
             # ========== First Call of the Callback ========== 
-        
-            if self.fsm.state == State.IDLE and z_limit_active:
-                self.get_logger().info( #type: ignore
-                    bc.MAGENTA + 'Raised a Z-LIMIT event! Set IDLE_RECOVERY state' + bc.ENDC,
-                    throttle_duration_sec=5.0
-                )
-                self.fsm.trigger(Event.SWITCH_MODE)
+            if self.fsm.pending is None:
+                if self.fsm.state == State.IDLE and z_limit_active:
+                    self.get_logger().info( #type: ignore
+                        bc.MAGENTA + 'Raised a Z-LIMIT event! Set IDLE_RECOVERY state' + bc.ENDC,
+                        throttle_duration_sec=5.0
+                    )
+                    self.fsm.trigger(Event.SWITCH_MODE)
+                
+                if self.fsm.state == State.RECOVERED and not z_limit_active:
+                    self.get_logger().info( #type: ignore
+                        bc.MAGENTA + 'Recovered the Z-LIMIT event' + bc.ENDC,
+                        throttle_duration_sec=5.0
+                    )
+                    self.fsm.trigger(Event.SWITCH_MODE)
             
-            if self.fsm.state == State.RECOVERED and not z_limit_active:
-                self.get_logger().info( #type: ignore
-                    bc.MAGENTA + 'Recovered the Z-LIMIT event' + bc.ENDC,
-                    throttle_duration_sec=5.0
-                )
-                self.fsm.trigger(Event.SWITCH_MODE)
-            
-            if self.fsm.state == State.IDLE and self.fsm.pending is None:    
-                self.get_logger().info( #type: ignore
-                    bc.MAGENTA + 'Waiting for ros controllers to start - TURN THE KEY to START!' + bc.ENDC,
-                    throttle_duration_sec=5.0
-                )
+                if self.fsm.state == State.IDLE:    
+                    self.get_logger().info( #type: ignore
+                        bc.MAGENTA + 'Waiting for ros controllers to start - TURN THE KEY to START!' + bc.ENDC,
+                        throttle_duration_sec=5.0
+                    )
 
-            elif self.fsm.state == State.IDLE_RECOVERY and self.fsm.pending is None:
-                self.get_logger().info( #type: ignore
-                    bc.MAGENTA + 'RECOVERY MODE - Waiting for ros controllers to start - TURN THE KEY to START!' + bc.ENDC,
-                    throttle_duration_sec=5.0
-                )
+                elif self.fsm.state == State.IDLE_RECOVERY:
+                    self.get_logger().info( #type: ignore
+                        bc.MAGENTA + 'RECOVERY MODE - Waiting for ros controllers to start - TURN THE KEY to START!' + bc.ENDC,
+                        throttle_duration_sec=5.0
+                    )
+
+                if self.fsm.state in (State.RUNNING, State.RUNNING_RECOVERY) and self._ros_gui_connection_failed():
+                    self.client.clear_last_message()
+                    self.fsm.trigger(Event.FAIL)
 
             # ========== Process Status info ==========
             processes_status = \
@@ -413,6 +436,9 @@ class PLCControllerInterface(Node):
                 (self.processes_status_cached and not processes_status)
             ):
                 sw_estop = EStopState.EMERGENCY
+
+            if self.fsm.state == State.ERROR:
+                sw_estop = EStopState.EMERGENCY
                         
             self.processes_status_cached = processes_status
 
@@ -420,10 +446,16 @@ class PLCControllerInterface(Node):
             for int_idx in range(len(self.interface_names)):
                 if self.interface_names[int_idx] == "estop":
                     self._state_callback_estop(
-                        self.state_values[int_idx], #type: ignore
+                        EStopState.OK if self.state_values[int_idx] == 1 else EStopState.EMERGENCY, #type: ignore
                         z_limit_active, 
                         sw_estop
                     )
+        except InvalidTransition as e:
+            self.get_logger().error(f"Invalid transition: {e}") #type: ignore
+        except GuardFailed as e:
+            self.get_logger().error(f"Guard condition failed: {e}") #type: ignore
+        except Exception as e:
+            self.get_logger().error(f"Exception in state_callback: {e}") #type: ignore
         finally:
             # ========== FSM States info ==========
             _msg : str = self.fsm.state.name
@@ -460,7 +492,6 @@ class PLCControllerInterface(Node):
                 "run_rosbridge.launch", 
                 9090
         )
-
 
     def _notify_gui(self, udp_msg: bytes) -> None:
         try:
@@ -582,7 +613,6 @@ def main(args=None): #type: ignore
             mt_executor.spin_once(timeout_sec=0.1)
 
             if node.ethercat_check_requested:
-                node.ethercat_check_requested = False
 
                 if not node.ethercat_slaves_status_check_client.wait_for_service(timeout_sec=5.0):
                     node.get_logger().error( #type: ignore
@@ -590,7 +620,7 @@ def main(args=None): #type: ignore
                         "Ensure ethercat_slaves_status_check is running."
                     )
                     continue
-    
+                    
                 future = node.ethercat_slaves_status_check_client.call_async(Trigger.Request()) #type: ignore
                 node.ethercat_check_state = EthercatCheckState.PENDING
 
@@ -607,6 +637,8 @@ def main(args=None): #type: ignore
                     )
                 else:
                     node.ethercat_check_state = EthercatCheckState.FAILED
+
+                node.ethercat_check_requested = not (node.ethercat_check_state == EthercatCheckState.READY)
 
             # ========== Initial bringup sequence (once only) ==========
             if not bringup_done \

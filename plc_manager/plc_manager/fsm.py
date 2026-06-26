@@ -30,8 +30,8 @@ class Event(Enum):
     SWITCH_MODE = auto()
     START = auto()
     STOP = auto()
+    FAIL = auto()
     NONE = auto()
-
 
 class TransitionStatus(Enum):
     COMPLETED = auto()
