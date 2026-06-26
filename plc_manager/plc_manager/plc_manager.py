@@ -1,114 +1,8 @@
 # Copyright 2026 CNR-STIIMA
 # SPDX-License-Identifier: Apache-2.0
  
-"""PLC state machine manager for safety-certified rehabilitation platform control.
-
-This module implements a critical state machine that coordinates the entire rehabilitation
-system lifecycle through a safety-certified PLC connected to the E-stop chain. The node
-manages transitions between two operational states:
-
-IDLE State:
-    - PLC waits for enable signal (reset key turn that enables software reset)
-    - Safety sensors monitored; system inactive
-    - Robot motion stack and its controllers not running
-    
-RUNNING State:
-    - Control software (run_platform_control.launch.py) executing
-    - All the default controllers are loaded
-    - Real-time motion tracking and safety monitoring operational
-
-State Transition Logic:
-    KEY TURN (estop 0→1):
-        [IDLE] → (check_ethercat_plc_node && subscribers active)
-               → launch_ros2_env.sh (with the argument [--perform-homing] if is the first time)
-               → [RUNNING]
-    E-STOP PRESS (estop 1→0):
-        [RUNNING] → send STOP to rehab_gui (wait 10 secs for STOPPED ack)
-                  → kill run_platform_control.launch.py
-                  → emergency stop PLC (E-stop 0→1)
-                  → [IDLE]
-    LAUNCHER CRASH:
-        [RUNNING] → detect launcher not found in pgrep
-                  → log warning
-                  → set E-stop low to acknowledge crash
-                  → resume monitoring for next key turn
-
-Control Flow Detail:
-    
-    1. PLC Hardware Event (key turn: estop 0→1)
-    2. state_callback() receives PlcStates message from plc_controller
-    3. Transition detected: estop changed from 0 to 1
-    4. check_ethercat_plc_node(): verify EtherCAT slave active ("FLX0-GETC100" OP)
-    5. If first time: launch with --perform-homing flag (motor calibration)
-    6. If not first time: launch without homing (faster startup)
-    7. Launch script runs: ros2 launch tecnobody_workbench run_platform_control.launch.py
-    8. Controllers loaded: joint_trajectory_controller, F/T broadcaster, etc.
-    9. Motion stack ready to receive exercise commands from rehab_gui
-    
-    When E-Stop pressed (estop 1→0):
-    1. state_callback() detects transition
-    2. Send UDP "STOP" message to rehab_gui port 5005
-    3. Wait for "STOPPED" acknowledgment (10s timeout)
-    4. Kill launcher process: ros2 launch ... run_platform_control.launch.py
-    5. Publish emergency E-stop command to PLC (E-stop 0→1)
-    6. Return to IDLE state
-
-UDP Communication (GUI Status):
-    - Sends b"STOP" when E-stop pressed (triggers GUI emergency halt)
-    - Sends b"RUNNING" periodically (50 Hz / 10 = 5 Hz) to indicate system operational
-    - Receives b"STOPPED" acknowledgment from GUI (confirms safe shutdown)
-    - Used to coordinate graceful system-wide shutdown
-
-Command Message Structure (PlcController):
-    Interface Names (8 outputs to PLC):
-        0: PLC_node/mode_of_operation    (unused, reserved)
-        1: PLC_node/power_cutoff         (unused, reserved)
-        2: PLC_node/sonar_teach          (ultrasonic sensor calibration, see sonar_teach.py)
-        3: PLC_node/s_output.4           (unused, reserved)
-        4: PLC_node/estop                (main emergency stop control)
-        5: PLC_node/manual_mode          (unused, reserved)
-        6: PLC_node/force_sensors_pwr    (enable/disable F/T sensor power)
-        7: PLC_node/s_output.8           (unused, reserved)
-    
-    Values: [0, 0, 0, 0, 0, 0, 0, 0] initially, updated by publish_command()
-
-EtherCAT Health Check:
-    Discovers all ~/get_slave_states_masterN services on the ROS graph (one per
-    EtherCAT master) and queries each.  Checks that the slave whose name contains
-    the 'plc_slave_identifier' parameter (default: 'sickPLC') is in OP state.
-    If not found: system not ready to launch control stack
-
-Performance:
-    - State callback: <1 ms (non-blocking due to threading.Lock)
-    - Launcher status check: 1 Hz (1 second timer)
-    - UDP heartbeat: 50 Hz (every 20ms during RUNNING state)
-    - Bringup latency: ~2s (from key turn to controllers ready)
-
-Thread Safety:
-    - state_callback() and publish_command() protected by threading.Lock
-    - Prevents race conditions between state updates and command publishing
-    - Non-blocking acquire fails gracefully if callback already executing
-
-Attributes:
-    plc_group (MutuallyExclusiveCallbackGroup): Serializes PLC state updates
-    timer_group (MutuallyExclusiveCallbackGroup): Isolates launcher check timer
-    service_group (MutuallyExclusiveCallbackGroup): Reserved for future services
-    state_subscriber (Subscription): Receives PlcStates at max rate from plc_controller
-    command_publisher (Publisher): Publishes PlcController commands with RELIABLE QoS
-    interface_names (List[str]): 8 interface names for PLC command mapping
-    state_values (List[int]): Current 8 input values from PLC state
-    command_values (List[int]): 8 output command values to PLC
-    ESTOP (int): Cached E-stop state (0=emergency, 1=normal operation)
-    lock (threading.Lock): Protects state_callback() concurrent access
-    client (UdpClient): UDP socket for GUI coordination
-    ros_launched (bool): Flag indicating run_platform_control.launch.py active
-    check_ros_status_timer (Timer): 1 Hz launcher health check
-    FIRST_TIME (bool): Flag to apply homing on first launch
-    shutdown_requested (bool): Flag for graceful node shutdown
-"""
-
-import time
 import os
+import types
 
 # Must be BEFORE importing rclpy (sets logging format globally)
 os.environ['RCUTILS_CONSOLE_OUTPUT_FORMAT'] = '[{severity}] [{name}]: {message}'
@@ -118,159 +12,44 @@ SKIP_ETHERCAT_CHECK = os.environ.get("PLC_MANAGER_SKIP_ETHERCAT", "0") == "1"
 import rclpy
 from rclpy.signals import SignalHandlerOptions
 from rclpy.node import Node
-from rclpy.executors import MultiThreadedExecutor, SingleThreadedExecutor
+from rclpy.subscription import Subscription
+from rclpy.qos import QoSProfile, ReliabilityPolicy
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.client import Client
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from tecnobody_msgs.msg import PlcController, PlcStates
-from ethercat_msgs.srv import GetSlaveStates
+from std_srvs.srv import Trigger
 import sys
 import subprocess
 import threading
 import signal
-import socket
+from enum import Enum
 
+from fsm import StateMachine, State, Event, InvalidTransition, GuardFailed, TransitionTimeout
+from udp_client import UdpClient
+from utils import (
+    check_env_running, 
+    check_env_running_recovery, 
+    check_env_running_stopped,
+    check_env_running_recovery_stopped, 
+    stop_launch_environment
+)
+from utils import bcolors as bc
 
-class UdpClient:
-    """Simple UDP client for status messaging to remote GUI.
-    
-    Implements bidirectional UDP communication for coordinating system-wide
-    emergency stop and status reporting. Used to signal rehab_gui when E-stop
-    is pressed and to receive acknowledgments of safe shutdown.
-    
-    Attributes:
-        target_ip (str): IP address of GUI server (typically 127.0.0.1 or 10.2.16.43)
-        target_port (int): UDP port of GUI server (5005)
-        sock (socket): UDP socket for sending and receiving
-        timeout (float): Receive timeout in seconds (default: 2.0)
-    """
+class EStopState(Enum):
+    OK = 1
+    EMERGENCY = 0
 
-    def __init__(
-        self,
-        target_ip: str = "127.0.0.1",
-        target_port: int = 5005,
-        local_port: int = 0,
-        timeout: float = 2.0
-    ):
-        """Initialize UDP client with target server address.
-        
-        Args:
-            target_ip (str): IP address of GUI server
-            target_port (int): UDP port of GUI server (default: 5005)
-            local_port (int): Local port to bind (0 = auto-assign)
-            timeout (float): Receive timeout in seconds (default: 2.0)
-        """
-        self.target_ip = target_ip
-        self.target_port = target_port
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.sock.bind(("0.0.0.0", local_port))
-        self.sock.settimeout(timeout)
-
-    def send(self, message: bytes) -> None:
-        """Send UDP message to target server.
-        
-        Args:
-            message (bytes): Message to send (e.g., b"STOP", b"RUNNING")
-        """
-        self.sock.sendto(message, (self.target_ip, self.target_port))
-
-    def receive(self, bufsize: int = 4096) -> tuple[bytes, tuple]:
-        """Receive UDP message from server (blocking until timeout).
-        
-        Args:
-            bufsize (int): Maximum message size to receive (default: 4096)
-        
-        Returns:
-            tuple: (data, sender_address) or (None, None) on timeout
-        """
-        try:
-            data, addr = self.sock.recvfrom(bufsize)
-            print(f"[UdpClient] Received message from {addr}: {data}")
-            return data, addr
-        except socket.timeout:
-            return None, None
-
-    def close(self) -> None:
-        """Close UDP socket."""
-        self.sock.close()
-
-
-class bcolors:
-    """ANSI color codes for terminal output.
-    
-    Provides colored logging for state transitions and critical events.
-    """
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKCYAN = '\033[96m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-
+class EthercatCheckState(Enum):
+    IDLE = 0
+    PENDING = 1
+    READY = 2
+    FAILED = 3
 
 class PLCControllerInterface(Node):
-    """State machine node for PLC-coordinated system startup/shutdown.
-    
-    This node manages the complete lifecycle of the rehabilitation control system
-    by monitoring E-stop state changes and orchestrating startup/shutdown of the
-    motion control stack (run_platform_control.launch.py).
-    
-    The node implements a two-state machine:
-    
-    IDLE (E-stop=0):
-        - No control software running
-        - Safety sensors monitored by PLC only
-        - Waiting for key turn or reset signal
-    
-    RUNNING (E-stop=1):
-        - Motion control launcher executing
-        - joint_trajectory_controller, F/T sensors active
-        - System ready for exercise execution
-    
-    State transitions are triggered by E-stop signal changes detected via
-    PlcStates subscription. The node ensures graceful transitions by:
-    1. Waiting for GUI acknowledgment before shutdown
-    2. Verifying EtherCAT slave readiness before startup
-    3. Applying homing calibration on first launch
-    4. Monitoring launcher health with 1 Hz status checks
-    
-    Attributes:
-        plc_group (MutuallyExclusiveCallbackGroup): PLC state subscription callback group
-        timer_group (MutuallyExclusiveCallbackGroup): Launcher check timer callback group
-        service_group (MutuallyExclusiveCallbackGroup): Reserved for future services
-        state_subscriber (Subscription): PlcStates from plc_controller
-        command_publisher (Publisher): PlcController commands to plc_controller
-        interface_names (List[str]): 8 PLC output interface identifiers
-        state_values (List[int]): Current 8 input values from PLC
-        command_values (List[int]): 8 output values to send to PLC
-        ESTOP (int): Cached E-stop state for transition detection
-        lock (threading.Lock): Protects concurrent access to state_callback()
-        client (UdpClient): UDP client for GUI coordination (STOP/RUNNING)
-        ros_launched (bool): True if run_platform_control.launch.py is running
-        check_ros_status_timer (Timer): 1 Hz timer for launcher health check
-        FIRST_TIME (bool): Flag to apply homing on initial startup
-        shutdown_requested (bool): Flag for graceful node shutdown
-    """
 
     def __init__(self, target_ip: str):
-        """Initialize PLC controller interface node.
-        
-        Creates ROS 2 node infrastructure:
-        - Subscription to PLC states (estop, inputs, etc.)
-        - Publisher for PLC commands (estop, power, sonar_teach, etc.)
-        - Timer for launcher health checks (1 Hz)
-        - UDP client for GUI coordination
-        
-        Args:
-            target_ip (str): IP address of rehab_gui server for UDP status messages
-                (typically "127.0.0.1" for local testing or "10.2.16.43" for network)
-        
-        Side Effects:
-            - Registers SIGINT and SIGTERM handlers
-            - Sets CPU affinity to core 2 (deterministic scheduling)
-            - Initializes thread lock for state protection
-        """
+
         super().__init__('plc_manager')
 
         # ========== Callback Groups ==========
@@ -282,39 +61,41 @@ class PLCControllerInterface(Node):
         # ========== PLC State Subscription ==========
         # Receives PlcStates from plc_controller at max rate
         # Includes estop, all inputs, and interface names
-        self.state_subscriber_callback_running = False
-        self.state_subscriber = self.create_subscription(
+        self.state_subscriber_callback_running : bool = False
+        self.state_subscriber : Subscription = self.create_subscription( #type: ignore
             PlcStates,
             '/PLC_controller/plc_states',
             self.state_callback,
             10,
-            callback_group=self.plc_group
-        )
+            callback_group=self.plc_group, 
 
+        )
+        
         # ========== PLC Command Publisher ==========
         # RELIABLE QoS: guarantees all commands reach PLC even if temporarily unavailable
-        qos = rclpy.qos.QoSProfile(
+        qos = QoSProfile(
             depth=10,
-            reliability=rclpy.qos.ReliabilityPolicy.RELIABLE
+            reliability=ReliabilityPolicy.RELIABLE
         )
-        self.command_publisher = self.create_publisher(
+        self.command_publisher = self.create_publisher( #type: ignore
             PlcController,
             '/PLC_controller/plc_commands',
             qos,
         )
 
         # ========== PLC State Variables ==========
-        self.interface_names = []
-        self.state_values = []
-        self.command_values = []
-        self.launch_status = []
-        self.ESTOP = 0                          # Cached E-stop value for transition detection
-        self.lock = threading.Lock()            # Protects state_callback() concurrent access
+        self.interface_names : list[str] = []
+        self.state_values : list[int] = []
+        self.command_values : list[int] = []
+        self.launch_status : list[bool] = []
+        self.sw_estop_cached : EStopState = EStopState.OK   # Cached E-stop value for transition detection
+        self.estop_cached : EStopState = EStopState.EMERGENCY   # Cached E-stop value for transition detection
+        self.lock = threading.Lock()                            # Protects state_callback() concurrent access
         
         # ========== Command Message Structure ==========
         # Pre-allocate PlcController message with 10 outputs (matches plc_controller.yaml)
         self.command_msg = PlcController()
-        self.command_msg.values = [0] * 10
+        self.command_msg.values  = [0] * 10
         self.command_msg.interface_names = [
             'PLC_node/mode_of_operation',       # [0] unused
             'PLC_node/power_cutoff',            # [1] unused
@@ -328,22 +109,8 @@ class PLCControllerInterface(Node):
             'PLC_node/z_recovery'               # [9] Z-axis limit switch recovery flag
         ]
 
-        # ========== Z-axis Recovery State ==========
-        # True while recovering from a Z-axis limit-switch emergency.
-        # First emergency (1→0): z_recovery set LOW, in_z_recovery=True.
-        # Second emergency during recovery (switch clears): z_recovery set HIGH, in_z_recovery=False.
-        self.in_z_recovery = False
-
         # ========== Launcher Health Monitoring ==========
-        self.ros_launched = False
-        self.ros_launched_prev = False
-        self.check_ros_status_timer = self.create_timer(
-            1.0,
-            self.check_ros_launch_status,
-            self.timer_group,
-            autostart=False
-        )
-        self.FIRST_TIME = False
+        self.processes_status_cached = False
 
         # ========== UDP Status Client ==========#  
         # Coordinates with rehab_gui for emergency stop and status
@@ -353,87 +120,108 @@ class PLCControllerInterface(Node):
         self.shutdown_requested = False
 
         # ========== Signal Handlers ==========
-        signal.signal(signal.SIGINT, self.signal_handler)
-        signal.signal(signal.SIGTERM, self.signal_handler)
+        signal.signal(signal.SIGINT, self.signal_handler) #type: ignore
+        signal.signal(signal.SIGTERM, self.signal_handler) #type: ignore
 
         # ========== EtherCAT PLC Slave Identifier ==========
         # Substring matched against slave_names returned by GetSlaveStates services.
         # Default matches the configured ros2_control name for the SICK GetC100 PLC.
         self.declare_parameter('plc_slave_identifier', 'sickPLC')
 
-        self.z_limit_active = False
         self.z_limit_still_active = False
 
-    def check_ethercat_plc_node(self) -> bool:
-        """Verify EtherCAT PLC slave is active and operational across all masters.
+        self.ethercat_slaves_status_check_client : Client = self.create_client(Trigger, #type: ignore
+            '/ethercat_slaves_status_check/check', callback_group=self.service_group)
 
-        Discovers all active GetSlaveStates services (one per EtherCAT master) and
-        queries each to find the PLC slave identified by the 'plc_slave_identifier'
-        parameter.  Works correctly in multi-master setups where each ethercat_driver
-        instance registers its service as ~/get_slave_states_masterN.
+        self.ethercat_check_state = EthercatCheckState.IDLE
+        self.ethercat_check_requested = True
+        self.start_environment_requested = True
 
+        self.fsm : StateMachine = StateMachine(State.IDLE, self.get_logger()) #type: ignore
+        self.fsm.add_transition(Event.SWITCH_MODE,
+                        State.IDLE, 
+                        State.IDLE_RECOVERY, 
+                        msg="🔑 Change mode (IDLE=>IDLE_RECOVERY)",
+        )
+        self.fsm.add_transition(Event.SWITCH_MODE,
+                        State.RECOVERED, 
+                        State.IDLE, 
+                        msg="🔑 Change mode (RECOVERED=>IDLE)",
+        )
+        self.fsm.add_transition(Event.START,
+                                State.IDLE, 
+                                State.RUNNING, 
+                                msg="🔑 KEY TURN DETECTED: E-stop 0=>1 (IDLE=>RUNNING)",
+                                guard=self._ready_to_start, 
+                                action=self._bringup_env,
+                                success_check=check_env_running,
+                                max_steps=100,
+                                failure_destination=State.ERROR,
+        )
+        self.fsm.add_transition(Event.START,
+                                State.IDLE_RECOVERY, 
+                                State.RUNNING_RECOVERY, 
+                                msg="🔑 KEY TURN DETECTED: E-stop 0=>1 (IDLE_RECOVERY=>RUNNING_RECOVERY)",
+                                guard=self._ready_to_start, 
+                                action=self._bringup_recovery_env,
+                                success_check=check_env_running_recovery,
+                                max_steps=100,
+                                failure_destination=State.ERROR)
+        
+        self.fsm.add_transition(Event.STOP,
+                        State.RUNNING_RECOVERY,
+                        State.RECOVERED,
+                        msg="🛑 EMERGENCY STOP REQUESTED (RUNNING_RECOVERY=>RECOVERED)",
+                        guard=self._ethercat_slaves_status_ok, 
+                        action=self._kill_recovery_env,
+                        success_check=check_env_running_recovery_stopped,
+                        max_steps=100,
+                        failure_destination=State.ERROR)
+
+        self.fsm.add_transition(Event.STOP,
+                State.RUNNING, 
+                State.IDLE, 
+                msg="🛑 EMERGENCY STOP REQUESTED (RUNNING=>IDLE)",
+                guard=self._ethercat_slaves_status_ok, 
+                action=self._kill_env,
+                success_check=check_env_running_stopped,
+                max_steps=100,
+                failure_destination=State.ERROR)
+    
+    def cleanup(self) -> None:
+        """Perform graceful cleanup and resource deallocation.
+        
+        Called before node destruction to:
+        1. Ask the GUI to stop its ROS communication
+        2. Cancel launcher health check timer
+        3. Close UDP socket
+        4. Destroy node resources
+        
         Returns:
-            bool: True if the PLC slave is found in OP state on any master, else False
+            None. Leaves node in destroyed state.
         """
-        if SKIP_ETHERCAT_CHECK:
-            self.get_logger().info(
-                "Skipping EtherCAT health check (PLC_MANAGER_SKIP_ETHERCAT=1)."
-            )
+        self.get_logger().info("Cleanup: Stopping GUI ROS communication.") #type: ignore
+        self._notify_gui(b"STOP")
+
+        self.get_logger().info("Cleanup: Cancelling timers and destroying node.") #type: ignore
+        self.client.close()
+        self.destroy_node()
+    
+    def _ros_gui_disconnected(self) -> bool:
+        """Handle ROS GUI disconnection event.
+        """
+        msg = self.client.last_received_message
+        if msg == b"ROS_DISCONNECTED":
             return True
+        
+        return False
+    
+    def _ethercat_slaves_status_ok(self) -> bool:
+        return self.ethercat_check_state == EthercatCheckState.READY
 
-        plc_id = self.get_parameter('plc_slave_identifier').value
-
-        # Use an isolated temporary node+executor to make synchronous service calls
-        # without conflicting with this node's MultiThreadedExecutor.
-        check_node = rclpy.create_node('_plc_ec_check', use_global_arguments=False)
-        executor = SingleThreadedExecutor()
-        executor.add_node(check_node)
-
-        try:
-            all_services = check_node.get_service_names_and_types()
-            slave_state_services = [
-                name for name, types in all_services
-                if any('GetSlaveStates' in t for t in types)
-            ]
-
-            if not slave_state_services:
-                self.get_logger().warn(
-                    "No EtherCAT GetSlaveStates services found on the ROS graph"
-                )
-                return False
-
-            for svc_name in slave_state_services:
-                client = check_node.create_client(GetSlaveStates, svc_name)
-                if not client.wait_for_service(timeout_sec=2.0):
-                    self.get_logger().warn(f"Service {svc_name} not available")
-                    continue
-
-                future = client.call_async(GetSlaveStates.Request())
-                executor.spin_until_future_complete(future, timeout_sec=5.0)
-
-                if not future.done():
-                    self.get_logger().warn(f"Service call to {svc_name} timed out")
-                    continue
-
-                resp = future.result()
-                for name, state in zip(resp.slave_names, resp.slave_states):
-                    if plc_id in name and state == 'OP':
-                        self.get_logger().info(
-                            f'EtherCAT PLC slave active: {name} => {state} (via {svc_name})'
-                        )
-                        return True
-
-            self.get_logger().warn(
-                f"EtherCAT PLC slave '{plc_id}' not found in OP state "
-                f"across {len(slave_state_services)} master(s)"
-            )
-            return False
-
-        finally:
-            executor.remove_node(check_node)
-            check_node.destroy_node()
-
-
+    def _ready_to_start(self) -> bool:
+        return self._ros_gui_disconnected() and self._ethercat_slaves_status_ok()
+    
     def publish_bringup_commands(self) -> None:
         """Publish initial startup commands to enable PLC outputs.
         
@@ -450,544 +238,236 @@ class PLCControllerInterface(Node):
         self.publish_command('PLC_node/z_recovery', 1)
         self.publish_command('PLC_node/force_sensors_pwr', 1)
 
-
-    def cleanup(self) -> None:
-        """Perform graceful cleanup and resource deallocation.
-        
-        Called before node destruction to:
-        1. Ask the GUI to stop its ROS communication
-        2. Cancel launcher health check timer
-        3. Close UDP socket
-        4. Destroy node resources
-        
-        Returns:
-            None. Leaves node in destroyed state.
-        """
-        self.get_logger().info("Cleanup: Stopping GUI ROS communication.")
-        self._notify_gui(b"STOP")
-
-        self.get_logger().info("Cleanup: Cancelling timers and destroying node.")
-        if not self.check_ros_status_timer.is_canceled():
-            self.check_ros_status_timer.cancel()
-        self.client.close()
-        self.destroy_node()
+    def _get_z_limit_switch_state(self) -> bool:
+        z_limit_active = False
+        for _i in range(len(self.interface_names)):
+            if self.interface_names[_i] == "z_limit_switch":
+                z_limit_active = (self.state_values[_i] == 1)
+                break
+        return z_limit_active
 
 
-    def check_ros_launch_status(self) -> bool:
-        """Monitor launcher health and manage control stack lifecycle (1 Hz timer).
+    def _bringup_env(self) -> None:
+        self.publish_command('PLC_node/z_recovery', 1)
+        subprocess.Popen(
+            [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"],
+            shell=True,
+            executable="/bin/bash"
+        )
+        subprocess.Popen(
+            [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_bridge.sh"],
+            shell=True,
+            executable="/bin/bash"
+        )
+
+
+    def _bringup_recovery_env(self) -> None:
+        self.publish_command('PLC_node/z_recovery', 0)
+        subprocess.Popen(
+            [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env_z_recovery.sh"],
+            shell=True,
+            executable="/bin/bash",
+            env={**os.environ, 'AUTO_RECOVER': '1'}
+        )
+        subprocess.Popen(
+            [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_bridge.sh"],
+            shell=True,
+            executable="/bin/bash"
+        )
+
+
+    def _state_callback_estop(self, estop_value: EStopState, 
+                              z_limit_active: bool, 
+                              sw_estop_value: EStopState) -> None:
         
-        This timer callback executes every 1 second and performs two critical functions:
-        
-        1. LAUNCHER DETECTION: Check if run_platform_control.launch.py is running
-        2. STATE MACHINE: Detect launcher crashes and manage graceful transitions
-        
-        Launcher Detection:
-            Uses pgrep to find: "ros2 launch tecnobody_workbench run_platform_control.launch.py"
+        ESTOP : EStopState = estop_value
+        SW_ESTOP: EStopState = sw_estop_value
+       
+        ################### DEFINE IF A TRANSITION IS TRIGGERED ##############
+        if self.fsm.pending is None:
             
-            If Found (RUNNING state):
-                - Log: "✅ Ros control launcher detected!"
-                - Set: self.ros_launched = True
-                
-            If Not Found (should be IDLE):
-                - Log: "Waiting for ros controllers to start!" (throttled)
-                - Set: self.ros_launched = False
-        
-        State Machine Logic:
-            Detects transition from RUNNING to IDLE (launcher crash):
-            - Condition: prev_state=True, current_state=False
-            - Action: Execute emergency E-stop sequence:
-                1. set E-stop to 0 (emergency stop)
-                2. set manual_mode to 0 (return to automatic)
-                3. small delay (50 ms)
-                4. set E-stop back to 1 (re-enable)
-            - Purpose: Notify PLC of launcher failure; PLC acknowledges by resetting E-stop
-        
-        Returns:
-            bool: True if launcher currently running, False otherwise
-        
-        Side Effects:
-            - Sets self.ros_launched and self.ros_launched_prev
-            - May publish emergency E-stop commands on launcher crash
-            - Logs state transitions and warnings
-        """
-        if self.shutdown_requested:
-            return False
+            # In the recovery mode, to prevent re-trigger 
+            # when user turns reset key, there is a NOT(XOR) logic between the estop 
+            # and z_limit_switch:
+            # EMERGENCY = 0, z_limit_switch = 1 -> NOT(1) -> ESTOP 0
+            #       => One of the emergency is active, so we must stop all
+            # EMERGENCY = 1, z_limit_switch = 0 -> NOT(1) -> ESTOP 0 
+            #       => We achieved the z limit. The emergency is active, so we must stop all
+            #          However, after having stopped all, the user must turn the key to
+            #          reset the emergency. Indeed, we must tell the PLC to not consider 
+            #          for a while the value of the z_limit, otherwise we could not move the machine
+            #          In the recovery mode, therefore, the ESTOP is == EMERGENCY and do not cosider
+            #          the z_limit.   
+            # EMERGENCY = 1, z_limit_switch = 1 -> NOT(0) -> ESTOP 1
+            #       => If we are in the recovery mode, it does mean that we solved the range of motion issue.
+            #          THerefore, we must STOP the recovery mode and RESTART the normal operation.
+            #       => if we are not in the recovery mode, it does mean that everithing is OK
+            # EMERGENCY = 0, z_limit_switch = 0 -> NOT(0) -> ESTOP 1
+            #       => THere is an emergency, and we must stop all in recovery mode, since the z_limit_switch
+            #          is not active. We must also clear the other emergency.
+            #
+            # ========== TRANSITION: 0=>1 ==========
+            if( self.estop_cached == EStopState.EMERGENCY and 
+                ESTOP == EStopState.OK and
+                SW_ESTOP == EStopState.OK):
+                event = Event.START 
+                self.estop_cached = ESTOP
+            # ==========  ==========
+            elif self.estop_cached == EStopState.OK and ESTOP == EStopState.OK:
+                if( SW_ESTOP== EStopState.EMERGENCY and
+                    self.sw_estop_cached != SW_ESTOP):
+                    self.publish_command('PLC_node/estop', 0)           # Emergency stop (deactivate)
+                    self.publish_command('PLC_node/manual_mode', 0)     # Return to automatic
+                    self.get_logger().info(bc.FAIL + 'Raised a SW ESTOP!' +bc.ENDC) #type: ignore
+                    self.sw_estop_cached = SW_ESTOP
+                    event = Event.NONE
+            # ========== TRANSITION: 1=>0 (E-STOP) ==========
+            elif self.estop_cached == EStopState.OK and ESTOP == EStopState.EMERGENCY:
+                event = Event.STOP
+                self.estop_cached = ESTOP
 
-        launcher_names = [
-            "run_platform_control.launch.py",
-            "run_z_recovery_control.launch.py",
-        ]
-
-        try:
-            # ========== Query for ros2 launch processes ==========
-            output = subprocess.check_output(
-                ["pgrep", "-af", "ros2 launch"],
-                text=True
-            )
-
-            # ========== Search for any known launcher ==========
-            for line in output.splitlines():
-                for launcher_name in launcher_names:
-                    if launcher_name in line:
-                        if not self.ros_launched:
-                            self.get_logger().info(
-                                f'✅ Ros control launcher detected: {launcher_name}',
-                                throttle_duration_sec=20.0
-                            )
-                            self.ros_launched = True
-                            self.ros_launched_prev = self.ros_launched
-                        return True
+            # ========== STABLE EMERGENCY: check if z_limit caused it ==========
+            elif ESTOP == EStopState.EMERGENCY and self.estop_cached == EStopState.EMERGENCY:
+                event = Event.NONE
             
-            # ========== Launcher not found (or not in expected state) ==========
-            self.get_logger().info(
-                '\033[1;35mWaiting for ros controllers to start!\033[0m',
-                throttle_duration_sec=5.0
-            )
-            if(self.z_limit_active == False and self.z_limit_still_active == False):
-                self._notify_gui(b"READY_TO_START___TURN_THE_KEY")
-            self.ros_launched = False
+            ########################################################################
+            try:
+                self.fsm.trigger(event) #type: ignore                                 ) 
+            except InvalidTransition as e:
+                self.get_logger().error(f"Invalid transition: {e}") #type: ignore
+            except GuardFailed as e:
+                self.get_logger().error(f"Guard condition failed: {e}") #type: ignore
+            ########################################################################
+        else:
+            try:
+                status = self.fsm.step() #type: ignore
+            except InvalidTransition as e:
+                self.get_logger().error(f"Invalid transition: {e}") #type: ignore
+            except TransitionTimeout as e:
+                self.get_logger().error(f"Timeout transition: {e}") #type: ignore
             
-            # ========== Detect transition: RUNNING → IDLE (launcher crash) ==========
-            if (self.ros_launched_prev != self.ros_launched) and \
-               (self.ros_launched_prev == 1 and self.ros_launched == 0):
-                # Launcher was running but now stopped unexpectedly
-                self.get_logger().info(
-                    'Call a SW ESTOP!',
-                    throttle_duration_sec=5.0
-                )
-                # Execute emergency stop sequence to notify PLC
-                self.publish_command('PLC_node/estop', 0)           # Emergency stop (deactivate)
-                self.publish_command('PLC_node/manual_mode', 0)     # Return to automatic
-                time.sleep(0.05)
-                self.publish_command('PLC_node/estop', 1)           # Re-enable normal operation
-            
-            self.ros_launched_prev = self.ros_launched
-            return self.ros_launched
-            
-        except subprocess.CalledProcessError:
-            # pgrep returns nonzero if no processes found
-            self.ros_launched = False
-            return False
 
 
     def state_callback(self, msg: PlcStates) -> None:
-        """Process PLC state updates and implement state machine logic.
-        
-        This is the core state machine callback invoked whenever PlcStates arrives
-        from the PLC controller. It detects E-stop transitions and executes corresponding
-        startup/shutdown sequences.
-        
-        State Transitions Handled:
-        
-        1. KEY TURN (estop 0→1): IDLE → RUNNING
-            Condition: prev_ESTOP=0, current=1, first_time or launcher_not_running
-            Actions:
-                a. Check EtherCAT PLC slave is OP (operational)
-                b. If first startup: launch with --perform-homing flag
-                   (performs motor calibration, ~30 seconds)
-                c. If not first: launch without homing (faster, ~3 seconds)
-                d. Launch: ros2 launch tecnobody_workbench run_platform_control.launch.py
-            Result: Motion controllers ready, exercise capable
-        
-        2. E-STOP PRESS (estop 1→0): RUNNING → IDLE
-            Condition: prev_ESTOP=1, current=0
-            Actions:
-                a. Send UDP "STOP" to rehab_gui port 5005
-                b. Wait for "STOPPED" acknowledgment (10 second timeout)
-                c. Kill launcher process: run_platform_control.launch.py
-                d. Publish emergency E-stop command to PLC
-            Result: All controllers stopped, system returns to safe IDLE state
-        
-        3. STABLE STATES (no transition):
-            estop 0→0 or 1→1: No action, continue monitoring
-        
-        Thread Safety:
-            - Uses non-blocking threading.Lock.acquire()
-            - If callback already executing, skips this update
-            - Prevents race conditions between concurrent state updates
-        
-        Args:
-            msg (PlcStates): Message containing:
-                - interface_names: List of input identifiers
-                - values: List of corresponding input values
-        
-        Returns:
-            None. Modifies node state; may launch/kill subprocesses.
-        
-        Side Effects:
-            - May launch bash scripts (launch_ros2_env.sh)
-            - May kill ROS2 launcher processes
-            - Publishes PLC commands
-            - Logs colored state transition messages
-        """
         # ========== Acquire lock to prevent concurrent execution ==========
-        if not self.lock.acquire(blocking=False):
-            self.get_logger().warn("state_callback already in execution, ignore.")
-            return
-        
         try:
-            # ========== Extract PLC state from message ==========
-            self.interface_names = list(msg.interface_names)
-            self.state_values = list(msg.values)
+            if not self.lock.acquire(blocking=False):
+                self.get_logger().warn("state_callback already in execution, ignore.") #type: ignore
+                return
             
+            # ========== Extract PLC state from message ==========
+            self.interface_names = list(msg.interface_names) #type: ignore
+            self.state_values = list(msg.values) #type: ignore
+            
+            # ========== DEFINE WHICH STATE MACHINE IS
+            # Gate Z-axis recovery on the dedicated PLC input 'z_limit_switch'
+            # (value 1 = limit active). Only a genuine Z-limit event enters the
+            # recovery procedure; all other emergencies are a normal stop.
+            z_limit_active = self._get_z_limit_switch_state()
+            
+            # ========== First Call of the Callback ========== 
+        
+            if self.fsm.state == State.IDLE and z_limit_active:
+                self.get_logger().info( #type: ignore
+                    bc.MAGENTA + 'Raised a Z-LIMIT event! Set IDLE_RECOVERY state' + bc.ENDC,
+                    throttle_duration_sec=5.0
+                )
+                self.fsm.trigger(Event.SWITCH_MODE)
+            
+            if self.fsm.state == State.RECOVERED and not z_limit_active:
+                self.get_logger().info( #type: ignore
+                    bc.MAGENTA + 'Recovered the Z-LIMIT event' + bc.ENDC,
+                    throttle_duration_sec=5.0
+                )
+                self.fsm.trigger(Event.SWITCH_MODE)
+            
+            if self.fsm.state == State.IDLE and self.fsm.pending is None:    
+                self.get_logger().info( #type: ignore
+                    bc.MAGENTA + 'Waiting for ros controllers to start - TURN THE KEY to START!' + bc.ENDC,
+                    throttle_duration_sec=5.0
+                )
+
+            elif self.fsm.state == State.IDLE_RECOVERY and self.fsm.pending is None:
+                self.get_logger().info( #type: ignore
+                    bc.MAGENTA + 'RECOVERY MODE - Waiting for ros controllers to start - TURN THE KEY to START!' + bc.ENDC,
+                    throttle_duration_sec=5.0
+                )
+
+            # ========== Process Status info ==========
+            processes_status = \
+                check_env_running() if self.fsm.state == State.RUNNING else\
+                check_env_running_recovery() if self.fsm.state == State.RUNNING_RECOVERY else\
+                check_env_running_stopped() if self.fsm.state == State.IDLE else\
+                check_env_running_recovery_stopped() \
+                    if self.fsm.state == State.RECOVERED or self.fsm.state == State.IDLE_RECOVERY else\
+                False
+            if not processes_status:
+                self.get_logger().error( #type: ignore
+                    bc.FAIL + 'The state of the processes is not matching the expected state!' + bc.ENDC,
+                    throttle_duration_sec=5.0
+                )
+
+            sw_estop : EStopState = EStopState.OK
+            if (
+                (self.fsm.state == State.RUNNING or self.fsm.state == State.RUNNING_RECOVERY) and
+                (self.processes_status_cached and not processes_status)
+            ):
+                sw_estop = EStopState.EMERGENCY
+                        
+            self.processes_status_cached = processes_status
+
             # ========== Search for E-stop signal in state message ==========
             for int_idx in range(len(self.interface_names)):
                 if self.interface_names[int_idx] == "estop":
-                    current_estop = self.state_values[int_idx]
-                    
-                    # ========== TRANSITION: 0→1 ==========
-                    if current_estop == 1 and self.ESTOP == 0:
-                        if self.in_z_recovery:
-                            self.z_limit_still_active = any(
-                                self.state_values[_i] == 1
-                                for _i, _name in enumerate(self.interface_names)
-                                if _name == "z_limit_switch"
-                            )
-                            if self.z_limit_still_active:
-                                # Key turned but z_limit still active → enable jogging (NOT done yet)
-                                self.get_logger().info(
-                                    bcolors.OKCYAN +
-                                    "🔑 KEY TURN (z_limit still active): Z_RECOVERY_RUNNING — enter jog mode" +
-                                    bcolors.ENDC
-                                )
-                                # AUTO_RECOVER=1 enables auto_z_recovery_node (headless startup case)
-                                subprocess.Popen(
-                                    [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env_z_recovery.sh"],
-                                    shell=True,
-                                    executable="/bin/bash",
-                                    env={**os.environ, 'AUTO_RECOVER': '1'}
-                                )
-                                self.client.send(b"Z_RECOVERY_RUNNING")  # direct; no STOPPED ack expected
-                            else:
-                                # Key turned AND z_limit already cleared → recovery done (edge case)
-                                self.get_logger().info(
-                                    bcolors.OKGREEN +
-                                    "✅ KEY TURN + z_limit cleared → Z_RECOVERY_DONE" +
-                                    bcolors.ENDC
-                                )
-                                self.in_z_recovery = False
-                                self.publish_command('PLC_node/z_recovery', 1)
-                                self._notify_gui(b"Z_RECOVERY_DONE")
-                                self._kill_recovery_env()
-                                subprocess.Popen(
-                                    [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"],
-                                    shell=True,
-                                    executable="/bin/bash"
-                                )
-                                subprocess.Popen(
-                                    [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_bridge.sh"],
-                                    shell=True,
-                                    executable="/bin/bash"
-                                )
-                                self.FIRST_TIME = True
-                        else:
-                            # ---- Normal key turn: IDLE → RUNNING ----
-                            self.get_logger().info(
-                                bcolors.OKBLUE +
-                                "🔑 KEY TURN DETECTED: E-stop 0→1 (IDLE→RUNNING)" +
-                                bcolors.ENDC
-                            )
-
-                            # Verify EtherCAT PLC is ready
-                            if not self.check_ethercat_plc_node():
-                                self.get_logger().warn("EtherCAT PLC not ready, deferring launch")
-                                break
-
-                            # ========== First-time startup: perform homing ==========
-                            if not self.FIRST_TIME:
-                                self.get_logger().info("🏠 First startup: launching with homing calibration")
-                                subprocess.Popen(
-                                    [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"],
-                                    shell=True,
-                                    executable="/bin/bash"
-                                )
-                                subprocess.Popen(
-                                    [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_bridge.sh"],
-                                    shell=True,
-                                    executable="/bin/bash"
-                                )
-                                # REMOVED THE AUTOMATIC HOMING ALSO IN THE FIRST BOOT.
-                                #   > CAIMMI GENERATES TOO MANY ERRORS, AND A FULL REBOOT IS OFTEN REQUIRED TO RECOVER BUT THE
-                                #   > HOMOING SHOULD NOT START SINCE IT WOULD ZERO THE POSITION
-                                # subprocess.Popen(
-                                #     [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh --perform-homing"],
-                                #     shell=True,
-                                #     executable="/bin/bash"
-                                # )
-                                self.FIRST_TIME = True
-                            # ========== Subsequent startups: skip homing (faster) ==========
-                            else:
-                                self.get_logger().info("⚡ Restart: launching without homing")
-                                subprocess.Popen(
-                                    [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"],
-                                    shell=True,
-                                    executable="/bin/bash"
-                                )
-                                subprocess.Popen(
-                                    [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_bridge.sh"],
-                                    shell=True,
-                                    executable="/bin/bash"
-                                )
-                    
-                    # ========== TRANSITION: 1→0 (E-STOP / LIMIT SWITCH: RUNNING → IDLE) ==========
-                    elif current_estop == 0 and self.ESTOP == 1:
-                        self.publish_command('PLC_node/brake_disable', 0)  # Ensure brakes enabled
-
-                        # Gate Z-axis recovery on the dedicated PLC input 'z_limit_switch'
-                        # (value 1 = limit active). Only a genuine Z-limit event enters the
-                        # recovery procedure; all other emergencies are a normal stop.
-                        self.z_limit_activez_limit_active = False
-                        for _i in range(len(self.interface_names)):
-                            if self.interface_names[_i] == "z_limit_switch":
-                                z_limit_active = (self.state_values[_i] == 1)
-                                break
-
-                        if self.z_limit_active and not self.in_z_recovery:
-                            # ---- Z-axis limit hit: enter Z-axis recovery mode ----
-                            self.get_logger().info(
-                                bcolors.OKCYAN +
-                                "🛑 Z-LIMIT 1→0: entering Z-axis recovery mode" +
-                                bcolors.ENDC
-                            )
-                            self.in_z_recovery = True
-                            # Prevent re-trigger when user turns reset key:
-                            # switch still LOW → XOR(LOW, LOW)=LOW → NOT=HIGH → no loop
-                            self.publish_command('PLC_node/z_recovery', 0)
-                            udp_msg = b"Z_LIMIT_HIT"
-                        elif self.in_z_recovery:
-                            # ---- Recovery in progress: Z-axis back in limits, recovery complete ----
-                            self.get_logger().info(
-                                bcolors.OKGREEN +
-                                "✅ EMERGENCY (recovery): Z-axis limit cleared, z_recovery set HIGH" +
-                                bcolors.ENDC
-                            )
-                            self.in_z_recovery = False
-                            # Restore normal limit-switch logic: switch HIGH, z_recovery HIGH → OK
-                            self.publish_command('PLC_node/z_recovery', 1)
-                            udp_msg = b"Z_RECOVERY_DONE"
-                        else:
-                            # ---- Normal emergency (not a Z-limit): standard graceful stop ----
-                            self.get_logger().info(
-                                bcolors.OKCYAN +
-                                "🛑 E-STOP PRESSED: E-stop 1→0 (RUNNING→IDLE)" +
-                                bcolors.ENDC
-                            )
-                            udp_msg = b"STOP"
-
-                        self._notify_gui(udp_msg)
-
-                        self._stop_launch_environment(
-                            "ros2 launch tecnobody_workbench run_platform_control.launch.py",
-                            "run_platform_control.launch.py"
-                        )
-                        
-                        self._stop_launch_environment(
-                            "ros2 launch tecnobody_workbench run_rosbridge.launch.py",
-                            "run_rosbridge.launch.py"
-                        )
-
-                        if udp_msg == b"Z_LIMIT_HIT":
-                            # Launch recovery env so forward_velocity_controller is ready when
-                            # the user turns the key. The script's EtherCAT preamble handles
-                            # any lingering lock from the now-dying platform launcher.
-                            self.get_logger().info("🚀 Launching Z-recovery env for jogging...")
-                            subprocess.Popen(
-                                [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env_z_recovery.sh"],
-                                shell=True,
-                                executable="/bin/bash"
-                            )
-                    
-                    # ========== STABLE EMERGENCY: check if z_limit caused it ==========
-                    elif current_estop == 0 and self.ESTOP == 0:
-                        if not self.in_z_recovery:
-                            self.z_limit_active = False
-                            for _i in range(len(self.interface_names)):
-                                if self.interface_names[_i] == "z_limit_switch":
-                                    self.z_limit_active = (self.state_values[_i] == 1)
-                                    break
-                            if self.z_limit_active:
-                                self.get_logger().info(
-                                    bcolors.OKCYAN +
-                                    "🛑 Z-LIMIT active at startup/restart" +
-                                    bcolors.ENDC
-                                )
-                                self.in_z_recovery = True
-                                self.publish_command('PLC_node/z_recovery', 0)
-                                self._notify_gui(b"Z_LIMIT_HIT")
-                                
-                    elif current_estop == 1 and self.ESTOP == 1:
-                        # ========== Check z_limit clearing during recovery (jogging phase) ==========
-                        if self.in_z_recovery:
-                            self.z_limit_still_active = any(
-                                self.state_values[_i] == 1
-                                for _i, _name in enumerate(self.interface_names)
-                                if _name == "z_limit_switch"
-                            )
-                            if not self.z_limit_still_active:
-                                # z_limit cleared during jogging → recovery complete
-                                self.get_logger().info(
-                                    bcolors.OKGREEN +
-                                    "✅ z_limit cleared during jogging → Z_RECOVERY_DONE" +
-                                    bcolors.ENDC
-                                )
-                                self.in_z_recovery = False
-                                self.publish_command('PLC_node/z_recovery', 1)
-                                self._notify_gui(b"Z_RECOVERY_DONE")
-                                self._kill_recovery_env()
-                                subprocess.Popen(
-                                    [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"],
-                                    shell=True,
-                                    executable="/bin/bash"
-                                )
-                                self.FIRST_TIME = True
-
-                        # ========== RUNNING state: Send periodic status ==========
-                        try:
-                            node_list = self.get_node_names()
-                            if 'tecnobody_ethercat_checker_node' in node_list:
-                                self.send_running_cnt = self.send_running_cnt + 1
-                                # Send status every 10 ticks (50 Hz / 10 = 5 Hz)
-                                if self.send_running_cnt % self.send_running_dec == 0:
-                                    if self.in_z_recovery:
-                                        self.client.send(b"Z_RECOVERY_RUNNING")
-                                    else:
-                                        self.client.send(b"RUNNING")
-                        except Exception as e:
-                            self.get_logger().error(
-                                f"Exception when sending message to UDP Server: {e}"
-                            )
-                    
-                    # Update cached E-stop value for next transition detection
-                    self.ESTOP = current_estop
+                    self._state_callback_estop(
+                        self.state_values[int_idx], #type: ignore
+                        z_limit_active, 
+                        sw_estop
+                    )
         finally:
+            # ========== FSM States info ==========
+            _msg : str = self.fsm.state.name
+            self._notify_gui(_msg.encode())
             self.lock.release()
 
-        if self.check_ros_status_timer.is_canceled():
-            self.check_ros_status_timer.reset()   # starts/restarts the timer
-
     def _kill_recovery_env(self) -> None:
-        self._stop_launch_environment(
+        self.publish_command('PLC_node/brake_disable', 0)  # Ensure brakes enabled
+        self.publish_command('PLC_node/z_recovery', 1)
+        
+        stop_launch_environment(
             "run_z_recovery_control.launch.py",
-            "run_z_recovery_control.launch.py"
+            "run_z_recovery_control.launch"
         )
 
-    def _find_matching_pids(self, pattern: str) -> list[int]:
-        try:
-            output = subprocess.check_output(
-                ["pgrep", "-f", pattern],
-                text=True
-            )
-        except subprocess.CalledProcessError:
-            return []
-
-        return [
-            int(pid)
-            for pid in output.split()
-            if pid.isdigit() and int(pid) != os.getpid()
-        ]
-
-    def _find_tcp_port_pids(self, port: int) -> list[int]:
-        try:
-            output = subprocess.check_output(
-                ["fuser", "-n", "tcp", str(port)],
-                stderr=subprocess.DEVNULL,
-                text=True
-            )
-        except subprocess.CalledProcessError:
-            return []
-        except FileNotFoundError:
-            self.get_logger().error(
-                f"Cannot clean TCP port {port}: the 'fuser' command is not installed."
-            )
-            return []
-
-        return sorted({
-            int(pid)
-            for pid in output.split()
-            if pid.isdigit() and int(pid) != os.getpid()
-        })
-
-    def _signal_pids(self, pids: list[int], sig: signal.Signals) -> None:
-        for pid in pids:
-            try:
-                os.kill(pid, sig)
-            except ProcessLookupError:
-                pass
-            except PermissionError:
-                self.get_logger().error(
-                    f"Permission denied sending {sig.name} to PID {pid}."
-                )
-
-    def _wait_for_tcp_port(self, port: int, timeout_sec: float) -> list[int]:
-        deadline = time.monotonic() + timeout_sec
-        remaining_pids = self._find_tcp_port_pids(port)
-
-        while remaining_pids and time.monotonic() < deadline:
-            time.sleep(0.2)
-            remaining_pids = self._find_tcp_port_pids(port)
-
-        return remaining_pids
-
-    def _clear_tcp_port(self, port: int = 9090) -> bool:
-        remaining_pids = self._find_tcp_port_pids(port)
-        if not remaining_pids:
-            self.get_logger().info(f"✅ TCP port {port} is free")
-            return True
-
-        for sig, timeout_sec in (
-            (signal.SIGINT, 2.0),
-            (signal.SIGTERM, 2.0),
-            (signal.SIGKILL, 1.0),
-        ):
-            self.get_logger().warn(
-                f"TCP port {port} still used by PID(s) {remaining_pids}; "
-                f"sending {sig.name}."
-            )
-            self._signal_pids(remaining_pids, sig)
-            remaining_pids = self._wait_for_tcp_port(port, timeout_sec)
-            if not remaining_pids:
-                self.get_logger().info(f"✅ TCP port {port} released")
-                return True
-
-        self.get_logger().error(
-            f"TCP port {port} is still used by PID(s) {remaining_pids}."
+        stop_launch_environment(
+            "ros2 launch tecnobody_workbench run_rosbridge.launch.py",
+            "run_rosbridge.launch", 
+            9090
         )
-        return False
 
-    def _stop_launch_environment(self, pattern: str, label: str) -> None:
-        launcher_pids = self._find_matching_pids(pattern)
-        if launcher_pids:
-            self.get_logger().info(
-                f"🔪 Stopping {label}, PID(s): {launcher_pids}"
-            )
-            self._signal_pids(launcher_pids, signal.SIGINT)
-        else:
-            self.get_logger().info(f"No {label} process found.")
+    def _kill_env(self) -> None:
+        self.publish_command('PLC_node/brake_disable', 0)  # Ensure brakes enabled
+        self.publish_command('PLC_node/estop', 1) # Reset SW E-stop to normal operation if it was triggered
 
-        # Give ROS launch time to stop its child processes gracefully before
-        # escalating against any rosbridge instance still holding port 9090.
-        self._wait_for_tcp_port(9090, 2.0)
-        self._clear_tcp_port(9090)
+        stop_launch_environment(
+            "run_platform_control.launch.py",
+            "run_platform_control.launch"
+        )
+        
+
+        stop_launch_environment(
+                "ros2 launch tecnobody_workbench run_rosbridge.launch.py",
+                "run_rosbridge.launch", 
+                9090
+        )
+
 
     def _notify_gui(self, udp_msg: bytes) -> None:
         try:
-            self.get_logger().info(f"📡 Sending {udp_msg} to rehab_gui...")
             self.client.send(udp_msg)
-            timeout = time.time() + 10
-            while True:
-                data, addr = self.client.receive()
-                if data == b"STOPPED":
-                    self.get_logger().info("✅ GUI shutdown acknowledged")
-                    break
-                time.sleep(0.5)
-                if time.time() > timeout:
-                    self.get_logger().warn(
-                        "PLC Manager: No acknowledgment from FMRR GUI.",
-                        throttle_duration_sec=5.0
-                    )
-                    break
         except Exception as e:
-            self.get_logger().warn(f"Error communicating with GUI: {e}")
+            self.get_logger().warn(f"Error communicating with GUI: {e}") #type: ignore
+
 
     def publish_command(self, name: str, value: int) -> None:
         """Publish single PLC command by interface name.
@@ -1011,21 +491,21 @@ class PLCControllerInterface(Node):
             - INFO: "Published command message: [0, 0, 0, 0, 1, 0, 0, 0]"
             - WARN: "Interface name '{name}' not found in command message" if not found
         """
-        if name in self.command_msg.interface_names:
+        if name in self.command_msg.interface_names: #type: ignore
             # Find index of interface by name
-            idx = self.command_msg.interface_names.index(name)
+            idx = self.command_msg.interface_names.index(name) #type: ignore
             # Update value
-            self.command_msg.values[idx] = value
+            self.command_msg.values[idx] = value #type: ignore
             # Publish entire command vector
             self.command_publisher.publish(self.command_msg)
-            self.get_logger().info(f"Published PLC command: {self.command_msg.values}")
+            self.get_logger().info(f"Published PLC command: {self.command_msg.values}") #type: ignore
         else:
-            self.get_logger().warn(
+            self.get_logger().warn( #type: ignore
                 f"Interface name '{name}' not found in command message."
             )
 
 
-    def signal_handler(self, sig, frame) -> None:
+    def signal_handler(self, sig: int, frame: types.FrameType) -> None:
         """Handle SIGINT and SIGTERM for graceful shutdown.
         
         Called when Ctrl+C pressed or SIGTERM received. Sets shutdown_requested
@@ -1038,11 +518,11 @@ class PLCControllerInterface(Node):
         Returns:
             None. Sets shutdown_requested flag.
         """
-        self.get_logger().info("Signal received. Setting shutdown_requested flag.")
+        self.get_logger().info("Signal received. Setting shutdown_requested flag.") #type: ignore
         self.shutdown_requested = True
 
 
-def main(args=None):
+def main(args=None): #type: ignore
     """Entry point for the PLC manager state machine node.
     
     Initializes PLCControllerInterface node, and runs
@@ -1075,7 +555,7 @@ def main(args=None):
         None. Blocks until shutdown.
     """
     # Initialize ROS 2 without automatic signal handling
-    rclpy.init(args=args, signal_handler_options=SignalHandlerOptions.NO)
+    rclpy.init(args=args, signal_handler_options=SignalHandlerOptions.NO) #type: ignore
     
     # ========== Parse arguments ==========
     target_ip = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.0"
@@ -1099,26 +579,54 @@ def main(args=None):
     
     try:
         while rclpy.ok():
-            mt_executor.spin_once()
+            mt_executor.spin_once(timeout_sec=0.1)
+
+            if node.ethercat_check_requested:
+                node.ethercat_check_requested = False
+
+                if not node.ethercat_slaves_status_check_client.wait_for_service(timeout_sec=5.0):
+                    node.get_logger().error( #type: ignore
+                        "EtherCAT status check service not available. "
+                        "Ensure ethercat_slaves_status_check is running."
+                    )
+                    continue
+    
+                future = node.ethercat_slaves_status_check_client.call_async(Trigger.Request()) #type: ignore
+                node.ethercat_check_state = EthercatCheckState.PENDING
+
+                mt_executor.spin_until_future_complete(
+                    future, #type: ignore
+                    timeout_sec=5.0,
+                )
+
+                if future.done() and future.result() is not None: #type: ignore
+                    node.ethercat_check_state = (
+                        EthercatCheckState.READY
+                        if future.result().success #type: ignore
+                        else EthercatCheckState.FAILED
+                    )
+                else:
+                    node.ethercat_check_state = EthercatCheckState.FAILED
 
             # ========== Initial bringup sequence (once only) ==========
-            if not bringup_done and node.check_ethercat_plc_node() and \
-                    node.command_publisher.get_subscription_count() > 0:
+            if not bringup_done \
+            and node.ethercat_check_state == EthercatCheckState.READY \
+            and node.command_publisher.get_subscription_count() > 0:
                 node.publish_bringup_commands()
                 bringup_done = True
                 
             # ========== Check for graceful shutdown request ==========
             if node.shutdown_requested:
-                node.get_logger().warning('Received graceful shutdown request!')
+                node.get_logger().warning('Received graceful shutdown request!') #type: ignore
                 break
 
     except Exception as e:
-        node.get_logger().error(f"Unexpected exception in main loop: {e}")
+        node.get_logger().error(f"Unexpected exception in main loop: {e}") #type: ignore
     
     # ========== Graceful cleanup ==========
     try:
         node.cleanup()
-        rclpy.try_shutdown()
+        rclpy.try_shutdown() #type: ignore
     except Exception as e:
         print(f"Error during shutdown: {e}")
 

@@ -39,6 +39,8 @@ class Worker(QThread):
 
 class RosCommunicationManager(QObject):
     stop_ros_communication_signal : pyqtSignal = pyqtSignal()
+    ros_communication_established_signal : pyqtSignal = pyqtSignal()
+    ros_communication_failed_signal : pyqtSignal = pyqtSignal()
     worker_thread : Worker = None #type: ignore
     
     def __init__(self, joint_names: List[str], number_of_ec_slaves: int, remote_ip: str, remote_port: int, widget: QWidget): #port=9090
@@ -65,6 +67,7 @@ class RosCommunicationManager(QObject):
     def startRosCommunication(self) -> None:
         if self.rOk():
             print("ROS_MANAGER already initialized.")
+            self.ros_communication_established_signal.emit()
             return 
         # Initialize ROS_MANAGER client
         # if self.roslib_first_time_connection:
@@ -86,12 +89,14 @@ class RosCommunicationManager(QObject):
 
         if not self.ros_client.is_connected:
             print("Failed to connect to rosbridge.")
+            self.ros_communication_failed_signal.emit()
             return
 
 
         self.ROS = SyncRosManager(self.number_of_ec_slaves, self.joint_names, self.ros_client)
 
         self.worker_thread.start_thread()
+        self.ros_communication_established_signal.emit()
 
     def stopRosCommunication(self) -> None:
         print("Stopping ROS processes...")

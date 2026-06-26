@@ -104,6 +104,12 @@ def generate_launch_description():
         condition=UnlessCondition(debug_delta),
     )
 
+    ethercat_slaves_status_check_node = Node(
+        package='plc_manager',
+        executable='ethercat_slaves_status_check_node',
+        output='screen',
+    )
+
     debug_delta_publish = ExecuteProcess(
         cmd=[
             'ros2', 'topic', 'pub',
@@ -118,7 +124,7 @@ def generate_launch_description():
     plc_manager_launcher = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=plc_controller_spawner,
-            on_exit=[plc_manager, debug_delta_publish],
+            on_exit=[plc_manager, ethercat_slaves_status_check_node, debug_delta_publish],
         )
     )
 
@@ -134,7 +140,6 @@ def generate_launch_description():
             on_shutdown=clean_shutdown # type: ignore
         )
     )
-
 
     # Create the launch description and populate
     ld = LaunchDescription()

@@ -3,6 +3,7 @@
 
 from PyQt5.QtCore import QThread, QObject, pyqtSignal, pyqtSlot
 import socket
+from typing import Any
 
 ################################################
 #
@@ -43,7 +44,7 @@ class UdpServer(QObject):
             self.sock.close()
         self.sock = None
 
-    def send_response(self, message: bytes, addr=None):
+    def send_response(self, message: bytes, addr: tuple[Any, ...] | None =None):
         """Send response to client."""
         if not self.sock:
             return
@@ -67,11 +68,15 @@ class UdpCommunicationManager(QObject):
     z_recovery_done_signal : pyqtSignal = pyqtSignal()
     udp_message_received : pyqtSignal = pyqtSignal(bytes, tuple)
 
-    def __init__(self, remote_ip, remote_port): #port=5005
+    def __init__(self, remote_ip: str, remote_port: int): #port=5005
         super().__init__()
 
-        self.start_ros_communication_emitted = False
-        self.stop_ros_communication_emitted = False
+        self.start_ros_communication_emitted  : bool = False
+        self.stop_ros_communication_emitted  : bool = False
+        self.z_recovery_start_signal_emitted : bool = False
+        self.z_recovery_mode_signal_emitted : bool = False
+        self.z_recovery_done_signal_emitted : bool = False
+
         self.remote_ip = remote_ip
         self.remote_port = remote_port
         self.roslib_first_time_connection = True
@@ -84,60 +89,71 @@ class UdpCommunicationManager(QObject):
         self.udp_thread.start()
 
     @pyqtSlot(bytes, tuple)
-    def onUdpMessageReceived(self, data, addr):
+    def onUdpMessageReceived(self, data: bytes, addr: str) -> None:
         self.udp_message_received.emit(data, addr)
-        self.udpRequestReceived(data)
+        self.udpMessageReceived(data)
 
-    def onResetRosCommunication(self):
-        self.server.send_response(b"STOPPED")
+    def onResetRosCommunication(self) -> None:
+        self.server.send_response(b"ROS_DISCONNECTED", (self.remote_ip, self.remote_port))
         self.start_ros_communication_emitted = False
         self.stop_ros_communication_emitted = False
 
-    def requestRosCommunicationStop(self, reason):
+    @pyqtSlot()
+    def onRosCommunicationEstablished(self) -> None:
+        print("[UdpServer] ROS communication established.")
+        self.server.send_response(b"ROS_CONNECTED", (self.remote_ip, self.remote_port))
+
+    @pyqtSlot()
+    def onRosCommunicationFailed(self) -> None:
+        print("[UdpServer] ROS communication failed to start.")
+        self.server.send_response(b"ROS_CONNECTION_FAILED", (self.remote_ip, self.remote_port))
+        self.start_ros_communication_emitted = False
+
+    def requestRosCommunicationStop(self, reason: str) -> None:
         print(f"[UdpServer] {reason}")
         if not self.stop_ros_communication_emitted:
             self.stop_ros_communication.emit()
             self.stop_ros_communication_emitted = True
 
-    def udpRequestReceived(self, data):
-        if data == b'STOP':
+    def udpMessageReceived(self, data: bytes) -> None:
+        """
+        Handle UDP requests from the PLC manager. The PLC manager sends status updates
+        to the GUI via UDP. The possible messages are:
+            IDLE = auto()
+            IDLE_RECOVERY = auto()
+            ESTOP = auto()
+            RUNNING = auto()
+            RUNNING_RECOVERY = auto()
+            RECOVERED = auto()
+            ERROR = auto()
+        """
+        print(f"[UdpServer] {data.decode()} received from UDP client.")
+        if data == b'IDLE' or data == b'IDLE_RECOVERY':
             self.requestRosCommunicationStop("UDP STOP request received.")
-        elif data == b'READY_TO_START___TURN_THE_KEY':
-            # Fallback for an abnormal platform/bridge shutdown where the normal
-            # STOP packet was lost. The PLC manager is idle, so the GUI must not
-            # keep stale rosbridge subscriptions, services, or worker state.
-            self.requestRosCommunicationStop(
-                "READY_TO_START___TURN_THE_KEY received — stopping stale ROS communication."
-            )
-        elif data == b'Z_LIMIT_HIT':
-            # Z-axis limit switch triggered: stop ROS and show initial limit-hit dialog
-            print("[UdpServer] Z_LIMIT_HIT received — Z-axis limit switch triggered.")
-            if not self.stop_ros_communication_emitted:
-                self.stop_ros_communication.emit()
-                self.stop_ros_communication_emitted = True
-            self.z_recovery_start_signal.emit()
-        elif data == b'RUNNING':
+            if data == b'IDLE_RECOVERY' and not self.z_recovery_mode_signal_emitted:
+                self.z_recovery_mode_signal.emit()
+                self.z_recovery_mode_signal_emitted = True
+                self.z_recovery_done_signal_emitted = False
+
+        elif data == b'RUNNING' or data == b'RUNNING_RECOVERY':
             if not self.start_ros_communication_emitted:
                 self.start_ros_communication.emit()
                 self.start_ros_communication_emitted = True
-        elif data == b'Z_RECOVERY_RUNNING':
-            # Recovery mode: start ROS (for jogging) and show recovery popup
-            print("[UdpServer] Z_RECOVERY_RUNNING received — entering recovery mode.")
-            if not self.start_ros_communication_emitted:
-                self.start_ros_communication.emit()
-                self.start_ros_communication_emitted = True
-            self.z_recovery_mode_signal.emit()
-        elif data == b'Z_RECOVERY_DONE':
-            # Recovery complete: stop ROS and notify GUI to update popup
-            print("[UdpServer] Z_RECOVERY_DONE received — recovery complete.")
-            if not self.stop_ros_communication_emitted:
-                self.stop_ros_communication.emit()
-                self.stop_ros_communication_emitted = True
-            self.z_recovery_done_signal.emit()
+                if data == b'RUNNING_RECOVERY' and not self.z_recovery_start_signal_emitted:
+                    self.z_recovery_start_signal.emit()
+                    self.z_recovery_start_signal_emitted = True
+                    self.z_recovery_done_signal_emitted = False
+
+        elif data == b'RECOVERED':
+            if not self.z_recovery_done_signal_emitted:
+                self.z_recovery_done_signal.emit()
+                self.z_recovery_done_signal_emitted = True
+                self.z_recovery_mode_signal_emitted = False
+                self.z_recovery_start_signal_emitted = False
         else:
             print(f"[UdpServer] UDP packet received from UDP client: {data}")
 
-def main(args=None):
+def main(args=None): #type: ignore
     # TODO
     pass
 

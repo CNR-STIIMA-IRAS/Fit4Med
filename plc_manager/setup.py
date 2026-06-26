@@ -28,6 +28,10 @@ setup(
     entry_points={
         'console_scripts': [
             'plc_manager_node = plc_manager.plc_manager:main',
+            (
+                'ethercat_slaves_status_check_node = '
+                'plc_manager.ethercat_slaves_status_check_node:main'
+            ),
         ],
     },
 )
