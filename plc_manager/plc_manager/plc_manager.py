@@ -22,35 +22,22 @@ import subprocess
 import threading
 import signal
 from enum import Enum
+from typing import Callable
 
-if __package__:
-    from plc_manager.fsm import (
-        StateMachine, State, Event, InvalidTransition, GuardFailed,
-        TransitionTimeout, PendingTransition
-    )
-    from plc_manager.udp_client import UdpClient
-    from plc_manager.utils import (
-        check_env_running,
-        check_env_running_recovery,
-        check_env_running_stopped,
-        check_env_running_recovery_stopped,
-        stop_launch_environment
-    )
-    from plc_manager.utils import bcolors as bc
-else:
-    from fsm import (  # type: ignore
-        StateMachine, State, Event, InvalidTransition, GuardFailed,
-        TransitionTimeout, PendingTransition
-    )
-    from udp_client import UdpClient  # type: ignore
-    from utils import (  # type: ignore
-        check_env_running,
-        check_env_running_recovery,
-        check_env_running_stopped,
-        check_env_running_recovery_stopped,
-        stop_launch_environment
-    )
-    from utils import bcolors as bc  # type: ignore
+from plc_manager.fsm import (
+    StateMachine, State, Event, InvalidTransition, GuardFailed,
+    TransitionTimeout, PendingTransition
+)
+from plc_manager.udp_client import UdpClient
+from plc_manager.utils import (
+    check_env_running,
+    check_env_running_recovery,
+    check_env_running_stopped,
+    check_env_running_recovery_stopped,
+    stop_launch_environment
+)
+from plc_manager.utils import bcolors as bc
+
 
 class EStopState(Enum):
     OK = 1
@@ -127,6 +114,7 @@ class PLCControllerInterface(Node):
 
         # ========== Launcher Health Monitoring ==========
         self.processes_status_cached = False
+        self._startup_cleanup_action: Callable[[], None] | None = None
 
         # ========== UDP Status Client ==========#  
         # Coordinates with rehab_gui for emergency stop and status
@@ -174,7 +162,7 @@ class PLCControllerInterface(Node):
             guard=self._ready_to_start, 
             action=self._bringup_env,
             success_check=check_env_running,
-            max_steps=100,
+            max_steps=5000,
             failure_destination=State.ERROR,
         )
         self.fsm.add_transition(
@@ -185,7 +173,7 @@ class PLCControllerInterface(Node):
             guard=self._ready_to_start, 
             action=self._bringup_recovery_env,
             success_check=check_env_running_recovery,
-            max_steps=100,
+            max_steps=5000,
             failure_destination=State.ERROR
         )
         
@@ -196,7 +184,7 @@ class PLCControllerInterface(Node):
             msg="🛑 EMERGENCY STOP REQUESTED (RUNNING_RECOVERY=>RECOVERED)",
             action=self._kill_recovery_env,
             success_check=check_env_running_recovery_stopped,
-            max_steps=100,
+            max_steps=5000,
             failure_destination=State.ERROR
         )
 
@@ -207,7 +195,7 @@ class PLCControllerInterface(Node):
             msg="🛑 EMERGENCY STOP REQUESTED (RUNNING=>IDLE)",
             action=self._kill_env,
             success_check=check_env_running_stopped,
-            max_steps=100,
+            max_steps=5000,
             failure_destination=State.ERROR
         )
 
@@ -218,7 +206,7 @@ class PLCControllerInterface(Node):
             msg="� SYSTEM FAILURE (RUNNING=>ERROR)",
             action=self._kill_env,
             success_check=check_env_running_stopped,
-            max_steps=100,
+            max_steps=5000,
             failure_destination=State.ERROR
         )
         
@@ -228,25 +216,25 @@ class PLCControllerInterface(Node):
                 msg=" SYSTEM FAILURE (RUNNING_RECOVERY=>ERROR)",
                 action=self._kill_recovery_env,
                 success_check=check_env_running_recovery_stopped,
-                max_steps=100,
+                max_steps=5000,
                 failure_destination=State.ERROR)
 
         self.fsm.add_transition(Event.STOP,
                 State.IDLE,
                 State.IDLE,
                 msg="🛑 EMERGENCY STOP REQUESTED (IDLE=>IDLE)",
-                action=self._kill_env,
+                action=self._handle_idle_stop,
                 success_check=check_env_running_stopped,
-                max_steps=100,
+                max_steps=5000,
                 failure_destination=State.ERROR)
         
         self.fsm.add_transition(Event.STOP,
                 State.IDLE_RECOVERY,
                 State.IDLE_RECOVERY,
                 msg="🛑 EMERGENCY STOP REQUESTED (IDLE_RECOVERY=>IDLE_RECOVERY)",
-                action=self._kill_recovery_env,
+                action=self._handle_idle_stop,
                 success_check=check_env_running_recovery_stopped,
-                max_steps=100,
+                max_steps=5000,
                 failure_destination=State.ERROR)
     
     def cleanup(self) -> None:
@@ -313,6 +301,7 @@ class PLCControllerInterface(Node):
 
 
     def _bringup_env(self) -> None:
+        self._startup_cleanup_action = self._kill_env
         self.publish_command('PLC_node/z_recovery', 1)
         subprocess.Popen(
             [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"],
@@ -327,6 +316,7 @@ class PLCControllerInterface(Node):
 
 
     def _bringup_recovery_env(self) -> None:
+        self._startup_cleanup_action = self._kill_recovery_env
         self.publish_command('PLC_node/z_recovery', 0)
         subprocess.Popen(
             [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env_z_recovery.sh"],
@@ -340,6 +330,20 @@ class PLCControllerInterface(Node):
             executable="/bin/bash"
         )
 
+
+    def _reset_sw_estop(self) -> None:
+        self.publish_command('PLC_node/estop', 1)
+        self.publish_command('PLC_node/manual_mode', 0)
+
+    def _handle_idle_stop(self) -> None:
+        cleanup_action = self._startup_cleanup_action
+        self._startup_cleanup_action = None
+
+        if cleanup_action is not None:
+            cleanup_action()
+            return
+
+        self._reset_sw_estop()
 
     def _detect_estop_event(
         self,
@@ -388,6 +392,12 @@ class PLCControllerInterface(Node):
                 self.get_logger().error(f"Invalid transition: {e}") #type: ignore
             except GuardFailed as e:
                 self.get_logger().error(f"Guard condition failed: {e}") #type: ignore
+                if event == Event.START:
+                    self._startup_cleanup_action = None
+                    self.publish_command('PLC_node/estop', 0)
+                    self.publish_command('PLC_node/manual_mode', 0)
+                    self.estop_cached = ESTOP
+                    self.sw_estop_cached = SW_ESTOP
             
         else:
             pending = self.fsm.pending
@@ -420,6 +430,11 @@ class PLCControllerInterface(Node):
             if pending.source == State.IDLE:
                 self._kill_env()
             elif pending.source == State.IDLE_RECOVERY:
+                self._kill_recovery_env()
+        elif pending.event == Event.STOP or pending.event == Event.FAIL:
+            if pending.source == State.RUNNING:
+                self._kill_env()
+            elif pending.source == State.RUNNING_RECOVERY:
                 self._kill_recovery_env()
 
     def state_callback(self, msg: PlcStates) -> None:
@@ -519,6 +534,7 @@ class PLCControllerInterface(Node):
             self.lock.release()
 
     def _kill_recovery_env(self) -> None:
+        self._startup_cleanup_action = None
         self.publish_command('PLC_node/brake_disable', 0)  # Ensure brakes enabled
         self.publish_command('PLC_node/z_recovery', 1)
         
@@ -534,6 +550,7 @@ class PLCControllerInterface(Node):
         )
 
     def _kill_env(self) -> None:
+        self._startup_cleanup_action = None
         self.publish_command('PLC_node/brake_disable', 0)  # Ensure brakes enabled
         self.publish_command('PLC_node/estop', 1) # Reset SW E-stop to normal operation if it was triggered
 

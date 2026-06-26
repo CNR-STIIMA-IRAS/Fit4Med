@@ -3,10 +3,7 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 from rclpy.impl.rcutils_logger import RcutilsLogger as Logger
 
-if __package__:
-    from plc_manager.utils import bcolors
-else:
-    from utils import bcolors  # type: ignore
+from plc_manager.utils import bcolors
 
 
 class InvalidTransition(Exception):
@@ -186,38 +183,3 @@ class StateMachine:
         self.state = transition.destination
         print(f"{old_state.name} --{event.name}--> {self.state.name}")
 
-
-if __name__ == "__main__":
-    battery_level = 50
-    engine_start_checks = 0
-
-    def battery_ok() -> bool:
-        return battery_level >= 20
-
-    def start_engine() -> None:
-        print("Starting engine...")
-
-    def engine_running() -> bool:
-        global engine_start_checks
-        engine_start_checks += 1
-        print(f"Checking engine, step {engine_start_checks}...")
-        return engine_start_checks >= 3
-
-    fsm = StateMachine(State.IDLE)
-    fsm.add_transition(
-        Event.START,
-        State.IDLE,
-        State.RUNNING,
-        msg ="",
-        guard=battery_ok,
-        action=start_engine,
-        success_check=engine_running,
-        max_steps=5,
-        failure_destination=State.ERROR,
-    )
-
-    status = fsm.trigger(Event.START)
-    while status == TransitionStatus.PENDING:
-        status = fsm.step()
-
-    print(f"Final state: {fsm.state.name}")
