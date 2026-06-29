@@ -161,7 +161,7 @@ class UdpCommunicationManager(QObject):
         state, pending = self._parse_plc_status(data)
         pending_event = pending.get("event") if pending is not None else None
 
-        print(f"[UdpServer] {data.decode(errors='replace')} received from UDP client.")
+        #print(f"[UdpServer] {data.decode(errors='replace')} received from UDP client.")
 
         if pending_event in ("STOP", "FAIL"):
             self.requestRosCommunicationStop("UDP pending stop/fail transition received.")
