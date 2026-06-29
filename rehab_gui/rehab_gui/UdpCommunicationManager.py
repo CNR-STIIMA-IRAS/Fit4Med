@@ -11,6 +11,59 @@ from typing import Any, Dict, Optional, Tuple
 #
 #
 ################################################
+import os
+import time
+import psutil
+
+
+def free_udp_port(port: int, force: bool = False, timeout: float = 3.0):
+    """
+    Terminate processes currently bound to the given UDP port.
+
+    force=False: send terminate()
+    force=True: send kill() after terminate timeout
+    """
+    current_pid = os.getpid()
+    victims = []
+
+    for conn in psutil.net_connections(kind="udp"):
+        if not conn.laddr:
+            continue
+
+        if conn.laddr.port == port and conn.pid is not None:
+            if conn.pid == current_pid:
+                print(f"Port {port} is used by this same process PID={current_pid}. Not killing self.")
+                continue
+
+            try:
+                proc = psutil.Process(conn.pid)
+                victims.append(proc)
+            except psutil.NoSuchProcess:
+                pass
+
+    if not victims:
+        print(f"No external process found using UDP port {port}.")
+        return
+
+    for proc in victims:
+        try:
+            print(f"Terminating PID={proc.pid}: {' '.join(proc.cmdline())}")
+            proc.terminate()
+        except psutil.NoSuchProcess:
+            pass
+
+    gone, alive = psutil.wait_procs(victims, timeout=timeout)
+
+    if alive and force:
+        for proc in alive:
+            try:
+                print(f"Killing PID={proc.pid}")
+                proc.kill()
+            except psutil.NoSuchProcess:
+                pass
+
+    print(f"Freed UDP port {port}, if no protected process remained.")
+
 class UdpServer(QObject):
     message_received = pyqtSignal(bytes, tuple)  # data, addr
 
@@ -25,7 +78,12 @@ class UdpServer(QObject):
 
     def start(self):
         """Start UDP server (blocking, run in a separate QThread)."""
+        if self._running:
+            print("[UdpServer] Already running")
+            return
+        
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        free_udp_port(5005, force=True)
         self.sock.bind((self.host, self.port))
         self._running = True
         while self._running:
@@ -41,8 +99,11 @@ class UdpServer(QObject):
         """Stop the server."""
         print("[UdpServer] Stopping server...")
         self._running = False
-        if self.sock:
-            self.sock.close()
+        if self.sock is not None:
+            try:
+                self.sock.close()
+            except OSError:
+                pass
         self.sock = None
 
     def send_response(self, message: bytes, addr: Optional[Tuple[Any, ...]] =None):
