@@ -136,7 +136,7 @@ class PLCControllerInterface(Node):
         self.declare_parameter('plc_slave_identifier', 'sickPLC')
         self.declare_parameter(
             'ethercat_slave_state_services',
-            ['/tecnobody/get_slave_states'],
+            ['/tecnobody/get_slave_states_master1'],
         )
         self.declare_parameter('ethercat_state_poll_period', 1.0)
         self.declare_parameter('ethercat_state_stale_after', 5.0)
@@ -313,13 +313,6 @@ class PLCControllerInterface(Node):
     def _ready_to_start(self) -> bool:
         return self._ros_gui_disconnected() and self._ethercat_slaves_status_ok()
 
-    def _ethercat_polling_expected(self) -> bool:
-        pending = self.fsm.pending
-        return (
-            self.fsm.state in (State.RUNNING, State.RUNNING_RECOVERY)
-            or (pending is not None and pending.event == Event.START)
-        )
-
     def _get_ethercat_slave_state_service_names(self) -> list[str]:
         raw_service_names = self.get_parameter(
             'ethercat_slave_state_services'
@@ -336,7 +329,7 @@ class PLCControllerInterface(Node):
         else:
             service_names = [str(name) for name in raw_service_names]
 
-        return service_names or ['/tecnobody/get_slave_states']
+        return service_names or ['/tecnobody/get_slave_states_master1']
 
     def _plc_slave_identifier(self) -> str:
         return str(self.get_parameter('plc_slave_identifier').value) #type: ignore
@@ -441,20 +434,7 @@ class PLCControllerInterface(Node):
         self.get_logger().warning(message, throttle_duration_sec=5.0) #type: ignore
 
     def poll_ethercat_slave_states(self) -> None:
-        if not self._ethercat_polling_expected():
-            with self._ethercat_cache_lock:
-                self.ethercat_check_state = EthercatCheckState.IDLE
-                self._ethercat_slave_names = []
-                self._ethercat_slave_states = []
-                self._ethercat_last_update_monotonic = None
-                self._ethercat_last_error = None
-                self._ethercat_pending_requests.clear()
-                self._ethercat_poll_started_at = None
-                self._ethercat_poll_slave_names = []
-                self._ethercat_poll_slave_states = []
-                self._ethercat_poll_errors = []
-            return
-
+        
         if os.environ.get('PLC_MANAGER_SKIP_ETHERCAT', '0') == '1':
             with self._ethercat_cache_lock:
                 self._ethercat_last_update_monotonic = time.monotonic()
