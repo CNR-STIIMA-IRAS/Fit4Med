@@ -453,6 +453,9 @@ class SyncRosManager:
             return
         self.set_mode_of_operation(8) if self.current_controller_name == self.trajectory_controller_name else self.set_mode_of_operation(9)
 
+    def request_stop(self) -> None:
+        self.destroy_clients_init = True
+
     def destroy(self):
         self.destroy_clients_init = True
 
