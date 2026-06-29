@@ -195,6 +195,7 @@ class PLCControllerInterface(Node):
             Event.SWITCH_MODE,
             State.IDLE, 
             State.IDLE_RECOVERY, 
+            action=lambda: self.publish_command('PLC_node/z_recovery', 0),
             msg="🔑 Change mode (IDLE=>IDLE_RECOVERY)",
         )
         self.fsm.add_transition(
