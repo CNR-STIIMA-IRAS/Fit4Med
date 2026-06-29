@@ -17,6 +17,7 @@ class MotorsWindow(QtWidgets.QWidget):
         self.ui.setupUi(self)  # Set up the UI for the secondary widget
         self._last_plc_state = None
         self._last_plc_pending = None
+        self._plc_items = []
 
     def connect(self, ROS: RosCommunicationManager, parent_timer: QTimer):
         self.ROS : RosCommunicationManager = ROS
@@ -37,6 +38,13 @@ class MotorsWindow(QtWidgets.QWidget):
         self.ui.tableWidget_EthercatNodesInfo.setColumnWidth(0, 300)
         self.ui.tableWidget_EthercatNodesInfo.setColumnWidth(1, 300)
 
+        self.ui.tableWidget_PLC.setRowCount(5)      # Set the number of rows
+        self.ui.tableWidget_PLC.setColumnCount(4)  # Set the number of columns
+        self.ui.tableWidget_PLC.setColumnWidth(0, 250)
+        self.ui.tableWidget_PLC.setColumnWidth(1, 50)
+        self.ui.tableWidget_PLC.setColumnWidth(2, 250)
+        self.ui.tableWidget_PLC.setColumnWidth(3, 50)
+
         # Pre-create table items so we don't recreate them every tick
         self._motor_items = []
         for i in range(len(self.ROS.joint_names)):
@@ -55,6 +63,17 @@ class MotorsWindow(QtWidgets.QWidget):
                 self.ui.tableWidget_EthercatNodesInfo.setItem(i, j, item)
                 row_items.append(item)
             self._ec_items.append(row_items)
+
+        self._plc_items = []
+        for i in range(5):
+            row_items = []
+            for j in range(4):
+                item = QtWidgets.QTableWidgetItem('')
+                if j in (1, 3):
+                    item.setTextAlignment(QtCore.Qt.AlignCenter)
+                self.ui.tableWidget_PLC.setItem(i, j, item)
+                row_items.append(item)
+            self._plc_items.append(row_items)
 
         # Cache for emergency state to avoid redundant setText/setStyleSheet
         self._last_emergency_state = None
@@ -88,6 +107,8 @@ class MotorsWindow(QtWidgets.QWidget):
             self._last_plc_pending = None
             return message
 
+        self._update_plc_table(payload)
+
         state = payload.get("state")
         state = state if isinstance(state, str) else ""
         self._last_plc_state = state
@@ -109,6 +130,50 @@ class MotorsWindow(QtWidgets.QWidget):
         steps_text = f" [{steps}]" if steps is not None else ""
 
         return f"{state} | pending {event}: {source} -> {target}{steps_text}"
+
+    @staticmethod
+    def _format_plc_interface_name(name: str) -> str:
+        if name.startswith("PLC_node/"):
+            return name[len("PLC_node/"):]
+        if name.startswith("PLC_node"):
+            return name[len("PLC_node"):].lstrip("/")
+        return name
+
+    @staticmethod
+    def _format_plc_value(value) -> str:
+        if isinstance(value, str):
+            return "1" if value.strip().lower() in ("1", "true", "yes", "on") else "0"
+        return "1" if bool(value) else "0"
+
+    def _update_plc_table(self, payload: dict[str, object]) -> None:
+        if not self._plc_items:
+            return
+
+        command_msg = payload.get("command_msg")
+        if not isinstance(command_msg, dict):
+            return
+
+        interface_names = command_msg.get("interface_names")
+        values = command_msg.get("values")
+        if not isinstance(interface_names, list) or not isinstance(values, list):
+            return
+
+        rows = self.ui.tableWidget_PLC.rowCount()
+        max_commands = rows * 2
+        for command_idx in range(max_commands):
+            row = command_idx % rows
+            column = 0 if command_idx < rows else 2
+            name_text = ""
+            value_text = ""
+
+            if command_idx < len(interface_names) and command_idx < len(values):
+                name = interface_names[command_idx]
+                if isinstance(name, str):
+                    name_text = self._format_plc_interface_name(name)
+                value_text = self._format_plc_value(values[command_idx])
+
+            self._plc_items[row][column].setText(name_text)
+            self._plc_items[row][column + 1].setText(value_text)
 
     def resetFaults(self) -> None:
         if self.ui.comboBox_ResetFaults.currentIndex() == 2:

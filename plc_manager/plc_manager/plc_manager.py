@@ -573,6 +573,10 @@ class PLCControllerInterface(Node):
             "schema": "fit4med.plc_fsm_status.v1",
             "state": self.fsm.state.name,
             "pending": None,
+            "command_msg": {
+                "interface_names": list(self.command_msg.interface_names), #type: ignore
+                "values": [int(value) for value in self.command_msg.values], #type: ignore
+            },
         }
 
         if pending is not None:
