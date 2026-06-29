@@ -41,7 +41,7 @@ class RosilibpyServiceHandler(object):
         if self.on_error_callback: #type: ignore
             self.on_error_callback(response) #type: ignore
 
-    def call_async(self, req: dict | None = None, on_done_callback = None, on_error_callback = None) -> None: #type: ignore
+    def call_async(self, req: dict  = None, on_done_callback = None, on_error_callback = None) -> None: #type: ignore
         try:
             _req : roslibpy.ServiceRequest = roslibpy.ServiceRequest(req) if req is not None else roslibpy.ServiceRequest()
             self.on_done_collback = on_done_callback #type: ignore
@@ -52,7 +52,7 @@ class RosilibpyServiceHandler(object):
             print(f'<<<< Given request: {req}')
         return 
     
-    def call(self, req: dict | None = None, on_error_callback = None) -> dict: #type: ignore
+    def call(self, req: dict  = None, on_error_callback = None) -> dict: #type: ignore
         self.response = None #type: ignore
         try:
             _req : roslibpy.ServiceRequest = roslibpy.ServiceRequest(req) if req is not None else roslibpy.ServiceRequest()
@@ -100,7 +100,7 @@ class CoEDriveStates:
         self.fault_present : bool = True
         self.drives_on : bool = False
     
-    def from_dict(self, msg : dict | None) -> None: #type: ignore
+    def from_dict(self, msg : dict ) -> None: #type: ignore
         if msg is not None and 'dof_names' in msg.keys() and len(msg['dof_names'])==self.lenght: #type: ignore
             self.dof_names = msg['dof_names']
             self.coe_drive_states = msg['drive_states']
