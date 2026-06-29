@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+from typing import Dict
 
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import QMessageBox
@@ -14,7 +15,7 @@ class MotorsWindow(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
         self.ui = Ui_MotorsWindow()
-        self.ui.setupUi(self)  # Set up the UI for the secondary widget
+        self.ui.setupUi(self)  #type:ignore # Set up the UI for the secondary widget
         self._last_plc_state = None
         self._last_plc_pending = None
         self._plc_items = []
@@ -145,7 +146,7 @@ class MotorsWindow(QtWidgets.QWidget):
             return "1" if value.strip().lower() in ("1", "true", "yes", "on") else "0"
         return "1" if bool(value) else "0"
 
-    def _update_plc_table(self, payload: dict[str, object]) -> None:
+    def _update_plc_table(self, payload: Dict[str, object]) -> None:
         if not self._plc_items:
             return
 

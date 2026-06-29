@@ -4,7 +4,7 @@
 from PyQt5.QtCore import QThread, QObject, pyqtSignal, pyqtSlot
 import json
 import socket
-from typing import Any
+from typing import Any, Dict, Optional, Tuple
 
 ################################################
 #
@@ -45,7 +45,7 @@ class UdpServer(QObject):
             self.sock.close()
         self.sock = None
 
-    def send_response(self, message: bytes, addr: tuple[Any, ...] | None =None):
+    def send_response(self, message: bytes, addr: Optional[Tuple[Any, ...]] =None):
         """Send response to client."""
         if not self.sock:
             return
@@ -126,7 +126,7 @@ class UdpCommunicationManager(QObject):
             self.stop_ros_communication.emit()
             self.stop_ros_communication_emitted = True
 
-    def _parse_plc_status(self, data: bytes) -> tuple[str, dict[str, Any] | None]:
+    def _parse_plc_status(self, data: bytes) -> Tuple[str, Optional[Dict[str, Any]]]:
         decoded = data.decode(errors="replace")
         try:
             payload = json.loads(decoded)
