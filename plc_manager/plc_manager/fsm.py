@@ -67,6 +67,19 @@ class StateMachine:
         self.msg = ""
         self.logger = logger
 
+    def _debug_transition(
+        self,
+        prefix: str,
+        source: State,
+        event: Event,
+        destination: State,
+    ) -> None:
+        msg = f"[FSM DEBUG] {prefix}: {source.name} --{event.name}--> {destination.name}"
+        if self.logger:
+            self.logger.info(msg) #type: ignore
+        else:
+            print(msg)
+
     def add_transition(
         self,
         event: Event,
@@ -92,6 +105,7 @@ class StateMachine:
             failure_destination=failure_destination,
             msg=msg
         )
+        self._debug_transition("transition created", source, event, destination)
 
     def trigger(self, event: Event) -> TransitionStatus:
         if self.pending is not None:
@@ -104,6 +118,12 @@ class StateMachine:
             raise InvalidTransition(f"No transition for {self.state.name} + {event.name}")
 
         transition = self.transitions[key]
+        self._debug_transition(
+            "transition called",
+            self.state,
+            event,
+            transition.destination,
+        )
 
         if self.logger:
             self.logger.info( #type: ignore
@@ -182,4 +202,3 @@ class StateMachine:
         old_state = self.state
         self.state = transition.destination
         print(f"{old_state.name} --{event.name}--> {self.state.name}")
-
