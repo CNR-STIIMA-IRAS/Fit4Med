@@ -74,8 +74,8 @@ class RosilibpyServiceHandler(object):
                 done.set()
 
             def on_error(response):
-                response_holder['response'] = response
-                self.response = response
+                response_holder['response'] = None
+                self.response = None #type: ignore
                 if self.on_error_callback:
                     self.on_error_callback(response) #type: ignore
                 done.set()
@@ -442,16 +442,16 @@ class SyncRosManager:
             return
 
         msg_drive_states = self.get_drive_states(timeout_s=self._poll_service_timeout_s)
-        if self._should_stop_polling(should_stop) or msg_drive_states is None:
+        if self._should_stop_polling(should_stop) or not isinstance(msg_drive_states, dict):
             return
-        self.coe_drive_states.from_dict(msg_drive_states['states'] if msg_drive_states is not None and 'states' in msg_drive_states else None) #type: ignore
+        self.coe_drive_states.from_dict(msg_drive_states.get('states')) #type: ignore
 
         if len(self.coe_drive_states.dof_names) != len(self._joint_names):
             print(f'Warning! Get an incomplete list of states (received the data for the axes: {self.coe_drive_states.dof_names}, expected: {self._joint_names}')
             return
 
         msg_slave_states = self.get_slave_states(timeout_s=self._poll_service_timeout_s)
-        if self._should_stop_polling(should_stop) or msg_slave_states is None:
+        if self._should_stop_polling(should_stop) or not isinstance(msg_slave_states, dict):
             return
         self.ec_slave_states.from_dict(msg_slave_states) #type: ignore
 
@@ -462,7 +462,7 @@ class SyncRosManager:
         list_controllers_response : dict = self.get_list_controllers(timeout_s=self._poll_service_timeout_s)
         if self._should_stop_polling(should_stop):
             return
-        if list_controllers_response is None or 'controller' not in list_controllers_response:
+        if not isinstance(list_controllers_response, dict) or 'controller' not in list_controllers_response:
             return
 
         ##########################
