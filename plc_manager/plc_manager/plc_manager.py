@@ -135,6 +135,10 @@ class PLCControllerInterface(Node):
         # Default matches the configured ros2_control name for the SICK GetC100 PLC.
         self.declare_parameter('plc_slave_identifier', 'sickPLC')
         self.declare_parameter(
+            'ethercat_startup_check_service',
+            '/ethercat_slaves_status_check/check',
+        )
+        self.declare_parameter(
             'ethercat_slave_state_services',
             ['/tecnobody/get_slave_states_master1'],
         )
@@ -144,8 +148,13 @@ class PLCControllerInterface(Node):
 
         self.z_limit_still_active = False
 
+        self.ethercat_startup_check_service_name = (
+            self._get_ethercat_startup_check_service_name()
+        )
         self.ethercat_slaves_status_check_client : Client = self.create_client(Trigger, #type: ignore
-            '/ethercat_slaves_status_check/check', callback_group=self.service_group)
+            self.ethercat_startup_check_service_name,
+            callback_group=self.service_group,
+        )
         self.ethercat_startup_check_state = EthercatCheckState.IDLE
         self.ethercat_startup_check_requested = True
 
@@ -313,6 +322,12 @@ class PLCControllerInterface(Node):
     def _ready_to_start(self) -> bool:
         return self._ros_gui_disconnected() and self._ethercat_slaves_status_ok()
 
+    def _get_ethercat_startup_check_service_name(self) -> str:
+        service_name = str(
+            self.get_parameter('ethercat_startup_check_service').value #type: ignore
+        ).strip()
+        return service_name or '/ethercat_slaves_status_check/check'
+
     def _get_ethercat_slave_state_service_names(self) -> list[str]:
         raw_service_names = self.get_parameter(
             'ethercat_slave_state_services'
@@ -327,7 +342,11 @@ class PLCControllerInterface(Node):
                 if name.strip()
             ]
         else:
-            service_names = [str(name) for name in raw_service_names]
+            service_names = [
+                str(name).strip()
+                for name in raw_service_names
+                if str(name).strip()
+            ]
 
         return service_names or ['/tecnobody/get_slave_states_master1']
 
@@ -358,14 +377,7 @@ class PLCControllerInterface(Node):
         return None, None
 
     def _visible_ethercat_slave_pairs_locked(self) -> list[tuple[str, str]]:
-        plc_identifier = self._plc_slave_identifier()
-        pairs = list(zip(self._ethercat_slave_names, self._ethercat_slave_states))
-        filtered_pairs = [
-            (slave_name, slave_state)
-            for slave_name, slave_state in pairs
-            if plc_identifier not in slave_name
-        ]
-        return filtered_pairs if filtered_pairs else pairs
+        return list(zip(self._ethercat_slave_names, self._ethercat_slave_states))
 
     def _refresh_ethercat_check_state_locked(self) -> None:
         if os.environ.get('PLC_MANAGER_SKIP_ETHERCAT', '0') == '1':
@@ -376,16 +388,28 @@ class PLCControllerInterface(Node):
             )
             return
 
-        plc_name, plc_state = self._find_plc_slave_locked()
-        if plc_name is None:
+        if not self._ethercat_slave_names:
+            self.ethercat_check_state = EthercatCheckState.FAILED
+            self._ethercat_last_error = 'EtherCAT GetSlaveStates returned no slaves.'
+            return
+
+        if len(self._ethercat_slave_names) != len(self._ethercat_slave_states):
             self.ethercat_check_state = EthercatCheckState.FAILED
             self._ethercat_last_error = (
-                f"EtherCAT PLC slave '{self._plc_slave_identifier()}' "
-                'was not found.'
+                'EtherCAT GetSlaveStates returned mismatched slave names/states.'
             )
             return
 
-        if plc_state == 'OP':
+        non_operational_slaves = [
+            f'{slave_name} => {slave_state}'
+            for slave_name, slave_state in zip(
+                self._ethercat_slave_names,
+                self._ethercat_slave_states,
+            )
+            if slave_state != 'OP'
+        ]
+
+        if not non_operational_slaves:
             self.ethercat_check_state = EthercatCheckState.READY
             if self._ethercat_poll_errors:
                 self._ethercat_last_error = '; '.join(self._ethercat_poll_errors)
@@ -395,7 +419,8 @@ class PLCControllerInterface(Node):
 
         self.ethercat_check_state = EthercatCheckState.FAILED
         self._ethercat_last_error = (
-            f'EtherCAT PLC is not operational: {plc_name} => {plc_state}'
+            'EtherCAT slaves are not operational: '
+            + '; '.join(non_operational_slaves)
         )
 
     def _mark_ethercat_check_failed(self, message: str) -> None:
@@ -441,6 +466,19 @@ class PLCControllerInterface(Node):
                 self._ethercat_slave_names = []
                 self._ethercat_slave_states = []
                 self._refresh_ethercat_check_state_locked()
+            return
+
+        if self.fsm.state not in (State.RUNNING, State.RUNNING_RECOVERY):
+            with self._ethercat_cache_lock:
+                self._ethercat_pending_requests.clear()
+                self._ethercat_poll_started_at = None
+                self._ethercat_slave_names = []
+                self._ethercat_slave_states = []
+                self._ethercat_last_update_monotonic = None
+                self.ethercat_check_state = EthercatCheckState.IDLE
+                self._ethercat_last_error = (
+                    'Runtime EtherCAT telemetry waits for START.'
+                )
             return
 
         with self._ethercat_cache_lock:
@@ -571,6 +609,7 @@ class PLCControllerInterface(Node):
                     if plc_name is None
                     else {"name": plc_name, "state": plc_state}
                 ),
+                "service_names": list(self._ethercat_slave_state_clients.keys()),
                 "slaves": [
                     {"name": slave_name, "state": slave_state}
                     for slave_name, slave_state in visible_pairs
@@ -1015,7 +1054,8 @@ def main(args=None): #type: ignore
                 if not node.ethercat_slaves_status_check_client.wait_for_service(timeout_sec=5.0):
                     node.get_logger().error( #type: ignore
                         "EtherCAT status check service not available. "
-                        "Ensure ethercat_slaves_status_check is running."
+                        f"Ensure {node.ethercat_startup_check_service_name} "
+                        "is running."
                     )
                     continue
 
@@ -1028,13 +1068,22 @@ def main(args=None): #type: ignore
                 )
 
                 if future.done() and future.result() is not None: #type: ignore
+                    startup_check_result = future.result() #type: ignore
                     node.ethercat_startup_check_state = (
                         EthercatCheckState.READY
-                        if future.result().success #type: ignore
+                        if startup_check_result.success
                         else EthercatCheckState.FAILED
                     )
+                    if not startup_check_result.success:
+                        node.get_logger().warning( #type: ignore
+                            "EtherCAT startup check failed: "
+                            f"{startup_check_result.message}"
+                        )
                 else:
                     node.ethercat_startup_check_state = EthercatCheckState.FAILED
+                    node.get_logger().warning( #type: ignore
+                        "EtherCAT startup check timed out."
+                    )
 
                 node.ethercat_startup_check_requested = not (
                     node.ethercat_startup_check_state == EthercatCheckState.READY
