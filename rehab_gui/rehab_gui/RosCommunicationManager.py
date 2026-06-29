@@ -58,6 +58,8 @@ class RosCommunicationManager(QObject):
         self.manual_mode_activated = False
         self._exercise_in_suspension: bool = False
         self._stop_signal_emitted = False
+        self._worker_stop_timeout_msec = 5000
+        self._worker_force_stop_timeout_msec = 3000
 
         self.worker_thread = Worker(self.updateState, loop_period_s=0.2)
         self.worker_thread.finished.connect(self.onUpdateWorkerThreadFinished)
@@ -72,6 +74,65 @@ class RosCommunicationManager(QObject):
         self._stop_signal_emitted = True
         self.stop_ros_communication_signal.emit()
 
+    def _close_ros_client(self) -> None:
+        ros_client = self.ros_client if hasattr(self, 'ros_client') else None
+        if ros_client is None:
+            return
+
+        try:
+            ros_client.close()
+        except Exception as exc:
+            print(f"Error while closing rosbridge client: {exc}")
+
+        try:
+            del self.ros_client
+        except AttributeError:
+            pass
+
+    def _stop_update_worker(self) -> bool:
+        if not self.worker_thread.isRunning():
+            return True
+
+        self.worker_thread.stop_thread()
+        if self.worker_thread.wait(self._worker_stop_timeout_msec):
+            return True
+
+        print(
+            "ROS worker did not stop within "
+            f"{self._worker_stop_timeout_msec} ms. Closing rosbridge client to unblock it."
+        )
+        self._close_ros_client()
+
+        if self.worker_thread.wait(self._worker_force_stop_timeout_msec):
+            return True
+
+        print("ROS worker is still running after rosbridge client close.")
+        return False
+
+    def _destroy_ros_manager(self, worker_stopped: bool) -> None:
+        ros_manager = self.ROS if hasattr(self, 'ROS') else None
+        if ros_manager is None:
+            return
+
+        if worker_stopped:
+            try:
+                if not ros_manager.destroy():
+                    print('Error trying to destroy ROS class.')
+            except Exception as exc:
+                # An unexpected rosbridge loss makes unsubscribe/unadvertise fail.
+                # Continue clearing the local objects so the next RUNNING message
+                # can build a completely new connection.
+                print(f"Error while destroying disconnected ROS objects: {exc}")
+        else:
+            print("Skipping SyncRosManager destroy because the ROS worker is still running.")
+
+        self.ROS = None  # type: ignore
+        gc.collect()
+        if worker_stopped:
+            print("[MainProgram] ROS processes stopped.")
+        else:
+            print("[MainProgram] ROS manager reference cleared while the worker remains blocked.")
+
     def startRosCommunication(self) -> None:
         if self.rOk():
             print("ROS_MANAGER already initialized.")
@@ -79,8 +140,8 @@ class RosCommunicationManager(QObject):
             return 
 
         if self.worker_thread.isRunning():
-            print("ROS worker is still stopping.")
-            self.ros_communication_failed_signal.emit()
+            print("ROS worker is still stopping. Completing stop cleanup before retry.")
+            self.stopRosCommunication()
             return
 
         self.ros_client = roslibpy.Ros(
@@ -108,42 +169,22 @@ class RosCommunicationManager(QObject):
     def stopRosCommunication(self) -> None:
         print("Stopping ROS processes...")
 
-        if self.worker_thread.isRunning():
-            self.worker_thread.stop_thread()
-            if not self.worker_thread.wait(1000):
-                print("ROS worker did not stop in time.")
-                self.ros_communication_failed_signal.emit()
-                return
+        worker_stopped = self._stop_update_worker()
 
         self.ROS_active = False
 
-        ros_manager = self.ROS if hasattr(self, 'ROS') else None
-        ros_client = self.ros_client if hasattr(self, 'ros_client') else None
+        self._destroy_ros_manager(worker_stopped)
+        self._close_ros_client()
 
-        if ros_manager is not None:
-            try:
-                if not ros_manager.destroy():
-                    print('Error trying to destroy ROS class.')
-            except Exception as exc:
-                # An unexpected rosbridge loss makes unsubscribe/unadvertise fail.
-                # Continue clearing the local objects so the next RUNNING message
-                # can build a completely new connection.
-                print(f"Error while destroying disconnected ROS objects: {exc}")
-
-            self.ROS = None  # type: ignore
-            gc.collect()
-            print("[MainProgram] ROS processes stopped.")
-
-        if ros_client is not None:
-            try:
-                ros_client.close()
-            except Exception as exc:
-                print(f"Error while closing rosbridge client: {exc}")
-            del self.ros_client
+        if not worker_stopped:
+            print("[MainProgram] ROS worker did not stop cleanly after cleanup.")
+            self._stop_signal_emitted = True
+            self.ros_communication_failed_signal.emit()
+            return
 
         # ROS was never started, or its worker already stopped. Emit immediately
-        # so plc_manager receives STOPPED and the UDP flags are reset.
-        print("[MainProgram] ROS worker was not running — signaling stop immediately.")
+        # so plc_manager receives ROS_DISCONNECTED and the UDP flags are reset.
+        print("[MainProgram] ROS communication stopped - signaling stop.")
         self._emit_stop_ros_communication_once()
         
             
