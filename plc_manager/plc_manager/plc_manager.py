@@ -15,9 +15,11 @@ from rclpy.node import Node
 from rclpy.subscription import Subscription
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from rclpy.executors import MultiThreadedExecutor
+from rclpy.client import Client
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from tecnobody_msgs.msg import PlcController, PlcStates
 from ethercat_msgs.srv import GetSlaveStates
+from std_srvs.srv import Trigger
 import sys
 import subprocess
 import threading
@@ -141,6 +143,11 @@ class PLCControllerInterface(Node):
         self.declare_parameter('ethercat_state_response_timeout', 3.0)
 
         self.z_limit_still_active = False
+
+        self.ethercat_slaves_status_check_client : Client = self.create_client(Trigger, #type: ignore
+            '/ethercat_slaves_status_check/check', callback_group=self.service_group)
+        self.ethercat_startup_check_state = EthercatCheckState.IDLE
+        self.ethercat_startup_check_requested = True
 
         self.ethercat_check_state = EthercatCheckState.IDLE
         self._ethercat_cache_lock = threading.Lock()
@@ -299,16 +306,19 @@ class PLCControllerInterface(Node):
 
     def _ros_gui_connection_failed(self) -> bool:
         return self.client.last_received_message == b"ROS_CONNECTION_FAILED"
-    
+
     def _ethercat_slaves_status_ok(self) -> bool:
-        with self._ethercat_cache_lock:
-            return (
-                self.ethercat_check_state == EthercatCheckState.READY
-                and not self._ethercat_cache_stale_locked()
-            )
+        return self.ethercat_startup_check_state == EthercatCheckState.READY
 
     def _ready_to_start(self) -> bool:
         return self._ros_gui_disconnected() and self._ethercat_slaves_status_ok()
+
+    def _ethercat_polling_expected(self) -> bool:
+        pending = self.fsm.pending
+        return (
+            self.fsm.state in (State.RUNNING, State.RUNNING_RECOVERY)
+            or (pending is not None and pending.event == Event.START)
+        )
 
     def _get_ethercat_slave_state_service_names(self) -> list[str]:
         raw_service_names = self.get_parameter(
@@ -431,6 +441,20 @@ class PLCControllerInterface(Node):
         self.get_logger().warning(message, throttle_duration_sec=5.0) #type: ignore
 
     def poll_ethercat_slave_states(self) -> None:
+        if not self._ethercat_polling_expected():
+            with self._ethercat_cache_lock:
+                self.ethercat_check_state = EthercatCheckState.IDLE
+                self._ethercat_slave_names = []
+                self._ethercat_slave_states = []
+                self._ethercat_last_update_monotonic = None
+                self._ethercat_last_error = None
+                self._ethercat_pending_requests.clear()
+                self._ethercat_poll_started_at = None
+                self._ethercat_poll_slave_names = []
+                self._ethercat_poll_slave_states = []
+                self._ethercat_poll_errors = []
+            return
+
         if os.environ.get('PLC_MANAGER_SKIP_ETHERCAT', '0') == '1':
             with self._ethercat_cache_lock:
                 self._ethercat_last_update_monotonic = time.monotonic()
@@ -966,7 +990,7 @@ def main(args=None): #type: ignore
         7. Graceful cleanup and ROS 2 shutdown
     
     Bringup Sequence (first iteration):
-        1. Wait for cached EtherCAT PLC slave state to become OP
+        1. Check if EtherCAT PLC slave active through /ethercat_slaves_status_check/check
         2. Wait for subscribers to command topic (> 0 subscribers)
         3. When both ready: publish_bringup_commands (E-stop=1, F/T power=1)
         4. Set bringup_done=True to prevent repeated bringup
@@ -1005,6 +1029,36 @@ def main(args=None): #type: ignore
     try:
         while rclpy.ok():
             mt_executor.spin_once(timeout_sec=0.1)
+
+            if node.ethercat_startup_check_requested:
+
+                if not node.ethercat_slaves_status_check_client.wait_for_service(timeout_sec=5.0):
+                    node.get_logger().error( #type: ignore
+                        "EtherCAT status check service not available. "
+                        "Ensure ethercat_slaves_status_check is running."
+                    )
+                    continue
+
+                future = node.ethercat_slaves_status_check_client.call_async(Trigger.Request()) #type: ignore
+                node.ethercat_startup_check_state = EthercatCheckState.PENDING
+
+                mt_executor.spin_until_future_complete(
+                    future, #type: ignore
+                    timeout_sec=5.0,
+                )
+
+                if future.done() and future.result() is not None: #type: ignore
+                    node.ethercat_startup_check_state = (
+                        EthercatCheckState.READY
+                        if future.result().success #type: ignore
+                        else EthercatCheckState.FAILED
+                    )
+                else:
+                    node.ethercat_startup_check_state = EthercatCheckState.FAILED
+
+                node.ethercat_startup_check_requested = not (
+                    node.ethercat_startup_check_state == EthercatCheckState.READY
+                )
 
             # ========== Initial bringup sequence (once only) ==========
             if not bringup_done \
