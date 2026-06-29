@@ -263,7 +263,7 @@ class PLCControllerInterface(Node):
         """
         msg = self.client.last_received_message
         self.get_logger().info(f"Last received message: {msg}")  # Debug print statement
-        if msg is None or msg == b"ROS_DISCONNECTED":
+        if msg is None:
             return True
         
         return False
