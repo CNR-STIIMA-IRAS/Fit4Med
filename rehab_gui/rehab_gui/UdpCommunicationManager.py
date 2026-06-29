@@ -168,7 +168,8 @@ class UdpCommunicationManager(QObject):
             return
 
         if state in ('IDLE', 'IDLE_RECOVERY', 'ERROR', 'RECOVERED') and pending is None:
-            self.requestRosCommunicationStop("UDP STOP request received.")
+            if not self.stop_ros_communication_emitted:
+                self.requestRosCommunicationStop("UDP STOP request received.")
             if state == 'IDLE_RECOVERY' and not self.z_recovery_start_signal_emitted:
                 self.z_recovery_start_signal.emit()
                 self.z_recovery_start_signal_emitted = True
