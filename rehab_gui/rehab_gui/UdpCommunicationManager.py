@@ -258,8 +258,6 @@ class UdpCommunicationManager(QObject):
                     self.z_recovery_mode_signal.emit()
                     self.z_recovery_mode_signal_emitted = True
                     self.z_recovery_done_signal_emitted = False
-        else:
-            print(f"[UdpServer] UDP packet received from UDP client: {data}")
 
 def main(args=None): #type: ignore
     # TODO
