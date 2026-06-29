@@ -162,6 +162,7 @@ class RosCommunicationManager(QObject):
             self.stopRosCommunication()
             return
 
+        print(f"Connecting to rosbridge at ws://{self.remote_ip}:{self.remote_port}")
         try:
             self.ros_client = roslibpy.Ros(
                 host=self.remote_ip,
