@@ -183,10 +183,11 @@ class PLCControllerInterface(Node):
             )
             for service_name in self._get_ethercat_slave_state_service_names()
         }
-        self._ethercat_state_timer = self.create_timer(
+        self.ethercat_state_timer = self.create_timer(
             float(self.get_parameter('ethercat_state_poll_period').value), #type: ignore
             self.poll_ethercat_slave_states,
             callback_group=self.timer_group,
+            auto_start=False,
         )
         self.start_environment_requested = True
 
@@ -286,6 +287,8 @@ class PLCControllerInterface(Node):
                 success_check=check_env_running_recovery_stopped,
                 max_steps=5000,
                 failure_destination=State.ERROR)
+
+        self.bringup_done = False
     
     def cleanup(self) -> None:
         """Perform graceful cleanup and resource deallocation.
@@ -782,6 +785,9 @@ class PLCControllerInterface(Node):
 
     def state_callback(self, msg: PlcStates) -> None:
         # ========== Acquire lock to prevent concurrent execution ==========
+        if not self.bringup_done:
+            return
+        
         if not self.lock.acquire(blocking=False):
             self.get_logger().warn("state_callback already in execution, ignore.") #type: ignore
             return
@@ -1044,9 +1050,8 @@ def main(args=None): #type: ignore
     os.sched_setaffinity(0, {7})
     
     # ========== Bringup flag (execute once at startup) ==========
-    bringup_done = False
-    
     try:
+        node.bringup_done = False
         while rclpy.ok():
             mt_executor.spin_once(timeout_sec=0.1)
 
@@ -1091,11 +1096,12 @@ def main(args=None): #type: ignore
                 )
 
             # ========== Initial bringup sequence (once only) ==========
-            if not bringup_done \
+            if not node.bringup_done \
             and node._ethercat_slaves_status_ok() \
             and node.command_publisher.get_subscription_count() > 0:
                 node.publish_bringup_commands()
-                bringup_done = True
+                node.bringup_done = True
+                node.ethercat_state_timer.reset()  # Start EtherCAT polling timer after bringup
                 
             # ========== Check for graceful shutdown request ==========
             if node.shutdown_requested:
