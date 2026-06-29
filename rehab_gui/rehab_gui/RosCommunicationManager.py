@@ -412,7 +412,7 @@ class RosCommunicationManager(QObject):
         if not ros_client.is_connected:
             return
 
-        ros_manager.update_controller_and_driver_states(self._is_ros_stop_requested)
+        ros_manager.update_controller_and_driver_states()
         return 
     
     # def listActiveControllers(self) -> None:
