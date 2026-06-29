@@ -61,31 +61,13 @@ class RosilibpyServiceHandler(object):
             _req : roslibpy.ServiceRequest = roslibpy.ServiceRequest(req) if req is not None else roslibpy.ServiceRequest()
             self.on_done_collback = None #type: ignore
             self.on_error_callback = on_error_callback
-            if timeout_s is None:
-                self.response = self.service_client.call(_req, errback = self.error_callback) # type: ignore
-                return self.response
-
-            done = threading.Event()
-            response_holder = {'response': None}
-
-            def on_response(response):
-                response_holder['response'] = response
-                self.response = response
-                done.set()
-
-            def on_error(response):
-                response_holder['response'] = None
-                self.response = None #type: ignore
-                if self.on_error_callback:
-                    self.on_error_callback(response) #type: ignore
-                done.set()
-
-            _ = self.service_client.call(_req, on_response, on_error) # type: ignore
-            if not done.wait(timeout_s):
-                print(f'>>>> Service {self.namespace} [{self.msg_type}] timed out after {timeout_s:.1f}s')
-                return None #type: ignore
-            return response_holder['response'] #type: ignore
+            self.response = self.service_client.call(_req, errback=self.error_callback, timeout=timeout_s) # type: ignore
+            return self.response
         except Exception as e:
+            if type(e).__name__ == 'RosTimeoutError':
+                timeout_label = f'{timeout_s:.1f}s' if timeout_s is not None else 'the default timeout'
+                print(f'>>>> Service {self.namespace} [{self.msg_type}] timed out after {timeout_label}')
+                return None #type: ignore
             print(f'>>>> Service {self.namespace} [{self.msg_type}] failed with exception: {e}')
             print(f'<<<< Given request: {req}')
         return self.response
@@ -196,7 +178,7 @@ class SyncRosManager:
         self.ec_slave_states : EcSlaveStates = EcSlaveStates(self._expected_number_of_slaves)
 
         self.ros_client = ros_client
-        self._poll_service_timeout_s: float = 0.5
+        self._poll_service_timeout_s: float = 2.0
 
         # Pre-compute the set of joint names for fast subset checks in callbacks
         self._joint_names_set = set(self._joint_names)
