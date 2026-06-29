@@ -1,7 +1,7 @@
 # Copyright 2026 CNR-STIIMA
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import List
+from typing import Callable, List, Optional
 import time
 import threading
 
@@ -55,12 +55,36 @@ class RosilibpyServiceHandler(object):
             print(f'<<<< Given request: {req}')
         return 
     
-    def call(self, req: dict = None, on_error_callback = None) -> dict: #type: ignore
+    def call(self, req: dict = None, on_error_callback = None, timeout_s: Optional[float] = None) -> dict: #type: ignore
+        self.response = None #type: ignore
         try:
             _req : roslibpy.ServiceRequest = roslibpy.ServiceRequest(req) if req is not None else roslibpy.ServiceRequest()
             self.on_done_collback = None #type: ignore
             self.on_error_callback = on_error_callback
-            self.response = self.service_client.call(_req, errback = self.error_callback) # type: ignore
+            if timeout_s is None:
+                self.response = self.service_client.call(_req, errback = self.error_callback) # type: ignore
+                return self.response
+
+            done = threading.Event()
+            response_holder = {'response': None}
+
+            def on_response(response):
+                response_holder['response'] = response
+                self.response = response
+                done.set()
+
+            def on_error(response):
+                response_holder['response'] = response
+                self.response = response
+                if self.on_error_callback:
+                    self.on_error_callback(response) #type: ignore
+                done.set()
+
+            _ = self.service_client.call(_req, on_response, on_error) # type: ignore
+            if not done.wait(timeout_s):
+                print(f'>>>> Service {self.namespace} [{self.msg_type}] timed out after {timeout_s:.1f}s')
+                return None #type: ignore
+            return response_holder['response'] #type: ignore
         except Exception as e:
             print(f'>>>> Service {self.namespace} [{self.msg_type}] failed with exception: {e}')
             print(f'<<<< Given request: {req}')
@@ -81,9 +105,9 @@ class ConstRequestServiceHandler(RosilibpyServiceHandler):
             print(f'>>>> Service {self.namespace} [{self.msg_type}] failed with exception: {e}')
             print(f'<<<< Given request: {self.req}')
 
-    def call(self, on_error_callback = None) -> dict: # type: ignore
+    def call(self, on_error_callback = None, timeout_s: Optional[float] = None) -> dict: # type: ignore
         try:
-            self.response = super().call(self.req, on_error_callback)
+            self.response = super().call(self.req, on_error_callback, timeout_s)
         except Exception as e:
             print(f'>>>> Service {self.namespace} [{self.msg_type}] failed with exception: {e}')
             print(f'<<<< Given request: {self.req}')
@@ -172,6 +196,7 @@ class SyncRosManager:
         self.ec_slave_states : EcSlaveStates = EcSlaveStates(self._expected_number_of_slaves)
 
         self.ros_client = ros_client
+        self._poll_service_timeout_s: float = 0.5
 
         # Pre-compute the set of joint names for fast subset checks in callbacks
         self._joint_names_set = set(self._joint_names)
@@ -406,58 +431,70 @@ class SyncRosManager:
     def getPLCStates(self, data):
         self.plc_states = dict(zip(data['interface_names'], data['values']))
 
-    def update_controller_and_driver_states(self) -> None:
-        
-        if not self.destroy_clients_init:
-            
-            msg_drive_states = self.get_drive_states()
-            self.coe_drive_states.from_dict(msg_drive_states['states'] if msg_drive_states is not None and 'states' in msg_drive_states else None) #type: ignore
-            
-            if len(self.coe_drive_states.dof_names) != len(self._joint_names):
-                print(f'Warning! Get an incomplete list of states (received the data for the axes: {self.coe_drive_states.dof_names}, expected: {self._joint_names}')
-                return 
-            
-            msg_slave_states = self.get_slave_states()
-            self.ec_slave_states.from_dict(msg_slave_states) #type: ignore
-            
-            if len(self.ec_slave_states.slave_names) != self._expected_number_of_slaves:
-                print(f'Warning! Get an incomplete list of states (received the data for the axes: {self.ec_slave_states.slave_names}, expected: {self._expected_number_of_slaves}')
-                return 
-            
-            list_controllers_response : dict = self.get_list_controllers()
-            if list_controllers_response is None or 'controller' not in list_controllers_response:
-                return
-            
-            ##########################
-            moo : List[int] = [ self.get_op_mode_number(mode) for mode in self.coe_drive_states.modes_of_operation ]
+    def request_stop(self) -> None:
+        self.destroy_clients_init = True
 
-            is_csv_mode = all([moo[j] == 9 for j in range(len(self._joint_names))])
-            is_csp_mode = all([moo[j] == 8 for j in range(len(self._joint_names))])
-            is_hmg_mode = all([moo[j] == 6 for j in range(len(self._joint_names))])
+    def _should_stop_polling(self, should_stop: Optional[Callable[[], bool]] = None) -> bool:
+        return self.destroy_clients_init or (should_stop is not None and should_stop())
+
+    def update_controller_and_driver_states(self, should_stop: Optional[Callable[[], bool]] = None) -> None:
+        if self._should_stop_polling(should_stop):
+            return
+
+        msg_drive_states = self.get_drive_states(timeout_s=self._poll_service_timeout_s)
+        if self._should_stop_polling(should_stop) or msg_drive_states is None:
+            return
+        self.coe_drive_states.from_dict(msg_drive_states['states'] if msg_drive_states is not None and 'states' in msg_drive_states else None) #type: ignore
+
+        if len(self.coe_drive_states.dof_names) != len(self._joint_names):
+            print(f'Warning! Get an incomplete list of states (received the data for the axes: {self.coe_drive_states.dof_names}, expected: {self._joint_names}')
+            return
+
+        msg_slave_states = self.get_slave_states(timeout_s=self._poll_service_timeout_s)
+        if self._should_stop_polling(should_stop) or msg_slave_states is None:
+            return
+        self.ec_slave_states.from_dict(msg_slave_states) #type: ignore
+
+        if len(self.ec_slave_states.slave_names) != self._expected_number_of_slaves:
+            print(f'Warning! Get an incomplete list of states (received the data for the axes: {self.ec_slave_states.slave_names}, expected: {self._expected_number_of_slaves}')
+            return
+
+        list_controllers_response : dict = self.get_list_controllers(timeout_s=self._poll_service_timeout_s)
+        if self._should_stop_polling(should_stop):
+            return
+        if list_controllers_response is None or 'controller' not in list_controllers_response:
+            return
+
+        ##########################
+        moo : List[int] = [ self.get_op_mode_number(mode) for mode in self.coe_drive_states.modes_of_operation ]
+
+        is_csv_mode = all([moo[j] == 9 for j in range(len(self._joint_names))])
+        is_csp_mode = all([moo[j] == 8 for j in range(len(self._joint_names))])
+        is_hmg_mode = all([moo[j] == 6 for j in range(len(self._joint_names))])
 
 
-            ###################
-            active_controller : str = None #type: ignore
-            for ctrl in list_controllers_response['controller']:
-                if ctrl['state'] == 'active':
-                    if ctrl['name'] == self.forward_command_controller_name:
-                        active_controller = self.forward_command_controller_name
-                        break
-                    elif ctrl['name'] == self.trajectory_controller_name:
-                        active_controller = self.trajectory_controller_name
-                        break
-                    elif ctrl['name'] == self.go_to_start_controller_name:
-                        active_controller = self.go_to_start_controller_name
-                        break
-                    elif ctrl['name'] == self.admittance_controller_name:
-                        active_controller = self.admittance_controller_name
-                        break
-            self.current_controller_name = active_controller
-            ###################
-            self.enable_jog_buttons = self.current_controller_name == self.forward_command_controller_name and is_csv_mode
-            self.enable_manual_guidance = self.current_controller_name == self.admittance_controller_name and is_csv_mode
-            self.enable_zeroing = is_hmg_mode
-            self.enable_ptp = self.current_controller_name == self.trajectory_controller_name and is_csp_mode
+        ###################
+        active_controller : str = None #type: ignore
+        for ctrl in list_controllers_response['controller']:
+            if ctrl['state'] == 'active':
+                if ctrl['name'] == self.forward_command_controller_name:
+                    active_controller = self.forward_command_controller_name
+                    break
+                elif ctrl['name'] == self.trajectory_controller_name:
+                    active_controller = self.trajectory_controller_name
+                    break
+                elif ctrl['name'] == self.go_to_start_controller_name:
+                    active_controller = self.go_to_start_controller_name
+                    break
+                elif ctrl['name'] == self.admittance_controller_name:
+                    active_controller = self.admittance_controller_name
+                    break
+        self.current_controller_name = active_controller
+        ###################
+        self.enable_jog_buttons = self.current_controller_name == self.forward_command_controller_name and is_csv_mode
+        self.enable_manual_guidance = self.current_controller_name == self.admittance_controller_name and is_csv_mode
+        self.enable_zeroing = is_hmg_mode
+        self.enable_ptp = self.current_controller_name == self.trajectory_controller_name and is_csp_mode
             
     def switch_controller(self, controller_to_activate, controller_to_deactivate) -> dict:
         switch_req = {
@@ -602,10 +639,10 @@ class SyncRosManager:
         else:
             print(f"Service call failed: {result['message']}")
 
-    def get_list_controllers(self) -> dict: #type: ignore
+    def get_list_controllers(self, timeout_s: Optional[float] = None) -> dict: #type: ignore
         result : dict = None # type: ignore
         try:
-            result = self.current_controller_client.call()
+            result = self.current_controller_client.call(timeout_s=timeout_s)
             if result is None:
                 print('current_controller_client: Service call failed')
         except Exception as e:
@@ -621,10 +658,10 @@ class SyncRosManager:
     #         print(f'Get Op Mode service call failed with exception: {e}')
     #     return response
 
-    def get_drive_states(self) -> dict:
+    def get_drive_states(self, timeout_s: Optional[float] = None) -> dict:
         result : dict = None  # type: ignore
         try:
-            result = self.get_drive_state_client.call()
+            result = self.get_drive_state_client.call(timeout_s=timeout_s)
             if result is None:
                 print('Drive States Service call failed')
 
@@ -632,10 +669,10 @@ class SyncRosManager:
             print(f'Drive States Service call failed with exception: {e}')
         return result
 
-    def get_slave_states(self) -> dict:
+    def get_slave_states(self, timeout_s: Optional[float] = None) -> dict:
         result : dict = None  # type: ignore
         try:
-            result = self.get_slave_state_client.call()
+            result = self.get_slave_state_client.call(timeout_s=timeout_s)
             if result is None:
                 print('Slave States Service call failed')
         except Exception as e:

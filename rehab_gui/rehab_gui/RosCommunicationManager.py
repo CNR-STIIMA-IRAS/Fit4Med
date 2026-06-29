@@ -58,6 +58,7 @@ class RosCommunicationManager(QObject):
         self.manual_mode_activated = False
         self._exercise_in_suspension: bool = False
         self._stop_signal_emitted = False
+        self._ros_stop_requested = False
         self._worker_stop_timeout_msec = 5000
         self._worker_force_stop_timeout_msec = 3000
 
@@ -74,8 +75,17 @@ class RosCommunicationManager(QObject):
         self._stop_signal_emitted = True
         self.stop_ros_communication_signal.emit()
 
+    def _is_ros_stop_requested(self) -> bool:
+        return self._ros_stop_requested or not self.worker_thread.thread_running
+
+    def _request_ros_stop(self) -> None:
+        self._ros_stop_requested = True
+        ros_manager = self.ROS if hasattr(self, 'ROS') else None
+        if ros_manager is not None:
+            ros_manager.request_stop()
+
     def _close_ros_client(self) -> None:
-        ros_client = self.ros_client if hasattr(self, 'ros_client') else None
+        ros_client = self.ros_client if hasattr(self, 'ros_client') else None #type: ignore
         if ros_client is None:
             return
 
@@ -163,12 +173,14 @@ class RosCommunicationManager(QObject):
         self.ROS = SyncRosManager(self.number_of_ec_slaves, self.joint_names, self.ros_client)
 
         self._stop_signal_emitted = False
+        self._ros_stop_requested = False
         self.worker_thread.start_thread()
         self.ros_communication_established_signal.emit()
 
     def stopRosCommunication(self) -> None:
         print("Stopping ROS processes...")
 
+        self._request_ros_stop()
         worker_stopped = self._stop_update_worker()
 
         self.ROS_active = False
@@ -178,9 +190,6 @@ class RosCommunicationManager(QObject):
 
         if not worker_stopped:
             print("[MainProgram] ROS worker did not stop cleanly after cleanup.")
-            self._stop_signal_emitted = True
-            self.ros_communication_failed_signal.emit()
-            return
 
         # ROS was never started, or its worker already stopped. Emit immediately
         # so plc_manager receives ROS_DISCONNECTED and the UDP flags are reset.
@@ -192,6 +201,7 @@ class RosCommunicationManager(QObject):
         return (
             hasattr(self, 'ROS')
             and self.ROS is not None
+            and not self._ros_stop_requested
             and hasattr(self, 'ros_client')
             and self.ros_client.is_connected
         )
@@ -358,7 +368,14 @@ class RosCommunicationManager(QObject):
         return self.ROS.trigger_soft_movement_stop( ) if self.rOk() else None
 
     def updateState(self) -> None:
-        self.ROS.update_controller_and_driver_states() if self.rOk() else False
+        ros_manager = self.ROS if hasattr(self, 'ROS') else None
+        ros_client = self.ros_client if hasattr(self, 'ros_client') else None #type: ignore
+        if self._is_ros_stop_requested() or ros_manager is None or ros_client is None:
+            return
+        if not ros_client.is_connected:
+            return
+
+        ros_manager.update_controller_and_driver_states(self._is_ros_stop_requested)
         return 
     
     # def listActiveControllers(self) -> None:
