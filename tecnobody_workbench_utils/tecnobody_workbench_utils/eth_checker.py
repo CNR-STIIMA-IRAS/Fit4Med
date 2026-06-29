@@ -24,7 +24,6 @@ Services provided:
     - /ethercat_checker/enable_error_checking: Enable/disable auto fault reset
     - /ethercat_checker/start_motors: Turn on motors with brake control
     - /ethercat_checker/stop_motors: Turn off motors with brake control
-    - /ethercat_checker/get_drive_states: Query current drive states (Can Over Ethercat)
     - /ethercat_checker/request_shutdown: Gracefully shutdown the node
 """
 

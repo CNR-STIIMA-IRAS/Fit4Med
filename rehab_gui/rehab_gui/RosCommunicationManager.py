@@ -316,6 +316,7 @@ class RosCommunicationManager(QObject):
         slave_names: List[str] = []
         slave_states: List[str] = []
         slaves = ethercat_payload.get("slaves")
+        print(f"Updating PLC status payload: {slaves}")
         if isinstance(slaves, list):
             for slave in slaves:
                 if not isinstance(slave, dict):
@@ -328,6 +329,7 @@ class RosCommunicationManager(QObject):
         self._last_ethercat_payload = ethercat_payload
         self._cached_slave_names = self._fit_slave_values(slave_names)
         self._cached_slave_states = self._fit_slave_values(slave_states)
+
 
     def getSlaveNames(self) -> List[str]:
         return list(self._cached_slave_names)
