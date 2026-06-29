@@ -121,22 +121,6 @@ class CoEDriveStates:
             self.fault_present = True
             self.drives_on = False
             
-
-# Ethercat Controller States, i.e., the state of all the ethercat slaves
-class EcSlaveStates:
-    def __init__(self, lenght : int):
-        self.lenght = lenght
-        self.slave_names : List[str] = ['n/a'] * lenght
-        self.slave_states : List[str] = ['n/a'] * lenght
-    
-    def from_dict(self, msg : dict):
-        if msg is not None and 'slave_names' in msg.keys() and len(msg['slave_names'])==self.lenght:
-            self.slave_names  = [ m.replace('0x000001dd:0x10305070','ASDA2 Delta') for m in msg['slave_names']]
-            self.slave_states = msg['slave_states']
-        else:
-            self.slave_names = ['n/a'] * self.lenght
-            self.slave_states = ['n/a'] * self.lenght
-
 class SyncRosManager:
 
     OP_MODE_DICT = {
@@ -175,7 +159,6 @@ class SyncRosManager:
         self._expected_number_of_slaves = expected_number_of_slaves
 
         self.coe_drive_states : CoEDriveStates = CoEDriveStates(len(self._joint_names))
-        self.ec_slave_states : EcSlaveStates = EcSlaveStates(self._expected_number_of_slaves)
 
         self.ros_client = ros_client
         self._poll_service_timeout_s: float = 2.0
@@ -282,9 +265,6 @@ class SyncRosManager:
         self.get_drive_state_client : RosilibpyServiceHandler = RosilibpyServiceHandler(self.ros_client, '/ethercat_checker/get_drive_states',
                                                                                         'ethercat_controller_msgs/srv/GetDriveStates')
         
-        self.get_slave_state_client : RosilibpyServiceHandler = RosilibpyServiceHandler(self.ros_client, '/ethercat_checker/get_slave_states',
-                                                                                        'tecnobody_msgs/srv/GetSlaveStates')
-        
         self.perform_homing_client : RosilibpyServiceHandler = RosilibpyServiceHandler(self.ros_client, '/state_controller/perform_homing', 'std_srvs/srv/Trigger')
 
         self.set_trajectory_client : RosilibpyServiceHandler= RosilibpyServiceHandler(self.ros_client, "/tecnobody_workbench_utils/set_trajectory",  
@@ -346,7 +326,6 @@ class SyncRosManager:
         self.mode_of_op_client = None #type: ignore
         self.enable_eth_error_check = None #type: ignore
         self.get_drive_state_client = None #type: ignore
-        self.get_slave_state_client = None #type: ignore
         self.perform_homing_client = None #type: ignore
         self.set_trajectory_client = None #type: ignore
         self.set_go_to_start_trajectory_client = None #type: ignore
@@ -430,15 +409,6 @@ class SyncRosManager:
 
         if len(self.coe_drive_states.dof_names) != len(self._joint_names):
             print(f'Warning! Get an incomplete list of states (received the data for the axes: {self.coe_drive_states.dof_names}, expected: {self._joint_names}')
-            return
-
-        msg_slave_states = self.get_slave_states(timeout_s=self._poll_service_timeout_s)
-        if self._should_stop_polling(should_stop) or not isinstance(msg_slave_states, dict):
-            return
-        self.ec_slave_states.from_dict(msg_slave_states) #type: ignore
-
-        if len(self.ec_slave_states.slave_names) != self._expected_number_of_slaves:
-            print(f'Warning! Get an incomplete list of states (received the data for the axes: {self.ec_slave_states.slave_names}, expected: {self._expected_number_of_slaves}')
             return
 
         list_controllers_response : dict = self.get_list_controllers(timeout_s=self._poll_service_timeout_s)
@@ -650,17 +620,6 @@ class SyncRosManager:
         except Exception as e:
             print(f'Drive States Service call failed with exception: {e}')
         return result
-
-    def get_slave_states(self, timeout_s: Optional[float] = None) -> dict:
-        result : dict = None  # type: ignore
-        try:
-            result = self.get_slave_state_client.call(timeout_s=timeout_s)
-            if result is None:
-                print('Slave States Service call failed')
-        except Exception as e:
-            print(f'Slave States Service call failed with exception: {e}')
-        return result
-
 
     def get_op_mode_number(self, mode: str) -> int:
         return self.OP_MODE_DICT.get(mode, 0)

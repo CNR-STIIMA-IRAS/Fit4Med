@@ -3,7 +3,7 @@
 
 import gc
 import time
-from typing import List
+from typing import Any, Dict, List
 from PyQt5.QtWidgets import QMessageBox, QPushButton, QWidget
 from PyQt5.QtCore import QThread, QObject, pyqtSignal
 import roslibpy
@@ -57,6 +57,9 @@ class RosCommunicationManager(QObject):
         self.roslib_first_time_connection = True
         self.manual_mode_activated = False
         self._exercise_in_suspension: bool = False
+        self._cached_slave_names: List[str] = ['n/a'] * self.number_of_ec_slaves
+        self._cached_slave_states: List[str] = ['n/a'] * self.number_of_ec_slaves
+        self._last_ethercat_payload: Dict[str, Any] = {}
         self._stop_signal_emitted = False
         self._ros_stop_requested = False
         self._worker_stop_timeout_msec = 5000
@@ -300,11 +303,37 @@ class RosCommunicationManager(QObject):
     def getGoToStartControllerName(self) -> str:
         return self.ROS.go_to_start_controller_name if self.rOk() else "n/a"
 
+    def _fit_slave_values(self, values: List[str]) -> List[str]:
+        fitted_values = list(values[:self.number_of_ec_slaves])
+        fitted_values.extend(['n/a'] * (self.number_of_ec_slaves - len(fitted_values)))
+        return fitted_values
+
+    def updatePlcStatusPayload(self, payload: Dict[str, Any]) -> None:
+        ethercat_payload = payload.get("ethercat")
+        if not isinstance(ethercat_payload, dict):
+            return
+
+        slave_names: List[str] = []
+        slave_states: List[str] = []
+        slaves = ethercat_payload.get("slaves")
+        if isinstance(slaves, list):
+            for slave in slaves:
+                if not isinstance(slave, dict):
+                    continue
+                slave_name = slave.get("name")
+                slave_state = slave.get("state")
+                slave_names.append(str(slave_name) if slave_name is not None else "n/a")
+                slave_states.append(str(slave_state) if slave_state is not None else "n/a")
+
+        self._last_ethercat_payload = ethercat_payload
+        self._cached_slave_names = self._fit_slave_values(slave_names)
+        self._cached_slave_states = self._fit_slave_values(slave_states)
+
     def getSlaveNames(self) -> List[str]:
-        return self.ROS.ec_slave_states.slave_names if self.rOk() else ['n/a'] * self.number_of_ec_slaves
+        return list(self._cached_slave_names)
     
     def getSlaveStates(self) -> List[str]:
-        return self.ROS.ec_slave_states.slave_states if self.rOk() else ['n/a'] * self.number_of_ec_slaves
+        return list(self._cached_slave_states)
 
     def getDriversStates(self) -> List[str]:
         return self.ROS.coe_drive_states.coe_drive_states if self.rOk() else ['n/a'] * len(self.joint_names)

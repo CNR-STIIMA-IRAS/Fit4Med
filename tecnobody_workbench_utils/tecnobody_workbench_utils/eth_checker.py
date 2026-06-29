@@ -25,22 +25,17 @@ Services provided:
     - /ethercat_checker/start_motors: Turn on motors with brake control
     - /ethercat_checker/stop_motors: Turn off motors with brake control
     - /ethercat_checker/get_drive_states: Query current drive states (Can Over Ethercat)
-    - /ethercat_checker/get_slave_states: Query current ethercat states (PREOP/SAFEOP/OP)
     - /ethercat_checker/request_shutdown: Gracefully shutdown the node
 """
 
-from typing import List
 import rclpy
 import time
 from rclpy.node import Node
-from rclpy.executors import MultiThreadedExecutor, SingleThreadedExecutor
+from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from std_srvs.srv import Trigger
 from ethercat_controller_msgs.msg import Cia402DriveStates
-from ethercat_controller_msgs.srv import GetModesOfOperation, GetDriveStates
-from tecnobody_msgs.srv import GetSlaveStates
-from ethercat_msgs.srv import GetSlaveStates as EthercatGetSlaveStates
-from std_msgs.msg import Bool
+from ethercat_controller_msgs.srv import GetDriveStates
 from std_srvs.srv import SetBool, Trigger
 from tecnobody_msgs.msg import PlcController
 
@@ -160,14 +155,6 @@ class EthercatCheckerNode(Node):
             callback_group=service_group
         )
         
-        # Service to query current drive states
-        self.get_slaves_status_srv = self.create_service(
-            GetSlaveStates,
-            '/ethercat_checker/get_slave_states', 
-            self.get_slave_states_callback,
-            callback_group=service_group
-        )
-
         # Service to request graceful node shutdown
         self.shutdown_service = self.create_service(
             Trigger,
@@ -205,7 +192,6 @@ class EthercatCheckerNode(Node):
         # Node configuration
         self.error_auto_reset_enabled = False
         self.dof_names = ['joint_x', 'joint_y', 'joint_z']
-        self.declare_parameter('plc_slave_identifier', 'sickPLC')
 
         # Current drive feedback container
         self.feedback : DriverStates = DriverStates(self.dof_names)
@@ -281,69 +267,6 @@ class EthercatCheckerNode(Node):
         response.states.drives_on = self.feedback.drives_on
         return response
     
-    def get_slave_states_callback(self, request: GetSlaveStates.Request, response: GetSlaveStates.Response):
-        """
-        Service callback to query current ethercat slave states.
-
-        Discovers all active EthercatGetSlaveStates services (one per EtherCAT master/driver)
-        and aggregates their responses. Uses a temporary node + SingleThreadedExecutor so the
-        synchronous wait does not conflict with this node's MultiThreadedExecutor.
-
-        Args:
-            request (GetSlaveStates.Request): Empty request
-            response (GetSlaveStates.Response): Response populated with slave names and states
-
-        Returns:
-            GetSlaveStates.Response: Aggregated slave names and states from all masters
-        """
-        check_node = rclpy.create_node('_ethercat_checker_slave_query', use_global_arguments=False)
-        executor = SingleThreadedExecutor()
-        executor.add_node(check_node)
-
-        slave_names: List[str] = []
-        slave_states: List[str] = []
-
-        try:
-            all_services = check_node.get_service_names_and_types()
-            slave_state_services = [
-                name for name, types in all_services
-                if any('GetSlaveStates' in t for t in types)
-                and name != '/ethercat_checker/get_slave_states'
-            ]
-
-            if not slave_state_services:
-                self.get_logger().warn('No EtherCAT GetSlaveStates services found on the ROS graph')
-
-            for svc_name in slave_state_services:
-                client = check_node.create_client(EthercatGetSlaveStates, svc_name)
-                if not client.wait_for_service(timeout_sec=2.0):
-                    self.get_logger().warn(f'Service {svc_name} not available')
-                    continue
-
-                future = client.call_async(EthercatGetSlaveStates.Request())
-                executor.spin_until_future_complete(future, timeout_sec=5.0)
-
-                if not future.done():
-                    self.get_logger().warn(f'Service call to {svc_name} timed out')
-                    continue
-
-                resp = future.result()
-                slave_names.extend(resp.slave_names)
-                slave_states.extend(resp.slave_states)
-        finally:
-            executor.remove_node(check_node)
-            check_node.destroy_node()
-
-        plc_id = self.get_parameter('plc_slave_identifier').value
-        filtered = [
-            (n, s) for n, s in zip(slave_names, slave_states)
-            if plc_id not in n
-        ]
-        response.slave_names = [n for n, _ in filtered]   # type: ignore
-        response.slave_states = [s for _, s in filtered]  # type: ignore
-        return response
-
-
     def start_motors_callback(self, request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
         """
         Service callback to start motors with timeout protection and brake control.
@@ -370,7 +293,7 @@ class EthercatCheckerNode(Node):
             if self.feedback.drives_on:
                 # Disable brake only if not in homing mode (homing disables brake)
                 if not any([self.feedback.mode_of_operations[dof] == 'MODE_HOMING' for dof in self.dof_names]):
-                    self.publish_plc_command(['PLC_node/brake_disable'], [1])
+                    self._publish_plc_command(['PLC_node/brake_disable'], [1])
                 response.success = True
     
             current_time = time.time()
@@ -403,7 +326,7 @@ class EthercatCheckerNode(Node):
         Returns:
             Trigger.Response: Response indicating success or timeout failure
         """
-        self.publish_plc_command(['PLC_node/brake_disable'], [0])
+        self._publish_plc_command(['PLC_node/brake_disable'], [0])
         time.sleep(0.4)  # Allow brake to engage before turning off drives
         self.try_turn_off()
         timeout_s : float = 5.0
@@ -473,7 +396,7 @@ class EthercatCheckerNode(Node):
     # Communication Methods
     ########################################################################
     
-    def publish_plc_command(self, name, value):
+    def _publish_plc_command(self, name, value):
         """
         Publish a command to the PLC controller for hardware control.
         

@@ -136,12 +136,24 @@ class RobotWindow(QtWidgets.QDialog):
         print(f"MOO option activated to: {index}")
         slave_states = self.ROS.getSlaveStates()
         if not all([state == 'OP' for state in slave_states]):
-            slave_names = self.ROS.getSlaveStates()
+            slave_names = self.ROS.getSlaveNames()
             slave_states_dict = dict(zip(slave_names, slave_states))
-            move_ok  = all([ state == 'OP' if 'delta' in state[0].lower() else True for state in slave_states_dict.items()])
-            manual_guidance_ok = all([ state == 'OP' if 'delta' or 'ati' in state[0].lower() else True for state in slave_states_dict.items()])
+            move_states = [
+                slave_state for slave_name, slave_state in slave_states_dict.items()
+                if 'delta' in slave_name.lower()
+            ]
+            manual_guidance_states = [
+                slave_state for slave_name, slave_state in slave_states_dict.items()
+                if 'delta' in slave_name.lower() or 'ati' in slave_name.lower()
+            ]
+            move_ok = bool(move_states) and all(
+                slave_state == 'OP' for slave_state in move_states
+            )
+            manual_guidance_ok = bool(manual_guidance_states) and all(
+                slave_state == 'OP' for slave_state in manual_guidance_states
+            )
 
-            if (move_ok and index in [1,2,4]) or (manual_guidance_ok and index == 3):
+            if (not move_ok and index in [1,2,4]) or (not manual_guidance_ok and index == 3):
                 QMessageBox.warning(self, "Warning", f"Please check for errors the Ethercat Configuration")
                 return
 
@@ -357,4 +369,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

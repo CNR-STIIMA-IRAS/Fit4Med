@@ -68,6 +68,7 @@ class UdpCommunicationManager(QObject):
     z_recovery_mode_signal : pyqtSignal = pyqtSignal()
     z_recovery_done_signal : pyqtSignal = pyqtSignal()
     udp_message_received : pyqtSignal = pyqtSignal(bytes, tuple)
+    plc_status_payload_received : pyqtSignal = pyqtSignal(dict)
 
     def __init__(self, remote_ip: str, remote_port: int): #port=5005
         super().__init__()
@@ -126,24 +127,28 @@ class UdpCommunicationManager(QObject):
             self.stop_ros_communication.emit()
             self.stop_ros_communication_emitted = True
 
-    def _parse_plc_status(self, data: bytes) -> Tuple[str, Optional[Dict[str, Any]]]:
+    def _parse_plc_status(
+        self,
+        data: bytes,
+    ) -> Tuple[str, Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
         decoded = data.decode(errors="replace")
         try:
             payload = json.loads(decoded)
         except json.JSONDecodeError:
-            return decoded, None
+            return decoded, None, None
 
         if not isinstance(payload, dict):
-            return decoded, None
+            return decoded, None, None
 
         if payload.get("schema") != "fit4med.plc_fsm_status.v1":
-            return decoded, None
+            return decoded, None, None
 
         state = payload.get("state")
         pending = payload.get("pending")
         return (
             state if isinstance(state, str) else "",
             pending if isinstance(pending, dict) else None,
+            payload,
         )
 
     def udpMessageReceived(self, data: bytes) -> None:
@@ -158,7 +163,9 @@ class UdpCommunicationManager(QObject):
             RECOVERED = auto()
             ERROR = auto()
         """
-        state, pending = self._parse_plc_status(data)
+        state, pending, payload = self._parse_plc_status(data)
+        if payload is not None:
+            self.plc_status_payload_received.emit(payload)
         pending_event = pending.get("event") if pending is not None else None
 
         #print(f"[UdpServer] {data.decode(errors='replace')} received from UDP client.")

@@ -421,6 +421,7 @@ class MainProgram(QMainWindow):
         self.udp.start_ros_communication.connect(self.ros_manager.startRosCommunication)
         self.udp.stop_ros_communication.connect(self.ros_manager.stopRosCommunication)
         self.udp.udp_message_received.connect(self.motorWindow.onUdpMessageReceived)
+        self.udp.plc_status_payload_received.connect(self.ros_manager.updatePlcStatusPayload)
         self.ros_manager.stop_ros_communication_signal.connect(self.udp.onResetRosCommunication)
         self.ros_manager.ros_communication_established_signal.connect(self.udp.onRosCommunicationEstablished)
         self.ros_manager.ros_communication_failed_signal.connect(self.udp.onRosCommunicationFailed)

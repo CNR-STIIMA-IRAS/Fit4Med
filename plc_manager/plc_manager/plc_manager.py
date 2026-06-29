@@ -4,6 +4,7 @@
 import os
 import json
 import types
+import time
 
 # Must be BEFORE importing rclpy (sets logging format globally)
 os.environ['RCUTILS_CONSOLE_OUTPUT_FORMAT'] = '[{severity}] [{name}]: {message}'
@@ -14,16 +15,15 @@ from rclpy.node import Node
 from rclpy.subscription import Subscription
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from rclpy.executors import MultiThreadedExecutor
-from rclpy.client import Client
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from tecnobody_msgs.msg import PlcController, PlcStates
-from std_srvs.srv import Trigger
+from ethercat_msgs.srv import GetSlaveStates
 import sys
 import subprocess
 import threading
 import signal
 from enum import Enum
-from typing import Callable
+from typing import Any, Callable
 
 from plc_manager.fsm import (
     StateMachine, State, Event, InvalidTransition, GuardFailed,
@@ -59,8 +59,8 @@ class PLCControllerInterface(Node):
         # ========== Callback Groups ==========
         # Three separate groups prevent callback blocking:
         self.plc_group = MutuallyExclusiveCallbackGroup()       # PLC state updates
-        self.timer_group = MutuallyExclusiveCallbackGroup()     # Launcher health check
-        self.service_group = MutuallyExclusiveCallbackGroup()   # Reserved for services
+        self.timer_group = MutuallyExclusiveCallbackGroup()     # Low-rate status timers
+        self.service_group = MutuallyExclusiveCallbackGroup()   # EtherCAT service clients
 
         # ========== PLC State Subscription ==========
         # Receives PlcStates from plc_controller at max rate
@@ -132,14 +132,46 @@ class PLCControllerInterface(Node):
         # Substring matched against slave_names returned by GetSlaveStates services.
         # Default matches the configured ros2_control name for the SICK GetC100 PLC.
         self.declare_parameter('plc_slave_identifier', 'sickPLC')
+        self.declare_parameter(
+            'ethercat_slave_state_services',
+            ['/tecnobody/get_slave_states'],
+        )
+        self.declare_parameter('ethercat_state_poll_period', 1.0)
+        self.declare_parameter('ethercat_state_stale_after', 5.0)
+        self.declare_parameter('ethercat_state_response_timeout', 3.0)
 
         self.z_limit_still_active = False
 
-        self.ethercat_slaves_status_check_client : Client = self.create_client(Trigger, #type: ignore
-            '/ethercat_slaves_status_check/check', callback_group=self.service_group)
-
         self.ethercat_check_state = EthercatCheckState.IDLE
-        self.ethercat_check_requested = True
+        self._ethercat_cache_lock = threading.Lock()
+        self._ethercat_slave_names: list[str] = []
+        self._ethercat_slave_states: list[str] = []
+        self._ethercat_last_update_monotonic: float | None = None
+        self._ethercat_last_error: str | None = None
+        self._ethercat_pending_requests: dict[Any, str] = {}
+        self._ethercat_poll_started_at: float | None = None
+        self._ethercat_poll_slave_names: list[str] = []
+        self._ethercat_poll_slave_states: list[str] = []
+        self._ethercat_poll_errors: list[str] = []
+        self._ethercat_state_stale_after = float(
+            self.get_parameter('ethercat_state_stale_after').value #type: ignore
+        )
+        self._ethercat_state_response_timeout = float(
+            self.get_parameter('ethercat_state_response_timeout').value #type: ignore
+        )
+        self._ethercat_slave_state_clients = {
+            service_name: self.create_client( #type: ignore
+                GetSlaveStates,
+                service_name,
+                callback_group=self.service_group,
+            )
+            for service_name in self._get_ethercat_slave_state_service_names()
+        }
+        self._ethercat_state_timer = self.create_timer(
+            float(self.get_parameter('ethercat_state_poll_period').value), #type: ignore
+            self.poll_ethercat_slave_states,
+            callback_group=self.timer_group,
+        )
         self.start_environment_requested = True
 
         self.fsm : StateMachine = StateMachine(State.IDLE, self.get_logger()) #type: ignore
@@ -269,10 +301,278 @@ class PLCControllerInterface(Node):
         return self.client.last_received_message == b"ROS_CONNECTION_FAILED"
     
     def _ethercat_slaves_status_ok(self) -> bool:
-        return self.ethercat_check_state == EthercatCheckState.READY
+        with self._ethercat_cache_lock:
+            return (
+                self.ethercat_check_state == EthercatCheckState.READY
+                and not self._ethercat_cache_stale_locked()
+            )
 
     def _ready_to_start(self) -> bool:
         return self._ros_gui_disconnected() and self._ethercat_slaves_status_ok()
+
+    def _get_ethercat_slave_state_service_names(self) -> list[str]:
+        raw_service_names = self.get_parameter(
+            'ethercat_slave_state_services'
+        ).value #type: ignore
+
+        if raw_service_names is None:
+            service_names = []
+        elif isinstance(raw_service_names, str):
+            service_names = [
+                name.strip()
+                for name in raw_service_names.split(',')
+                if name.strip()
+            ]
+        else:
+            service_names = [str(name) for name in raw_service_names]
+
+        return service_names or ['/tecnobody/get_slave_states']
+
+    def _plc_slave_identifier(self) -> str:
+        return str(self.get_parameter('plc_slave_identifier').value) #type: ignore
+
+    def _ethercat_cache_stale_locked(self) -> bool:
+        if os.environ.get('PLC_MANAGER_SKIP_ETHERCAT', '0') == '1':
+            return False
+
+        if self._ethercat_last_update_monotonic is None:
+            return True
+
+        return (
+            time.monotonic() - self._ethercat_last_update_monotonic
+            > self._ethercat_state_stale_after
+        )
+
+    def _find_plc_slave_locked(self) -> tuple[str | None, str | None]:
+        plc_identifier = self._plc_slave_identifier()
+        for slave_name, slave_state in zip(
+            self._ethercat_slave_names,
+            self._ethercat_slave_states,
+        ):
+            if plc_identifier in slave_name:
+                return slave_name, slave_state
+
+        return None, None
+
+    def _visible_ethercat_slave_pairs_locked(self) -> list[tuple[str, str]]:
+        plc_identifier = self._plc_slave_identifier()
+        pairs = list(zip(self._ethercat_slave_names, self._ethercat_slave_states))
+        filtered_pairs = [
+            (slave_name, slave_state)
+            for slave_name, slave_state in pairs
+            if plc_identifier not in slave_name
+        ]
+        return filtered_pairs if filtered_pairs else pairs
+
+    def _refresh_ethercat_check_state_locked(self) -> None:
+        if os.environ.get('PLC_MANAGER_SKIP_ETHERCAT', '0') == '1':
+            self.ethercat_check_state = EthercatCheckState.READY
+            self._ethercat_last_error = (
+                'Skipped EtherCAT health check '
+                '(PLC_MANAGER_SKIP_ETHERCAT=1).'
+            )
+            return
+
+        plc_name, plc_state = self._find_plc_slave_locked()
+        if plc_name is None:
+            self.ethercat_check_state = EthercatCheckState.FAILED
+            self._ethercat_last_error = (
+                f"EtherCAT PLC slave '{self._plc_slave_identifier()}' "
+                'was not found.'
+            )
+            return
+
+        if plc_state == 'OP':
+            self.ethercat_check_state = EthercatCheckState.READY
+            if self._ethercat_poll_errors:
+                self._ethercat_last_error = '; '.join(self._ethercat_poll_errors)
+            else:
+                self._ethercat_last_error = None
+            return
+
+        self.ethercat_check_state = EthercatCheckState.FAILED
+        self._ethercat_last_error = (
+            f'EtherCAT PLC is not operational: {plc_name} => {plc_state}'
+        )
+
+    def _mark_ethercat_check_failed(self, message: str) -> None:
+        with self._ethercat_cache_lock:
+            self.ethercat_check_state = EthercatCheckState.FAILED
+            self._ethercat_last_error = message
+
+        self.get_logger().warning(message, throttle_duration_sec=5.0) #type: ignore
+
+    def _check_ethercat_request_timeout(self) -> None:
+        with self._ethercat_cache_lock:
+            if not self._ethercat_pending_requests:
+                return
+
+            if self._ethercat_poll_started_at is None:
+                return
+
+            if (
+                time.monotonic() - self._ethercat_poll_started_at
+                <= self._ethercat_state_response_timeout
+            ):
+                return
+
+            timed_out_services = ', '.join(
+                self._ethercat_pending_requests.values()
+            )
+            self._ethercat_pending_requests.clear()
+            self._ethercat_poll_started_at = None
+            self.ethercat_check_state = EthercatCheckState.FAILED
+            self._ethercat_last_error = (
+                'Timed out waiting for EtherCAT state services: '
+                f'{timed_out_services}'
+            )
+
+        message = self._ethercat_last_error or 'EtherCAT state request timed out.'
+        self.get_logger().warning(message, throttle_duration_sec=5.0) #type: ignore
+
+    def poll_ethercat_slave_states(self) -> None:
+        if os.environ.get('PLC_MANAGER_SKIP_ETHERCAT', '0') == '1':
+            with self._ethercat_cache_lock:
+                self._ethercat_last_update_monotonic = time.monotonic()
+                self._ethercat_slave_names = []
+                self._ethercat_slave_states = []
+                self._refresh_ethercat_check_state_locked()
+            return
+
+        with self._ethercat_cache_lock:
+            if self._ethercat_pending_requests:
+                should_check_timeout = True
+            else:
+                should_check_timeout = False
+
+        if should_check_timeout:
+            self._check_ethercat_request_timeout()
+            return
+
+        ready_clients = [
+            (service_name, client)
+            for service_name, client in self._ethercat_slave_state_clients.items()
+            if client.service_is_ready() #type: ignore
+        ]
+
+        if not ready_clients:
+            service_names = ', '.join(self._ethercat_slave_state_clients.keys())
+            self._mark_ethercat_check_failed(
+                'No configured EtherCAT GetSlaveStates services are ready: '
+                f'{service_names}'
+            )
+            return
+
+        with self._ethercat_cache_lock:
+            self.ethercat_check_state = EthercatCheckState.PENDING
+            self._ethercat_poll_started_at = time.monotonic()
+            self._ethercat_poll_slave_names = []
+            self._ethercat_poll_slave_states = []
+            self._ethercat_poll_errors = []
+
+        started_requests = 0
+        for service_name, client in ready_clients:
+            try:
+                future = client.call_async(GetSlaveStates.Request()) #type: ignore
+            except Exception as exception:  # noqa: BLE001
+                with self._ethercat_cache_lock:
+                    self._ethercat_poll_errors.append(
+                        f'{service_name}: call failed ({exception})'
+                    )
+                continue
+
+            with self._ethercat_cache_lock:
+                self._ethercat_pending_requests[future] = service_name
+
+            future.add_done_callback(self._on_ethercat_slave_states_response) #type: ignore
+            started_requests += 1
+
+        if started_requests == 0:
+            with self._ethercat_cache_lock:
+                errors = '; '.join(self._ethercat_poll_errors)
+            self._mark_ethercat_check_failed(
+                errors or 'No EtherCAT GetSlaveStates request could be started.'
+            )
+
+    def _on_ethercat_slave_states_response(self, future: Any) -> None:
+        with self._ethercat_cache_lock:
+            service_name = self._ethercat_pending_requests.pop(future, None)
+
+        if service_name is None:
+            return
+
+        try:
+            response = future.result()
+            slave_names = [str(name) for name in response.slave_names]
+            slave_states = [str(state) for state in response.slave_states]
+        except Exception as exception:  # noqa: BLE001
+            slave_names = []
+            slave_states = []
+            error = f'{service_name}: call failed ({exception})'
+        else:
+            error = None
+
+        with self._ethercat_cache_lock:
+            if error is not None:
+                self._ethercat_poll_errors.append(error)
+            else:
+                self._ethercat_poll_slave_names.extend(slave_names)
+                self._ethercat_poll_slave_states.extend(slave_states)
+
+            if self._ethercat_pending_requests:
+                return
+
+            self._finalize_ethercat_poll_locked()
+
+    def _finalize_ethercat_poll_locked(self) -> None:
+        self._ethercat_poll_started_at = None
+
+        if not self._ethercat_poll_slave_names:
+            self.ethercat_check_state = EthercatCheckState.FAILED
+            self._ethercat_last_error = (
+                '; '.join(self._ethercat_poll_errors)
+                or 'EtherCAT GetSlaveStates returned no slaves.'
+            )
+            return
+
+        self._ethercat_slave_names = list(self._ethercat_poll_slave_names)
+        self._ethercat_slave_states = list(self._ethercat_poll_slave_states)
+        self._ethercat_last_update_monotonic = time.monotonic()
+        self._refresh_ethercat_check_state_locked()
+
+    def _ethercat_status_payload(self) -> dict[str, object]:
+        with self._ethercat_cache_lock:
+            last_update_age = (
+                None
+                if self._ethercat_last_update_monotonic is None
+                else max(0.0, time.monotonic() - self._ethercat_last_update_monotonic)
+            )
+            plc_name, plc_state = self._find_plc_slave_locked()
+            stale = self._ethercat_cache_stale_locked()
+            visible_pairs = self._visible_ethercat_slave_pairs_locked()
+
+            return {
+                "ok": (
+                    self.ethercat_check_state == EthercatCheckState.READY
+                    and not stale
+                ),
+                "state": self.ethercat_check_state.name,
+                "stale": stale,
+                "last_update_age_s": (
+                    None if last_update_age is None else round(last_update_age, 3)
+                ),
+                "plc_slave_identifier": self._plc_slave_identifier(),
+                "plc_slave": (
+                    None
+                    if plc_name is None
+                    else {"name": plc_name, "state": plc_state}
+                ),
+                "slaves": [
+                    {"name": slave_name, "state": slave_state}
+                    for slave_name, slave_state in visible_pairs
+                ],
+                "last_error": self._ethercat_last_error,
+            }
     
     def publish_bringup_commands(self) -> None:
         """Publish initial startup commands to enable PLC outputs.
@@ -570,6 +870,7 @@ class PLCControllerInterface(Node):
             "schema": "fit4med.plc_fsm_status.v1",
             "state": self.fsm.state.name,
             "pending": None,
+            "ethercat": self._ethercat_status_payload(),
             "command_msg": {
                 "interface_names": list(self.command_msg.interface_names), #type: ignore
                 "values": [int(value) for value in self.command_msg.values], #type: ignore
@@ -665,7 +966,7 @@ def main(args=None): #type: ignore
         7. Graceful cleanup and ROS 2 shutdown
     
     Bringup Sequence (first iteration):
-        1. Check if EtherCAT PLC slave active (check_ethercat_plc_node)
+        1. Wait for cached EtherCAT PLC slave state to become OP
         2. Wait for subscribers to command topic (> 0 subscribers)
         3. When both ready: publish_bringup_commands (E-stop=1, F/T power=1)
         4. Set bringup_done=True to prevent repeated bringup
@@ -689,7 +990,7 @@ def main(args=None): #type: ignore
     
     # ========== Create multi-threaded executor ==========
     # Thread 1: PLC state subscription callback (state_callback)
-    # Thread 2: Launcher health check timer (check_ros_launch_status)
+    # Thread 2: low-rate EtherCAT timer and service response callbacks
     mt_executor = MultiThreadedExecutor(num_threads=2)
     mt_executor.add_node(node)
 
@@ -705,37 +1006,9 @@ def main(args=None): #type: ignore
         while rclpy.ok():
             mt_executor.spin_once(timeout_sec=0.1)
 
-            if node.ethercat_check_requested:
-
-                if not node.ethercat_slaves_status_check_client.wait_for_service(timeout_sec=5.0):
-                    node.get_logger().error( #type: ignore
-                        "EtherCAT status check service not available. "
-                        "Ensure ethercat_slaves_status_check is running."
-                    )
-                    continue
-                    
-                future = node.ethercat_slaves_status_check_client.call_async(Trigger.Request()) #type: ignore
-                node.ethercat_check_state = EthercatCheckState.PENDING
-
-                mt_executor.spin_until_future_complete(
-                    future, #type: ignore
-                    timeout_sec=5.0,
-                )
-
-                if future.done() and future.result() is not None: #type: ignore
-                    node.ethercat_check_state = (
-                        EthercatCheckState.READY
-                        if future.result().success #type: ignore
-                        else EthercatCheckState.FAILED
-                    )
-                else:
-                    node.ethercat_check_state = EthercatCheckState.FAILED
-
-                node.ethercat_check_requested = not (node.ethercat_check_state == EthercatCheckState.READY)
-
             # ========== Initial bringup sequence (once only) ==========
             if not bringup_done \
-            and node.ethercat_check_state == EthercatCheckState.READY \
+            and node._ethercat_slaves_status_ok() \
             and node.command_publisher.get_subscription_count() > 0:
                 node.publish_bringup_commands()
                 bringup_done = True
