@@ -57,10 +57,12 @@ class RosilibpyServiceHandler(object):
     
     def call(self, req: dict = None, on_error_callback = None) -> dict: #type: ignore
         try:
-            _req : roslibpy.ServiceRequest = roslibpy.ServiceRequest(req) if req is not None else roslibpy.ServiceRequest()
+            _req : roslibpy.ServiceRequest = roslibpy.ServiceRequest(req)\
+                if req is not None\
+                    else roslibpy.ServiceRequest()
             self.on_done_collback = None #type: ignore
             self.on_error_callback = on_error_callback
-            self.response = self.service_client.call(_req, errback = self.error_callback) # type: ignore
+            self.response = self.service_client.call(_req, errback = self.error_callback, timeout=3) # type: ignore
         except Exception as e:
             print(f'>>>> Service {self.namespace} [{self.msg_type}] failed with exception: {e}')
             print(f'<<<< Given request: {req}')
@@ -394,7 +396,9 @@ class SyncRosManager:
         if not self.destroy_clients_init:
             
             msg_drive_states = self.get_drive_states()
-            self.coe_drive_states.from_dict(msg_drive_states['states'] if msg_drive_states is not None and 'states' in msg_drive_states else None) #type: ignore
+            self.coe_drive_states.from_dict(msg_drive_states['states']\
+                                            if msg_drive_states is not None and 'states' in msg_drive_states \
+                                                else None) #type: ignore
             
             if len(self.coe_drive_states.dof_names) != len(self._joint_names):
                 print(f'Warning! Get an incomplete list of states (received the data for the axes: {self.coe_drive_states.dof_names}, expected: {self._joint_names}')
