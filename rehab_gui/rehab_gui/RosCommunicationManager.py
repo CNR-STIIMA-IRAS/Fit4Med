@@ -102,6 +102,11 @@ class RosCommunicationManager(QObject):
         except AttributeError:
             pass
 
+    def _handle_ros_connection_failed(self, message: str) -> None:
+        print(message)
+        self._close_ros_client()
+        self.ros_communication_failed_signal.emit()
+
     def _stop_update_worker(self) -> bool:
         if not self.worker_thread.isRunning():
             return True
@@ -157,20 +162,21 @@ class RosCommunicationManager(QObject):
             self.stopRosCommunication()
             return
 
-        self.ros_client = roslibpy.Ros(
-            host=self.remote_ip,
-            port=self.remote_port
-        )
-        self.ros_client.run(20)
+        try:
+            self.ros_client = roslibpy.Ros(
+                host=self.remote_ip,
+                port=self.remote_port
+            )
+            self.ros_client.run(20)
+        except Exception as exc:
+            if type(exc).__name__ == 'RosTimeoutError':
+                self._handle_ros_connection_failed("Failed to connect to rosbridge before timeout.")
+            else:
+                self._handle_ros_connection_failed(f"Failed to connect to rosbridge: {exc}")
+            return
 
         if not self.ros_client.is_connected:
-            print("Failed to connect to rosbridge.")
-            try:
-                self.ros_client.close()
-            except Exception as exc:
-                print(f"Error while closing failed rosbridge client: {exc}")
-            del self.ros_client
-            self.ros_communication_failed_signal.emit()
+            self._handle_ros_connection_failed("Failed to connect to rosbridge.")
             return
 
         self.ROS = SyncRosManager(self.number_of_ec_slaves, self.joint_names, self.ros_client)
