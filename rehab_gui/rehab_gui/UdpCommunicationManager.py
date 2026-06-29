@@ -116,7 +116,7 @@ class UdpCommunicationManager(QObject):
 
     @pyqtSlot()
     def onRosCommunicationFailed(self) -> None:
-        print("[UdpServer] ROS communication failed to start.")
+        print("[UdpServer] ROS communication failed.")
         self.server.send_response(b"ROS_CONNECTION_FAILED")
         self.start_ros_communication_emitted = False
 
@@ -167,7 +167,7 @@ class UdpCommunicationManager(QObject):
             self.requestRosCommunicationStop("UDP pending stop/fail transition received.")
             return
 
-        if state in ('IDLE', 'IDLE_RECOVERY', 'ERROR', 'STOP', 'RECOVERED') and pending is None:
+        if state in ('IDLE', 'IDLE_RECOVERY', 'ERROR', 'RECOVERED') and pending is None:
             self.requestRosCommunicationStop("UDP STOP request received.")
             if state == 'IDLE_RECOVERY' and not self.z_recovery_start_signal_emitted:
                 self.z_recovery_start_signal.emit()

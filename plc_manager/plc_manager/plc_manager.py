@@ -250,9 +250,6 @@ class PLCControllerInterface(Node):
         Returns:
             None. Leaves node in destroyed state.
         """
-        self.get_logger().info("Cleanup: Stopping GUI ROS communication.") #type: ignore
-        self._notify_gui(b"STOP")
-
         self.get_logger().info("Cleanup: Cancelling timers and destroying node.") #type: ignore
         self.client.close()
         self.destroy_node()
