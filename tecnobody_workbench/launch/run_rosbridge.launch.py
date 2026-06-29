@@ -1,15 +1,15 @@
 import os
 
-from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
+from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
 
-    rosbridge_pkg = get_package_share_directory('rosbridge_server')
+    rosbridge_pkg = FindPackageShare('tecnobody_workbench').find('tecnobody_workbench')
     xml_launch = os.path.join(
         rosbridge_pkg,
         'launch',

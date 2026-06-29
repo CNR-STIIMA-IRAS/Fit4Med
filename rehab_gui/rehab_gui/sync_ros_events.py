@@ -5,9 +5,6 @@ from typing import Callable, List, Optional
 import time
 import threading
 
-# mathematics
-import numpy as np
-
 #ROS
 import roslibpy
 
@@ -31,69 +28,67 @@ class RosilibpyServiceHandler(object):
         self.on_error_callback = None #type: ignore
 
     def __del__(self):
-        if self.ros_client.is_connected and self.service_client.is_advertised:
+        if self.ros_client.is_connected and self.service_client.is_advertised: #type:ignore
             self.service_client.unadvertise()
 
-    def response_callback(self, response):
+    def response_callback(self, response): #type: ignore
         self.response = response
-        if self.on_done_collback:
+        if self.on_done_collback: #type: ignore
             self.on_done_collback(response) #type: ignore
 
-    def error_callback(self, response):
+    def error_callback(self, response): #type: ignore
         self.response = response
-        if self.on_error_callback:
+        if self.on_error_callback: #type: ignore
             self.on_error_callback(response) #type: ignore
 
-    def call_async(self, req: dict = None, on_done_callback = None, on_error_callback = None) -> None: #type: ignore
+    def call_async(self, req: dict | None = None, on_done_callback = None, on_error_callback = None) -> None: #type: ignore
         try:
             _req : roslibpy.ServiceRequest = roslibpy.ServiceRequest(req) if req is not None else roslibpy.ServiceRequest()
-            self.on_done_collback = on_done_callback
-            self.on_error_callback = on_error_callback
+            self.on_done_collback = on_done_callback #type: ignore
+            self.on_error_callback = on_error_callback #type: ignore
             _ = self.service_client.call(_req, self.response_callback, self.error_callback) # type: ignore
         except Exception as e:
             print(f'>>>> Service {self.namespace} [{self.msg_type}] failed with exception: {e}')
             print(f'<<<< Given request: {req}')
         return 
     
-    def call(self, req: dict = None, on_error_callback = None, timeout_s: Optional[float] = None) -> dict: #type: ignore
+    def call(self, req: dict | None = None, on_error_callback = None) -> dict: #type: ignore
         self.response = None #type: ignore
         try:
             _req : roslibpy.ServiceRequest = roslibpy.ServiceRequest(req) if req is not None else roslibpy.ServiceRequest()
             self.on_done_collback = None #type: ignore
-            self.on_error_callback = on_error_callback
-            self.response = self.service_client.call(_req, errback=self.error_callback, timeout=timeout_s) # type: ignore
-            return self.response
+            self.on_error_callback = on_error_callback #type: ignore
+            self.response = self.service_client.call(_req, errback = self.error_callback) # type: ignore
         except Exception as e:
             if type(e).__name__ == 'RosTimeoutError':
-                timeout_label = f'{timeout_s:.1f}s' if timeout_s is not None else 'the default timeout'
-                print(f'>>>> Service {self.namespace} [{self.msg_type}] timed out after {timeout_label}')
+                print(f'>>>> Service {self.namespace} [{self.msg_type}] timed out ')
                 return None #type: ignore
             print(f'>>>> Service {self.namespace} [{self.msg_type}] failed with exception: {e}')
             print(f'<<<< Given request: {req}')
-        return self.response
+        return self.response #type: ignore
 
 class ConstRequestServiceHandler(RosilibpyServiceHandler):
     def __init__(self, ros_client: roslibpy.Ros, namespace: str, msg_type: str, req: dict = None): #type: ignore
         super().__init__(ros_client, namespace, msg_type)
-        self.req = req
+        self.req = req #type: ignore
 
     def __del__(self):
         super().__del__()
          
     def call_async(self, on_done_callback = None, on_error_callback = None) -> None: # type: ignore
         try:
-            super().call_async(self.req, on_done_callback, on_error_callback)
+            super().call_async(self.req, on_done_callback, on_error_callback) #type: ignore
         except Exception as e:
             print(f'>>>> Service {self.namespace} [{self.msg_type}] failed with exception: {e}')
-            print(f'<<<< Given request: {self.req}')
+            print(f'<<<< Given request: {self.req}') #type: ignore
 
-    def call(self, on_error_callback = None, timeout_s: Optional[float] = None) -> dict: # type: ignore
+    def call(self, on_error_callback = None) -> dict: # type: ignore
         try:
-            self.response = super().call(self.req, on_error_callback, timeout_s)
+            self.response = super().call(self.req, on_error_callback) #type: ignore
         except Exception as e:
             print(f'>>>> Service {self.namespace} [{self.msg_type}] failed with exception: {e}')
-            print(f'<<<< Given request: {self.req}')
-        return self.response
+            print(f'<<<< Given request: {self.req}') #type: ignore
+        return self.response #type: ignore
 
 class CoEDriveStates:
     def __init__(self, lenght : int):
@@ -105,8 +100,8 @@ class CoEDriveStates:
         self.fault_present : bool = True
         self.drives_on : bool = False
     
-    def from_dict(self, msg : dict):
-        if msg is not None and 'dof_names' in msg.keys() and len(msg['dof_names'])==self.lenght:
+    def from_dict(self, msg : dict | None) -> None: #type: ignore
+        if msg is not None and 'dof_names' in msg.keys() and len(msg['dof_names'])==self.lenght: #type: ignore
             self.dof_names = msg['dof_names']
             self.coe_drive_states = msg['drive_states']
             self.modes_of_operation = msg['modes_of_operation']
@@ -399,10 +394,11 @@ class SyncRosManager:
         return self.destroy_clients_init or (should_stop is not None and should_stop())
 
     def update_controller_and_driver_states(self, should_stop: Optional[Callable[[], bool]] = None) -> None:
+        ############
         if self._should_stop_polling(should_stop):
             return
 
-        msg_drive_states = self.get_drive_states(timeout_s=self._poll_service_timeout_s)
+        msg_drive_states = self.get_drive_states()
         if self._should_stop_polling(should_stop) or not isinstance(msg_drive_states, dict):
             return
         self.coe_drive_states.from_dict(msg_drive_states.get('states')) #type: ignore
@@ -411,7 +407,7 @@ class SyncRosManager:
             print(f'Warning! Get an incomplete list of states (received the data for the axes: {self.coe_drive_states.dof_names}, expected: {self._joint_names}')
             return
 
-        list_controllers_response : dict = self.get_list_controllers(timeout_s=self._poll_service_timeout_s)
+        list_controllers_response : dict = self.get_list_controllers()
         if self._should_stop_polling(should_stop):
             return
         if not isinstance(list_controllers_response, dict) or 'controller' not in list_controllers_response:
@@ -423,7 +419,6 @@ class SyncRosManager:
         is_csv_mode = all([moo[j] == 9 for j in range(len(self._joint_names))])
         is_csp_mode = all([moo[j] == 8 for j in range(len(self._joint_names))])
         is_hmg_mode = all([moo[j] == 6 for j in range(len(self._joint_names))])
-
 
         ###################
         active_controller : str = None #type: ignore
@@ -447,7 +442,7 @@ class SyncRosManager:
         self.enable_manual_guidance = self.current_controller_name == self.admittance_controller_name and is_csv_mode
         self.enable_zeroing = is_hmg_mode
         self.enable_ptp = self.current_controller_name == self.trajectory_controller_name and is_csp_mode
-            
+         
     def switch_controller(self, controller_to_activate, controller_to_deactivate) -> dict:
         switch_req = {
             'activate_controllers': [] if controller_to_activate is None else [controller_to_activate],
@@ -591,10 +586,10 @@ class SyncRosManager:
         else:
             print(f"Service call failed: {result['message']}")
 
-    def get_list_controllers(self, timeout_s: Optional[float] = None) -> dict: #type: ignore
+    def get_list_controllers(self) -> dict: #type: ignore
         result : dict = None # type: ignore
         try:
-            result = self.current_controller_client.call(timeout_s=timeout_s)
+            result = self.current_controller_client.call()
             if result is None:
                 print('current_controller_client: Service call failed')
         except Exception as e:
@@ -609,17 +604,16 @@ class SyncRosManager:
     #     except Exception as e:
     #         print(f'Get Op Mode service call failed with exception: {e}')
     #     return response
+    def get_drive_states(self) -> dict:
+            result : dict = None  # type: ignore
+            try:
+                result = self.get_drive_state_client.call()
+                if result is None:
+                    print('Drive States Service call failed')
 
-    def get_drive_states(self, timeout_s: Optional[float] = None) -> dict:
-        result : dict = None  # type: ignore
-        try:
-            result = self.get_drive_state_client.call(timeout_s=timeout_s)
-            if result is None:
-                print('Drive States Service call failed')
-
-        except Exception as e:
-            print(f'Drive States Service call failed with exception: {e}')
-        return result
+            except Exception as e:
+                print(f'Drive States Service call failed with exception: {e}')
+            return result
 
     def get_op_mode_number(self, mode: str) -> int:
         return self.OP_MODE_DICT.get(mode, 0)
@@ -720,7 +714,7 @@ class SyncRosManager:
             req = roslibpy.ServiceRequest({
                 'cartesian_positions': [
                     {'point': points[idx], 
-                     'time_from_start': times[idx]} for idx in range(len(times))
+                        'time_from_start': times[idx]} for idx in range(len(times))
                     ], 'override': 50
             })
             print(req)
@@ -780,7 +774,7 @@ class SyncRosManager:
             print(f"[Set Trajectory] Service Call Exception: {e}")
 
         return False
-    
+
     def stop_movement(self) -> bool:
         print(f'{GREEN}>>>>{NC} Send STOP Movement Request')
         self.movement_stopped = False
@@ -817,7 +811,7 @@ class SyncRosManager:
         self.trajectory_completed = True
         response['success'] = True
         return True       
-    
+
     def on_movement_stopped(self, request, response):
         print(f"[on_movement_stopped] Service Call: {request}")
         self.movement_stopped = True
@@ -829,24 +823,25 @@ class SyncRosManager:
         self.exercise_suspended = True
         response['success'] = True
         return True       
-    
-    def on_exercise_finished(self, request, response):
+
+    def on_exercise_finished(self, request, response) -> bool: #type: ignore
+        print(f"[on_exercise_finished] Service Call: {request}")
         self.repetition_cnt = self.repetition_cnt +1
         self.exercise_completed = True
         response['success'] = True
         return True       
 
-    def on_exercise_progress(self, request, response):
+    def on_exercise_progress(self, request, response) -> bool: #type: ignore
         self.execution_time_percentage = int(request['progress'])  # Get the progress percentage from the worker
         response['additional_speed_override'] =  1.0
         return True
 
-    def update_movement_status(self, data):
+    def update_movement_status(self, data) -> None: #type: ignore
         self.movement_status = data['data']
 
-    def get_movement_status(self) -> str:
+    def get_movement_status(self) -> str: #type: ignore
         return self.movement_status
-    
+
     def sonar_bias(self) :
         print("Setting sonar bias...")
         self.sonar_bias_client.call()

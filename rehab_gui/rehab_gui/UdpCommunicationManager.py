@@ -173,7 +173,7 @@ class UdpCommunicationManager(QObject):
 
     @pyqtSlot()
     def onRosCommunicationEstablished(self) -> None:
-        print("[UdpServer] ROS communication established.")
+        print("[UdpServer] PLC Communication Established.")
         self.server.send_response(b"ROS_CONNECTED")
 
     @pyqtSlot()
