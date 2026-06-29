@@ -107,6 +107,17 @@ class RosCommunicationManager(QObject):
         self._close_ros_client()
         self.ros_communication_failed_signal.emit()
 
+    def _handle_ros_connection_lost(self, message: str) -> None:
+        if self._ros_stop_requested:
+            return
+
+        print(message)
+        self._ros_stop_requested = True
+        self.worker_thread.stop_thread()
+        self.ROS = None  # type: ignore
+        self._close_ros_client()
+        self.ros_communication_failed_signal.emit()
+
     def _stop_update_worker(self) -> bool:
         if not self.worker_thread.isRunning():
             return True
@@ -410,9 +421,18 @@ class RosCommunicationManager(QObject):
         if self._is_ros_stop_requested() or ros_manager is None or ros_client is None:
             return
         if not ros_client.is_connected:
+            self._handle_ros_connection_lost("ROS bridge connection lost during GUI update.")
             return
 
-        ros_manager.update_controller_and_driver_states()
+        try:
+            ros_manager.update_controller_and_driver_states()
+        except Exception as exc:
+            if not ros_client.is_connected:
+                self._handle_ros_connection_lost(
+                    f"ROS bridge connection lost during GUI update: {exc}"
+                )
+            else:
+                print(f"ROS GUI update failed: {exc}")
         return 
     
     # def listActiveControllers(self) -> None:

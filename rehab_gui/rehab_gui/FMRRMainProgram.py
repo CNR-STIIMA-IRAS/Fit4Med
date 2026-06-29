@@ -418,6 +418,7 @@ class MainProgram(QMainWindow):
         self.ui.tabWidget.currentChanged.connect(self.onTabChange)
         self.ui.pushButton_CloseProgram.pressed.connect(self.closeProgram)
         ## Connect the 
+        self.udp.setRosCommunicationActiveChecker(self.ros_manager.isRosCommunicationActive)
         self.udp.start_ros_communication.connect(self.ros_manager.startRosCommunication)
         self.udp.stop_ros_communication.connect(self.ros_manager.stopRosCommunication)
         self.udp.udp_message_received.connect(self.motorWindow.onUdpMessageReceived)

@@ -4,7 +4,7 @@
 from PyQt5.QtCore import QThread, QObject, pyqtSignal, pyqtSlot
 import json
 import socket
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 ################################################
 #
@@ -139,6 +139,7 @@ class UdpCommunicationManager(QObject):
         self.z_recovery_start_signal_emitted : bool = False
         self.z_recovery_mode_signal_emitted : bool = False
         self.z_recovery_done_signal_emitted : bool = False
+        self._ros_communication_active_checker: Optional[Callable[[], bool]] = None
 
         self.remote_ip = remote_ip
         self.remote_port = remote_port
@@ -150,6 +151,9 @@ class UdpCommunicationManager(QObject):
 
         self.server.message_received.connect(self.onUdpMessageReceived)
         self.udp_thread.start()
+
+    def setRosCommunicationActiveChecker(self, checker: Callable[[], bool]) -> None:
+        self._ros_communication_active_checker = checker
 
     def shutdown(self, wait_msec: int = 2000) -> None:
         """Stop the UDP socket and wait for the worker thread to exit."""
@@ -187,6 +191,16 @@ class UdpCommunicationManager(QObject):
         if not self.stop_ros_communication_emitted:
             self.stop_ros_communication.emit()
             self.stop_ros_communication_emitted = True
+
+    def _is_ros_communication_inactive(self) -> bool:
+        if self._ros_communication_active_checker is None:
+            return False
+
+        try:
+            return not self._ros_communication_active_checker()
+        except Exception as exc:
+            print(f"[UdpServer] ROS communication activity check failed: {exc}")
+            return True
 
     def _parse_plc_status(
         self,
@@ -251,9 +265,16 @@ class UdpCommunicationManager(QObject):
         elif state in ('RUNNING', 'RUNNING_RECOVERY') and pending is None:
             self.stop_ros_communication_emitted = False
 
+            if (
+                self.start_ros_communication_emitted
+                and self._is_ros_communication_inactive()
+            ):
+                print("[UdpServer] RUNNING received but ROS communication is inactive. Retrying ROS start.")
+                self.start_ros_communication_emitted = False
+
             if not self.start_ros_communication_emitted:
-                self.start_ros_communication.emit()
                 self.start_ros_communication_emitted = True
+                self.start_ros_communication.emit()
                 if state == 'RUNNING_RECOVERY' and not self.z_recovery_mode_signal_emitted:
                     self.z_recovery_mode_signal.emit()
                     self.z_recovery_mode_signal_emitted = True
