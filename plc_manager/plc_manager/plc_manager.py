@@ -187,7 +187,7 @@ class PLCControllerInterface(Node):
             float(self.get_parameter('ethercat_state_poll_period').value), #type: ignore
             self.poll_ethercat_slave_states,
             callback_group=self.timer_group,
-            auto_start=False,
+            autostart=False,
         )
         self.start_environment_requested = True
 
