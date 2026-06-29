@@ -262,7 +262,7 @@ class PLCControllerInterface(Node):
         Handle ROS GUI disconnection event.
         """
         msg = self.client.last_received_message
-        print(f"Last received message: {msg}")  # Debug print statement
+        self.get_logger().info(f"Last received message: {msg}")  # Debug print statement
         if msg is not None and msg == b"ROS_DISCONNECTED":
             return True
         
