@@ -21,7 +21,6 @@ class MotorsWindow(QtWidgets.QWidget):
         self._last_plc_state = None
         self._last_plc_pending = None
         self._plc_outputs = []
-        self._udp_watchdog_started_monotonic = time.monotonic()
         self._last_udp_received_monotonic: float | None = None
         self._last_udp_received_wall_time: str | None = None
         self._last_udp_display_message = "No UDP message received yet"
@@ -112,9 +111,10 @@ class MotorsWindow(QtWidgets.QWidget):
     @QtCore.pyqtSlot(bytes, tuple)
     def onUdpMessageReceived(self, data, addr):
         previous_plc_status = (self._last_plc_state, self._last_plc_pending)
+        first_udp_message = self._last_udp_received_monotonic is None
         self._last_udp_received_monotonic = time.monotonic()
         self._last_udp_received_wall_time = self._format_wall_time()
-        if self._plc_udp_watchdog_active:
+        if first_udp_message or self._plc_udp_watchdog_active:
             self._plc_udp_watchdog_active = False
             self._last_emergency_state = None
         message = self._format_udp_message(data)
@@ -140,12 +140,12 @@ class MotorsWindow(QtWidgets.QWidget):
         )
 
     def updateUdpWatchdog(self, timeout_s: float) -> None:
-        reference_time = (
-            self._last_udp_received_monotonic
-            if self._last_udp_received_monotonic is not None
-            else self._udp_watchdog_started_monotonic
-        )
-        watchdog_active = (time.monotonic() - reference_time) > timeout_s
+        if self._last_udp_received_monotonic is None:
+            watchdog_active = False
+        else:
+            watchdog_active = (
+                time.monotonic() - self._last_udp_received_monotonic
+            ) > timeout_s
         if watchdog_active != self._plc_udp_watchdog_active:
             self._plc_udp_watchdog_active = watchdog_active
             self._last_emergency_state = None
@@ -298,7 +298,9 @@ class MotorsWindow(QtWidgets.QWidget):
         
     def updateWindow(self):
         # Determine emergency state key
-        if self._plc_udp_watchdog_active:
+        if self._last_udp_received_monotonic is None:
+            state_key = 'waiting_fmrr_bringup'
+        elif self._plc_udp_watchdog_active:
             state_key = 'plc_udp_timeout'
         elif not self.ROS.isRosCommunicationActive():
             state_key = 'disconnected'
@@ -317,7 +319,10 @@ class MotorsWindow(QtWidgets.QWidget):
 
         if state_key != self._last_emergency_state:
             self._last_emergency_state = state_key
-            if state_key == 'plc_udp_timeout':
+            if state_key == 'waiting_fmrr_bringup':
+                self.ui.label_SystemState.setText('Waiting for the FMRR bring-up')
+                self.ui.label_SystemState.setStyleSheet("background-color: rgb(255,140,0); color: white")
+            elif state_key == 'plc_udp_timeout':
                 self.ui.label_SystemState.setText('PLC communication lost\nReboot all the system')
                 self.ui.label_SystemState.setStyleSheet("background-color: red; color: white")
             elif state_key == 'disconnected':
@@ -357,7 +362,7 @@ class MotorsWindow(QtWidgets.QWidget):
                 self.ui.label_SystemState.setText("Motors Off \n State OK")
                 self.ui.label_SystemState.setStyleSheet("background-color: green; color: white")
 
-        if state_key not in ('plc_udp_timeout', 'disconnected', 'emergency'):
+        if state_key not in ('waiting_fmrr_bringup', 'plc_udp_timeout', 'disconnected', 'emergency'):
             self.ui.pushButton_ResetFaults.setEnabled(self.ROS.isManualResetFaults())
 
         ctrl_name = self.ROS.getCurrentControllerName()
