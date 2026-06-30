@@ -2,10 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
  
 import os
-import json
 import types
-import time
-from enum import Enum, auto
 
 
 # Must be BEFORE importing rclpy (sets logging format globally)
@@ -17,58 +14,25 @@ from rclpy.node import Node
 from rclpy.subscription import Subscription
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from rclpy.executors import MultiThreadedExecutor
-from rclpy.client import Client
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from tecnobody_msgs.msg import PlcController, PlcStates
-from ethercat_msgs.srv import GetSlaveStates
-from std_srvs.srv import Trigger
 import sys
-import subprocess
 import threading
 import signal
-from enum import Enum
-from typing import Any, Callable
 
-from tecnobody_workbench_utils.utils import (
-    check_env, check_env_stopped,
-    make_platform_controller_readiness_monitor,
-    make_recovery_controller_status_monitor,
-    stop_launch_environment
-)
 from tecnobody_workbench_utils.utils import bcolors as bc
 
 from tecnobody_workbench_utils.fsm import (
-    StateMachine, InvalidTransition, GuardFailed,
+    InvalidTransition, GuardFailed,
     TransitionTimeout, PendingTransition
 )
+from plc_manager.environment_manager import EnvironmentManager
+from plc_manager.ethercat_monitor import EthercatMonitor
+from plc_manager.fsm_config import build_plc_fsm
+from plc_manager.gui_status import GuiStatusPublisher
+from plc_manager.plc_commands import PlcCommandPublisher
+from plc_manager.plc_types import EStopState, EthercatCheckState, Event, State
 from plc_manager.udp_client import UdpClient
-
-class EStopState(Enum):
-    OK = 1
-    EMERGENCY = 0
-
-class EthercatCheckState(Enum):
-    IDLE = 0
-    PENDING = 1
-    READY = 2
-    FAILED = 3
-
-
-class State(Enum):
-    IDLE = auto()
-    IDLE_RECOVERY = auto()
-    ESTOP = auto()
-    RUNNING = auto()
-    RUNNING_RECOVERY = auto()
-    RECOVERED = auto()
-    ERROR = auto()
-
-class Event(Enum):
-    SWITCH_MODE = auto()
-    START = auto()
-    STOP = auto()
-    FAIL = auto()
-    NONE = auto()
 
 
 class PLCControllerInterface(Node):
@@ -117,42 +81,24 @@ class PLCControllerInterface(Node):
         self.estop_cached : EStopState = EStopState.EMERGENCY   # Cached E-stop value for transition detection
         self.lock = threading.Lock()                            # Protects state_callback() concurrent access
         
-        # ========== Command Message Structure ==========
-        # Pre-allocate PlcController message with 10 outputs (matches plc_controller.yaml)
-        self.plc_outputs = PlcController()
-        self.plc_outputs.values  = [0] * 10
-        self.plc_outputs.interface_names = [
-            'PLC_node/mode_of_operation',       # [0] unused
-            'PLC_node/power_cutoff',            # [1] unused
-            'PLC_node/sonar_teach',             # [2] ultrasonic sensor calibration
-            'PLC_node/s_output.4',              # [3] unused
-            'PLC_node/estop',                   # [4] main E-stop signal
-            'PLC_node/manual_mode',             # [5] unused
-            'PLC_node/force_sensors_pwr',       # [6] F/T sensor power control
-            'PLC_node/brake_disable',           # [7] Brake Disable (0=enabled, 1=disabled)
-            'PLC_node/eeg_sync',                # [8] EEG sync pulse
-            'PLC_node/z_recovery'               # [9] Z-axis limit switch recovery flag
-        ]
+        self.plc_commands = PlcCommandPublisher(
+            self.command_publisher,
+            self.get_logger(),
+        )
 
         # ========== Launcher Health Monitoring ==========
         self.processes_status_cached = False
-        self._startup_cleanup_action: Callable[[], None] | None = None
-        self.platform_controller_readiness_monitor = make_platform_controller_readiness_monitor(
+        self.environment = EnvironmentManager(
             self,
-            callback_group=self.service_group,
-            logger=self.get_logger(),
-        )
-
-        self.recovery_controller_status_monitor = make_recovery_controller_status_monitor(
-            self,
-            callback_group=self.service_group,
-            logger=self.get_logger(),
+            service_group=self.service_group,
+            publish_command=self.publish_command,
         )
 
 
         # ========== UDP Status Client ==========#  
         # Coordinates with rehab_gui for emergency stop and status
         self.client = UdpClient(target_ip, 5005)
+        self.gui_status = GuiStatusPublisher(self.client, self.get_logger())
         self.send_running_cnt = 0
         self.send_running_dec = 10  # Send status every 10*50ms = 500ms at 50 Hz
         self.shutdown_requested = False
@@ -161,164 +107,15 @@ class PLCControllerInterface(Node):
         signal.signal(signal.SIGINT, self.signal_handler) #type: ignore
         signal.signal(signal.SIGTERM, self.signal_handler) #type: ignore
 
-        # ========== EtherCAT PLC Slave Identifier ==========
-        # Substring matched against slave_names returned by GetSlaveStates services.
-        # Default matches the configured ros2_control name for the SICK GetC100 PLC.
-        self.declare_parameter('plc_slave_identifier', 'sickPLC')
-        self.declare_parameter(
-            'ethercat_startup_check_service',
-            '/ethercat_slaves_status_check/check',
-        )
-        self.declare_parameter(
-            'ethercat_slave_state_services',
-            ['/tecnobody/get_slave_states_master1'],
-        )
-        self.declare_parameter('ethercat_state_poll_period', 1.0)
-        self.declare_parameter('ethercat_state_stale_after', 5.0)
-        self.declare_parameter('ethercat_state_response_timeout', 3.0)
-
         self.z_limit_still_active = False
-
-        self.ethercat_startup_check_service_name = (
-            self._get_ethercat_startup_check_service_name()
-        )
-        self.ethercat_slaves_status_check_client : Client = self.create_client(Trigger, #type: ignore
-            self.ethercat_startup_check_service_name,
-            callback_group=self.service_group,
-        )
-        self.ethercat_startup_check_state = EthercatCheckState.IDLE
-        self.ethercat_startup_check_requested = True
-
-        self.ethercat_check_state = EthercatCheckState.IDLE
-        self._ethercat_cache_lock = threading.Lock()
-        self._ethercat_slave_names: list[str] = []
-        self._ethercat_slave_states: list[str] = []
-        self._ethercat_last_update_monotonic: float | None = None
-        self._ethercat_last_error: str | None = None
-        self._ethercat_pending_requests: dict[Any, str] = {}
-        self._ethercat_poll_started_at: float | None = None
-        self._ethercat_poll_slave_names: list[str] = []
-        self._ethercat_poll_slave_states: list[str] = []
-        self._ethercat_poll_errors: list[str] = []
-        self._ethercat_state_stale_after = float(
-            self.get_parameter('ethercat_state_stale_after').value #type: ignore
-        )
-        self._ethercat_state_response_timeout = float(
-            self.get_parameter('ethercat_state_response_timeout').value #type: ignore
-        )
-        self._ethercat_slave_state_clients = {
-            service_name: self.create_client( #type: ignore
-                GetSlaveStates,
-                service_name,
-                callback_group=self.service_group,
-            )
-            for service_name in self._get_ethercat_slave_state_service_names()
-        }
-        self.ethercat_state_timer = self.create_timer(
-            float(self.get_parameter('ethercat_state_poll_period').value), #type: ignore
-            self.poll_ethercat_slave_states,
-            callback_group=self.timer_group,
-            autostart=False,
+        self.ethercat = EthercatMonitor(
+            self,
+            service_group=self.service_group,
+            timer_group=self.timer_group,
+            fsm_state_getter=lambda: self.fsm.state,
         )
         self.start_environment_requested = True
-
-        self.fsm : StateMachine[State, Event] = StateMachine[State,Event](State.IDLE, self.get_logger()) #type: ignore
-        self.fsm.add_transition(
-            Event.SWITCH_MODE,
-            State.IDLE, 
-            State.IDLE_RECOVERY, 
-            action=lambda: self.publish_command('PLC_node/z_recovery', 0),
-            msg="🔑 Change mode (IDLE=>IDLE_RECOVERY)",
-        )
-        self.fsm.add_transition(
-            Event.SWITCH_MODE,
-            State.RECOVERED, 
-            State.IDLE, 
-            msg="🔑 Change mode (RECOVERED=>IDLE)",
-        )
-        self.fsm.add_transition(
-            Event.START,
-            State.IDLE, 
-            State.RUNNING, 
-            msg="🔑 KEY TURN DETECTED: E-stop 0=>1 (IDLE=>RUNNING)",
-            guard=self._ready_to_start, 
-            action=self._bringup_env,
-            success_check=self.check_env_running,
-            max_steps=5000,
-            failure_destination=State.ERROR,
-        )
-        self.fsm.add_transition(
-            Event.START,
-            State.IDLE_RECOVERY, 
-            State.RUNNING_RECOVERY, 
-            msg="🔑 KEY TURN DETECTED: E-stop 0=>1 (IDLE_RECOVERY=>RUNNING_RECOVERY)",
-            guard=self._ready_to_start, 
-            action=self._bringup_recovery_env,
-            success_check=self.check_env_running_recovery,
-            max_steps=5000,
-            failure_destination=State.ERROR
-        )
-        
-        self.fsm.add_transition(
-            Event.STOP,
-            State.RUNNING_RECOVERY,
-            State.RECOVERED,
-            msg="🛑 EMERGENCY STOP REQUESTED (RUNNING_RECOVERY=>RECOVERED)",
-            action=self._kill_recovery_env,
-            success_check=self.check_env_running_recovery_stopped,
-            max_steps=5000,
-            failure_destination=State.ERROR
-        )
-
-        self.fsm.add_transition(
-            Event.STOP,
-            State.RUNNING, 
-            State.IDLE, 
-            msg="🛑 EMERGENCY STOP REQUESTED (RUNNING=>IDLE)",
-            action=self._kill_env,
-            success_check=self.check_env_running_stopped,
-            max_steps=5000,
-            failure_destination=State.ERROR
-        )
-
-        self.fsm.add_transition(
-            Event.FAIL,
-            State.RUNNING, 
-            State.ERROR, 
-            msg="� SYSTEM FAILURE (RUNNING=>ERROR)",
-            action=self._kill_env,
-            success_check=self.check_env_running_stopped,
-            max_steps=5000,
-            failure_destination=State.ERROR
-        )
-        
-        self.fsm.add_transition(Event.FAIL,
-                State.RUNNING_RECOVERY, 
-                State.ERROR, 
-                msg=" SYSTEM FAILURE (RUNNING_RECOVERY=>ERROR)",
-                action=self._kill_recovery_env,
-                success_check=self.check_env_running_recovery_stopped,
-                max_steps=5000,
-                failure_destination=State.ERROR)
-
-        self.fsm.add_transition(Event.STOP,
-                State.IDLE,
-                State.IDLE,
-                msg="🛑 EMERGENCY STOP REQUESTED (IDLE=>IDLE)",
-                action=self._handle_idle_stop,
-                success_check=self.check_env_running_stopped,
-                max_steps=5000,
-                failure_destination=State.ERROR)
-        
-        self.fsm.add_transition(Event.STOP,
-                State.IDLE_RECOVERY,
-                State.IDLE_RECOVERY,
-                msg="🛑 EMERGENCY STOP REQUESTED (IDLE_RECOVERY=>IDLE_RECOVERY)",
-                action=self._handle_idle_stop,
-                success_check=self.check_env_running_recovery_stopped,
-                max_steps=5000,
-                failure_destination=State.ERROR)
-
+        self.fsm = build_plc_fsm(self)
         self.bringup_done = False
     
     def cleanup(self) -> None:
@@ -335,8 +132,7 @@ class PLCControllerInterface(Node):
         """
         self.get_logger().info("Cleanup: Cancelling timers and destroying node.") #type: ignore
         self.client.close()
-        self.platform_controller_readiness_monitor.destroy()
-        self.recovery_controller_status_monitor.destroy()
+        self.environment.destroy()
         self.destroy_node()
     
     def _ros_gui_disconnected(self) -> bool:
@@ -353,322 +149,76 @@ class PLCControllerInterface(Node):
     def _ros_gui_connection_failed(self) -> bool:
         return self.client.last_received_message == b"ROS_CONNECTION_FAILED"
 
+    @property
+    def _startup_cleanup_action(self):  # type: ignore
+        return self.environment.startup_cleanup_action
+
+    @_startup_cleanup_action.setter
+    def _startup_cleanup_action(self, value) -> None:  # type: ignore
+        self.environment.startup_cleanup_action = value
+
+    @property
+    def platform_controller_readiness_monitor(self):  # type: ignore
+        return self.environment.platform_controller_readiness_monitor
+
+    @property
+    def recovery_controller_status_monitor(self):  # type: ignore
+        return self.environment.recovery_controller_status_monitor
+
+    @property
+    def plc_outputs(self):  # type: ignore
+        return self.plc_commands.plc_outputs
+
+    @property
+    def ethercat_startup_check_service_name(self) -> str:
+        return self.ethercat.startup_check_service_name
+
+    @property
+    def ethercat_slaves_status_check_client(self):  # type: ignore
+        return self.ethercat.startup_check_client
+
+    @property
+    def ethercat_startup_check_state(self) -> EthercatCheckState:
+        return self.ethercat.startup_check_state
+
+    @ethercat_startup_check_state.setter
+    def ethercat_startup_check_state(self, value: EthercatCheckState) -> None:
+        self.ethercat.startup_check_state = value
+
+    @property
+    def ethercat_startup_check_requested(self) -> bool:
+        return self.ethercat.startup_check_requested
+
+    @ethercat_startup_check_requested.setter
+    def ethercat_startup_check_requested(self, value: bool) -> None:
+        self.ethercat.startup_check_requested = value
+
+    @property
+    def ethercat_check_state(self) -> EthercatCheckState:
+        return self.ethercat.check_state
+
+    @ethercat_check_state.setter
+    def ethercat_check_state(self, value: EthercatCheckState) -> None:
+        self.ethercat.check_state = value
+
+    @property
+    def ethercat_state_timer(self):  # type: ignore
+        return self.ethercat.state_timer
+
     def _ethercat_slaves_status_ok(self) -> bool:
-        return self.ethercat_startup_check_state == EthercatCheckState.READY
+        return self.ethercat.startup_status_ok()
 
     def _ready_to_start(self) -> bool:
         return self._ros_gui_disconnected() and self._ethercat_slaves_status_ok()
 
-    def _get_ethercat_startup_check_service_name(self) -> str:
-        service_name = str(
-            self.get_parameter('ethercat_startup_check_service').value #type: ignore
-        ).strip()
-        return service_name or '/ethercat_slaves_status_check/check'
-
-    def _get_ethercat_slave_state_service_names(self) -> list[str]:
-        raw_service_names = self.get_parameter(
-            'ethercat_slave_state_services'
-        ).value #type: ignore
-
-        if raw_service_names is None:
-            service_names = []
-        elif isinstance(raw_service_names, str):
-            service_names = [
-                name.strip()
-                for name in raw_service_names.split(',')
-                if name.strip()
-            ]
-        else:
-            service_names = [
-                str(name).strip()
-                for name in raw_service_names
-                if str(name).strip()
-            ]
-
-        return service_names or ['/tecnobody/get_slave_states_master1']
-
-    def _plc_slave_identifier(self) -> str:
-        return str(self.get_parameter('plc_slave_identifier').value) #type: ignore
-
-    def _ethercat_cache_stale_locked(self) -> bool:
-        if os.environ.get('PLC_MANAGER_SKIP_ETHERCAT', '0') == '1':
-            return False
-
-        if self._ethercat_last_update_monotonic is None:
-            return True
-
-        return (
-            time.monotonic() - self._ethercat_last_update_monotonic
-            > self._ethercat_state_stale_after
-        )
-
-    def _find_plc_slave_locked(self) -> tuple[str | None, str | None]:
-        plc_identifier = self._plc_slave_identifier()
-        for slave_name, slave_state in zip(
-            self._ethercat_slave_names,
-            self._ethercat_slave_states,
-        ):
-            if plc_identifier in slave_name:
-                return slave_name, slave_state
-
-        return None, None
-
-    def _visible_ethercat_slave_pairs_locked(self) -> list[tuple[str, str]]:
-        return list(zip(self._ethercat_slave_names, self._ethercat_slave_states))
-
-    def _refresh_ethercat_check_state_locked(self) -> None:
-        if os.environ.get('PLC_MANAGER_SKIP_ETHERCAT', '0') == '1':
-            self.ethercat_check_state = EthercatCheckState.READY
-            self._ethercat_last_error = (
-                'Skipped EtherCAT health check '
-                '(PLC_MANAGER_SKIP_ETHERCAT=1).'
-            )
-            return
-
-        if not self._ethercat_slave_names:
-            self.ethercat_check_state = EthercatCheckState.FAILED
-            self._ethercat_last_error = 'EtherCAT GetSlaveStates returned no slaves.'
-            return
-
-        if len(self._ethercat_slave_names) != len(self._ethercat_slave_states):
-            self.ethercat_check_state = EthercatCheckState.FAILED
-            self._ethercat_last_error = (
-                'EtherCAT GetSlaveStates returned mismatched slave names/states.'
-            )
-            return
-
-        non_operational_slaves = [
-            f'{slave_name} => {slave_state}'
-            for slave_name, slave_state in zip(
-                self._ethercat_slave_names,
-                self._ethercat_slave_states,
-            )
-            if slave_state != 'OP'
-        ]
-
-        if not non_operational_slaves:
-            self.ethercat_check_state = EthercatCheckState.READY
-            if self._ethercat_poll_errors:
-                self._ethercat_last_error = '; '.join(self._ethercat_poll_errors)
-            else:
-                self._ethercat_last_error = None
-            return
-
-        self.ethercat_check_state = EthercatCheckState.FAILED
-        self._ethercat_last_error = (
-            'EtherCAT slaves are not operational: '
-            + '; '.join(non_operational_slaves)
-        )
-
-    def _mark_ethercat_check_failed(self, message: str) -> None:
-        with self._ethercat_cache_lock:
-            self.ethercat_check_state = EthercatCheckState.FAILED
-            self._ethercat_last_error = message
-
-        self.get_logger().warning(message, throttle_duration_sec=5.0) #type: ignore
-
-    def _check_ethercat_request_timeout(self) -> None:
-        with self._ethercat_cache_lock:
-            if not self._ethercat_pending_requests:
-                return
-
-            if self._ethercat_poll_started_at is None:
-                return
-
-            if (
-                time.monotonic() - self._ethercat_poll_started_at
-                <= self._ethercat_state_response_timeout
-            ):
-                return
-
-            timed_out_services = ', '.join(
-                self._ethercat_pending_requests.values()
-            )
-            self._ethercat_pending_requests.clear()
-            self._ethercat_poll_started_at = None
-            self.ethercat_check_state = EthercatCheckState.FAILED
-            self._ethercat_last_error = (
-                'Timed out waiting for EtherCAT state services: '
-                f'{timed_out_services}'
-            )
-
-        message = self._ethercat_last_error or 'EtherCAT state request timed out.'
-        self.get_logger().warning(message, throttle_duration_sec=5.0) #type: ignore
-
     def poll_ethercat_slave_states(self) -> None:
-        
-        if os.environ.get('PLC_MANAGER_SKIP_ETHERCAT', '0') == '1':
-            with self._ethercat_cache_lock:
-                self._ethercat_last_update_monotonic = time.monotonic()
-                self._ethercat_slave_names = []
-                self._ethercat_slave_states = []
-                self._refresh_ethercat_check_state_locked()
-            return
-
-        if self.fsm.state not in (State.RUNNING, State.RUNNING_RECOVERY):
-            with self._ethercat_cache_lock:
-                self._ethercat_pending_requests.clear()
-                self._ethercat_poll_started_at = None
-                self._ethercat_slave_names = []
-                self._ethercat_slave_states = []
-                self._ethercat_last_update_monotonic = None
-                self.ethercat_check_state = EthercatCheckState.IDLE
-                self._ethercat_last_error = (
-                    'Runtime EtherCAT telemetry waits for START.'
-                )
-            return
-
-        with self._ethercat_cache_lock:
-            if self._ethercat_pending_requests:
-                should_check_timeout = True
-            else:
-                should_check_timeout = False
-
-        if should_check_timeout:
-            self._check_ethercat_request_timeout()
-            return
-
-        ready_clients = [
-            (service_name, client)
-            for service_name, client in self._ethercat_slave_state_clients.items()
-            if client.service_is_ready() #type: ignore
-        ]
-
-        if not ready_clients:
-            service_names = ', '.join(self._ethercat_slave_state_clients.keys())
-            self._mark_ethercat_check_failed(
-                'No configured EtherCAT GetSlaveStates services are ready: '
-                f'{service_names}'
-            )
-            return
-
-        with self._ethercat_cache_lock:
-            self.ethercat_check_state = EthercatCheckState.PENDING
-            self._ethercat_poll_started_at = time.monotonic()
-            self._ethercat_poll_slave_names = []
-            self._ethercat_poll_slave_states = []
-            self._ethercat_poll_errors = []
-
-        started_requests = 0
-        for service_name, client in ready_clients:
-            try:
-                future = client.call_async(GetSlaveStates.Request()) #type: ignore
-            except Exception as exception:  # noqa: BLE001
-                with self._ethercat_cache_lock:
-                    self._ethercat_poll_errors.append(
-                        f'{service_name}: call failed ({exception})'
-                    )
-                continue
-
-            with self._ethercat_cache_lock:
-                self._ethercat_pending_requests[future] = service_name
-
-            future.add_done_callback(self._on_ethercat_slave_states_response) #type: ignore
-            started_requests += 1
-
-        if started_requests == 0:
-            with self._ethercat_cache_lock:
-                errors = '; '.join(self._ethercat_poll_errors)
-            self._mark_ethercat_check_failed(
-                errors or 'No EtherCAT GetSlaveStates request could be started.'
-            )
-
-    def _on_ethercat_slave_states_response(self, future: Any) -> None:
-        with self._ethercat_cache_lock:
-            service_name = self._ethercat_pending_requests.pop(future, None)
-
-        if service_name is None:
-            return
-
-        try:
-            response = future.result()
-            slave_names = [str(name) for name in response.slave_names]
-            slave_states = [str(state) for state in response.slave_states]
-        except Exception as exception:  # noqa: BLE001
-            slave_names = []
-            slave_states = []
-            error = f'{service_name}: call failed ({exception})'
-        else:
-            error = None
-
-        with self._ethercat_cache_lock:
-            if error is not None:
-                self._ethercat_poll_errors.append(error)
-            else:
-                self._ethercat_poll_slave_names.extend(slave_names)
-                self._ethercat_poll_slave_states.extend(slave_states)
-
-            if self._ethercat_pending_requests:
-                return
-
-            self._finalize_ethercat_poll_locked()
-
-    def _finalize_ethercat_poll_locked(self) -> None:
-        self._ethercat_poll_started_at = None
-
-        if not self._ethercat_poll_slave_names:
-            self.ethercat_check_state = EthercatCheckState.FAILED
-            self._ethercat_last_error = (
-                '; '.join(self._ethercat_poll_errors)
-                or 'EtherCAT GetSlaveStates returned no slaves.'
-            )
-            return
-
-        self._ethercat_slave_names = list(self._ethercat_poll_slave_names)
-        self._ethercat_slave_states = list(self._ethercat_poll_slave_states)
-        self._ethercat_last_update_monotonic = time.monotonic()
-        self._refresh_ethercat_check_state_locked()
+        self.ethercat.poll_slave_states()
 
     def _ethercat_status_payload(self) -> dict[str, object]:
-        with self._ethercat_cache_lock:
-            last_update_age = (
-                None
-                if self._ethercat_last_update_monotonic is None
-                else max(0.0, time.monotonic() - self._ethercat_last_update_monotonic)
-            )
-            plc_name, plc_state = self._find_plc_slave_locked()
-            stale = self._ethercat_cache_stale_locked()
-            visible_pairs = self._visible_ethercat_slave_pairs_locked()
-
-            return {
-                "ok": (
-                    self.ethercat_check_state == EthercatCheckState.READY
-                    and not stale
-                ),
-                "state": self.ethercat_check_state.name,
-                "stale": stale,
-                "last_update_age_s": (
-                    None if last_update_age is None else round(last_update_age, 3)
-                ),
-                "plc_slave_identifier": self._plc_slave_identifier(),
-                "plc_slave": (
-                    None
-                    if plc_name is None
-                    else {"name": plc_name, "state": plc_state}
-                ),
-                "service_names": list(self._ethercat_slave_state_clients.keys()),
-                "slaves": [
-                    {"name": slave_name, "state": slave_state}
-                    for slave_name, slave_state in visible_pairs
-                ],
-                "last_error": self._ethercat_last_error,
-            }
+        return self.ethercat.status_payload()
     
     def publish_bringup_commands(self) -> None:
-        """Publish initial startup commands to enable PLC outputs.
-        
-        Called once during system bringup to:
-        1. Release E-stop (set to 1 = normal operation)
-        2. Enable force/torque sensor power
-        3. Enable Z recovery flag to add vertical switch axis limit to safety chain
-        These commands prepare the PLC for motion control.
-        
-        Returns:
-            None. Publishes commands via self.publish_command()
-        """
-        self.publish_command('PLC_node/estop', 1)
-        self.publish_command('PLC_node/z_recovery', 1)
-        self.publish_command('PLC_node/force_sensors_pwr', 1)
+        self.plc_commands.publish_bringup_commands()
 
     def _get_z_limit_switch_state(self) -> bool:
         z_limit_active = False
@@ -680,51 +230,16 @@ class PLCControllerInterface(Node):
 
 
     def _bringup_env(self) -> None:
-        self._startup_cleanup_action = self._kill_env
-        self.platform_controller_readiness_monitor.reset()
-        self.publish_command('PLC_node/z_recovery', 1)
-        subprocess.Popen(
-            [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"],
-            shell=True,
-            executable="/bin/bash"
-        )
-        subprocess.Popen(
-            [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_bridge.sh"],
-            shell=True,
-            executable="/bin/bash"
-        )
-
+        self.environment.bringup_env()
 
     def _bringup_recovery_env(self) -> None:
-        self._startup_cleanup_action = self._kill_recovery_env
-        self.recovery_controller_status_monitor.reset()
-        self.publish_command('PLC_node/z_recovery', 0)
-        subprocess.Popen(
-            [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env_z_recovery.sh"],
-            shell=True,
-            executable="/bin/bash",
-            env={**os.environ, 'AUTO_RECOVER': '1'}
-        )
-        subprocess.Popen(
-            [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_bridge.sh"],
-            shell=True,
-            executable="/bin/bash"
-        )
-
+        self.environment.bringup_recovery_env()
 
     def _reset_sw_estop(self) -> None:
-        self.publish_command('PLC_node/estop', 1)
-        self.publish_command('PLC_node/manual_mode', 0)
+        self.environment.reset_sw_estop()
 
     def _handle_idle_stop(self) -> None:
-        cleanup_action = self._startup_cleanup_action
-        self._startup_cleanup_action = None
-
-        if cleanup_action is not None:
-            cleanup_action()
-            return
-
-        self._reset_sw_estop()
+        self.environment.handle_idle_stop()
 
     def _detect_estop_event(
         self,
@@ -774,7 +289,7 @@ class PLCControllerInterface(Node):
             except GuardFailed as e:
                 self.get_logger().error(f"Guard condition failed: {e}") #type: ignore
                 if event == Event.START:
-                    self._startup_cleanup_action = None
+                    self.environment.startup_cleanup_action = None
                     self.publish_command('PLC_node/estop', 0)
                     self.publish_command('PLC_node/manual_mode', 0)
                     self.estop_cached = ESTOP
@@ -804,19 +319,7 @@ class PLCControllerInterface(Node):
                 self._cleanup_timed_out_transition(pending)
             
     def _cleanup_timed_out_transition(self, pending: PendingTransition | None) -> None:
-        if pending is None:
-            return
-
-        if pending.event == Event.START:
-            if pending.source == State.IDLE:
-                self._kill_env()
-            elif pending.source == State.IDLE_RECOVERY:
-                self._kill_recovery_env()
-        elif pending.event == Event.STOP or pending.event == Event.FAIL:
-            if pending.source == State.RUNNING:
-                self._kill_env()
-            elif pending.source == State.RUNNING_RECOVERY:
-                self._kill_recovery_env()
+        self.environment.cleanup_timed_out_transition(pending)
 
     def state_callback(self, msg: PlcStates) -> None:
         # ========== Acquire lock to prevent concurrent execution ==========
@@ -917,154 +420,38 @@ class PLCControllerInterface(Node):
             self.lock.release()
 
     def check_env_running_stopped(self) -> bool:
-
-        if check_env_stopped([
-            "run_platform_control.launch.py",
-            "run_rosbridge.launch.py"
-        ]):
-            return True
-
-        return False
+        return self.environment.check_env_running_stopped()
 
     def check_env_running_recovery_stopped(self) -> bool:
-
-        if check_env_stopped([
-            "run_z_recovery_control.launch.py",
-            "run_rosbridge.launch.py"
-        ]):
-            return True
-
-        return False
+        return self.environment.check_env_running_recovery_stopped()
 
     def check_env_running(self, check_controller_status: bool = True) -> bool:
-
-        if not check_env([
-            "run_platform_control.launch.py",
-            "run_rosbridge.launch.py"
-        ]):
-            return False
-
-        if check_controller_status:
-            return self.platform_controller_readiness_monitor.ok()
-
-        return True
+        return self.environment.check_env_running(check_controller_status)
 
     def check_env_running_recovery(self, check_controller_status: bool = True) -> bool:
-
-        if not check_env([
-            "run_z_recovery_control.launch.py",
-            "run_rosbridge.launch.py"
-        ]):
-            return False
-
-        if check_controller_status:
-            return self.recovery_controller_status_monitor.ok()
-
-        return True
+        return self.environment.check_env_running_recovery(check_controller_status)
 
     def _kill_recovery_env(self) -> None:
-        self._startup_cleanup_action = None
-        self.recovery_controller_status_monitor.reset()
-        self.publish_command('PLC_node/brake_disable', 0)  # Ensure brakes enabled
-        self.publish_command('PLC_node/z_recovery', 1)
-        
-        stop_launch_environment(
-            "run_z_recovery_control.launch.py",
-            "run_z_recovery_control.launch"
-        )
-
-        stop_launch_environment(
-            "ros2 launch tecnobody_workbench run_rosbridge.launch.py",
-            "run_rosbridge.launch", 
-            9090
-        )
+        self.environment.kill_recovery_env()
 
     def _kill_env(self) -> None:
-        self._startup_cleanup_action = None
-        self.platform_controller_readiness_monitor.reset()
-        self.publish_command('PLC_node/brake_disable', 0)  # Ensure brakes enabled
-        self.publish_command('PLC_node/estop', 1) # Reset SW E-stop to normal operation if it was triggered
-
-        stop_launch_environment(
-            "run_platform_control.launch.py",
-            "run_platform_control.launch"
-        )
-        
-
-        stop_launch_environment(
-                "ros2 launch tecnobody_workbench run_rosbridge.launch.py",
-                "run_rosbridge.launch", 
-                9090
-        )
+        self.environment.kill_env()
 
     def _fsm_status_payload(self) -> bytes:
-        pending = self.fsm.pending
-        payload: dict[str, object] = {
-            "schema": "fit4med.plc_fsm_status.v1",
-            "state": self.fsm.state.name,
-            "pending": None,
-            "ethercat": self._ethercat_status_payload(),
-            "plc_outputs": {
-                "interface_names": list(self.plc_outputs.interface_names), #type: ignore
-                "values": [int(value) for value in self.plc_outputs.values], #type: ignore
-            },
-            "plc_inputs": {
-                "interface_names": list(self.interface_names), #type: ignore
-                "values": [int(value) for value in self.state_values], #type: ignore
-            },
-        }
-
-        if pending is not None:
-            payload["pending"] = {
-                "event": pending.event.name,
-                "source": pending.source.name,
-                "target": pending.transition.destination.name,
-                "steps": pending.steps,
-            }
-
-        return json.dumps(payload, separators=(",", ":")).encode()
+        return self.gui_status.fsm_status_payload(
+            self.fsm,
+            self._ethercat_status_payload(),
+            self.plc_outputs,
+            self.interface_names,
+            self.state_values,
+        )
 
     def _notify_gui(self, udp_msg: bytes) -> None:
-        try:
-            self.client.send(udp_msg)
-        except Exception as e:
-            self.get_logger().warn(f"Error communicating with GUI: {e}") #type: ignore
+        self.gui_status.notify(udp_msg)
 
 
     def publish_command(self, name: str, value: int) -> None:
-        """Publish single PLC command by interface name.
-        
-        Helper function to update and publish a specific PLC command value.
-        Updates the plc_outputs, finds the interface by name, updates its value,
-        and publishes the entire 8-element command vector.
-        
-        Example:
-            publish_command('PLC_node/estop', 1)        # Release E-stop
-            publish_command('PLC_node/force_sensors_pwr', 1)  # Enable F/T power
-        
-        Args:
-            name (str): Interface identifier (must match one in plc_outputs.interface_names)
-            value (int): Command value (typically 0 or 1)
-        
-        Returns:
-            None. Publishes PlcController message if name found.
-        
-        Log Output:
-            - INFO: "Published command message: [0, 0, 0, 0, 1, 0, 0, 0]"
-            - WARN: "Interface name '{name}' not found in command message" if not found
-        """
-        if name in self.plc_outputs.interface_names: #type: ignore
-            # Find index of interface by name
-            idx = self.plc_outputs.interface_names.index(name) #type: ignore
-            # Update value
-            self.plc_outputs.values[idx] = value #type: ignore
-            # Publish entire command vector
-            self.command_publisher.publish(self.plc_outputs)
-            self.get_logger().info(f"Published PLC command: {self.plc_outputs.values}") #type: ignore
-        else:
-            self.get_logger().warn( #type: ignore
-                f"Interface name '{name}' not found in command message."
-            )
+        self.plc_commands.publish_command(name, value)
 
 
     def signal_handler(self, sig: int, frame: types.FrameType) -> None:
@@ -1142,45 +529,8 @@ def main(args=None): #type: ignore
         while rclpy.ok():
             mt_executor.spin_once(timeout_sec=0.1)
 
-            if node.ethercat_startup_check_requested:
-
-                if not node.ethercat_slaves_status_check_client.wait_for_service(timeout_sec=5.0):
-                    node.get_logger().error( #type: ignore
-                        "EtherCAT status check service not available. "
-                        f"Ensure {node.ethercat_startup_check_service_name} "
-                        "is running."
-                    )
-                    continue
-
-                future = node.ethercat_slaves_status_check_client.call_async(Trigger.Request()) #type: ignore
-                node.ethercat_startup_check_state = EthercatCheckState.PENDING
-
-                mt_executor.spin_until_future_complete(
-                    future, #type: ignore
-                    timeout_sec=5.0,
-                )
-
-                if future.done() and future.result() is not None: #type: ignore
-                    startup_check_result = future.result() #type: ignore
-                    node.ethercat_startup_check_state = (
-                        EthercatCheckState.READY
-                        if startup_check_result.success
-                        else EthercatCheckState.FAILED
-                    )
-                    if not startup_check_result.success:
-                        node.get_logger().warning( #type: ignore
-                            "EtherCAT startup check failed: "
-                            f"{startup_check_result.message}"
-                        )
-                else:
-                    node.ethercat_startup_check_state = EthercatCheckState.FAILED
-                    node.get_logger().warning( #type: ignore
-                        "EtherCAT startup check timed out."
-                    )
-
-                node.ethercat_startup_check_requested = not (
-                    node.ethercat_startup_check_state == EthercatCheckState.READY
-                )
+            if not node.ethercat.run_startup_check(mt_executor):
+                continue
 
             # ========== Initial bringup sequence (once only) ==========
             if not node.bringup_done \
@@ -1188,7 +538,7 @@ def main(args=None): #type: ignore
             and node.command_publisher.get_subscription_count() > 0:
                 node.publish_bringup_commands()
                 node.bringup_done = True
-                node.ethercat_state_timer.reset()  # Start EtherCAT polling timer after bringup
+                node.ethercat.start_runtime_polling()
                 
             # ========== Check for graceful shutdown request ==========
             if node.shutdown_requested:
