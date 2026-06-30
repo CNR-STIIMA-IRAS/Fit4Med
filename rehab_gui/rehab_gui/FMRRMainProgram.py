@@ -5,9 +5,9 @@ import os
 import sys
 import signal
 import threading
-from PyQt5 import QtWidgets, QtCore
-from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QLabel, QDialog, QVBoxLayout, QPushButton
-from PyQt5.QtCore import QObject, Qt, QThread, QTimer, pyqtSignal, pyqtSlot
+from PyQt5 import QtWidgets
+from PyQt5.QtWidgets import QApplication, QMainWindow, QMessageBox, QLabel, QDialog, QVBoxLayout
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 
 # mathematics
 import numpy as np
