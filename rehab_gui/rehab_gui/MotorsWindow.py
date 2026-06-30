@@ -26,6 +26,11 @@ class MotorsWindow(QtWidgets.QWidget):
         self.parent_timer = parent_timer
         self.ui.comboBox_ResetFaults.currentIndexChanged.connect(self.ROS.resetModeChanged)
 
+        
+        self.ui.plainTextEdit_SystemState.setReadOnly(True)
+        self.ui.plainTextEdit_SystemState.setAlignment(QtCore.Qt.AlignCenter)
+
+
         # Create a QTableWidget
         self.ui.tableWidget_MotorsInfo.setRowCount(len(self.ROS.joint_names))      # Set the number of rows
         self.ui.tableWidget_MotorsInfo.setColumnCount(4)  # Set the number of columns
