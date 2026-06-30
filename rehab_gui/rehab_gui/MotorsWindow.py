@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+import time
+from datetime import datetime
 from typing import Dict
 
 from PyQt5 import QtWidgets, QtCore
@@ -19,6 +21,11 @@ class MotorsWindow(QtWidgets.QWidget):
         self._last_plc_state = None
         self._last_plc_pending = None
         self._plc_outputs = []
+        self._udp_watchdog_started_monotonic = time.monotonic()
+        self._last_udp_received_monotonic: float | None = None
+        self._last_udp_received_wall_time: str | None = None
+        self._last_udp_display_message = "No UDP message received yet"
+        self._plc_udp_watchdog_active = False
 
     def connect(self, ROS: RosCommunicationManager, parent_timer: QTimer):
         self.ROS : RosCommunicationManager = ROS
@@ -105,11 +112,45 @@ class MotorsWindow(QtWidgets.QWidget):
     @QtCore.pyqtSlot(bytes, tuple)
     def onUdpMessageReceived(self, data, addr):
         previous_plc_status = (self._last_plc_state, self._last_plc_pending)
+        self._last_udp_received_monotonic = time.monotonic()
+        self._last_udp_received_wall_time = self._format_wall_time()
+        if self._plc_udp_watchdog_active:
+            self._plc_udp_watchdog_active = False
+            self._last_emergency_state = None
         message = self._format_udp_message(data)
-        self.ui.plainTextEdit_udp_channel.setPlainText("ROBOT State: " + message)
+        self._last_udp_display_message = message
+        self._refresh_udp_status_text()
         current_plc_status = (self._last_plc_state, self._last_plc_pending)
         if current_plc_status != previous_plc_status:
             self._last_emergency_state = None
+
+    @staticmethod
+    def _format_wall_time() -> str:
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    def _refresh_udp_status_text(self) -> None:
+        last_udp_time = self._last_udp_received_wall_time or "never"
+        self.ui.plainTextEdit_udp_channel.setPlainText(
+            "Current time: "
+            + self._format_wall_time()
+            + " Last UDP received: "
+            + last_udp_time
+            + "\nROBOT State: "
+            + self._last_udp_display_message
+        )
+
+    def updateUdpWatchdog(self, timeout_s: float) -> None:
+        reference_time = (
+            self._last_udp_received_monotonic
+            if self._last_udp_received_monotonic is not None
+            else self._udp_watchdog_started_monotonic
+        )
+        watchdog_active = (time.monotonic() - reference_time) > timeout_s
+        if watchdog_active != self._plc_udp_watchdog_active:
+            self._plc_udp_watchdog_active = watchdog_active
+            self._last_emergency_state = None
+
+        self._refresh_udp_status_text()
 
     def _format_udp_message(self, data: bytes) -> str:
         message = data.decode("utf-8", errors="replace")
@@ -257,7 +298,9 @@ class MotorsWindow(QtWidgets.QWidget):
         
     def updateWindow(self):
         # Determine emergency state key
-        if not self.ROS.isRosCommunicationActive():
+        if self._plc_udp_watchdog_active:
+            state_key = 'plc_udp_timeout'
+        elif not self.ROS.isRosCommunicationActive():
             state_key = 'disconnected'
         elif self.ROS.isEmergencyActive():
             state_key = 'emergency'
@@ -274,7 +317,10 @@ class MotorsWindow(QtWidgets.QWidget):
 
         if state_key != self._last_emergency_state:
             self._last_emergency_state = state_key
-            if state_key == 'disconnected':
+            if state_key == 'plc_udp_timeout':
+                self.ui.label_SystemState.setText('PLC communication lost\nReboot all the system')
+                self.ui.label_SystemState.setStyleSheet("background-color: red; color: white")
+            elif state_key == 'disconnected':
                 if self._last_plc_pending is None:
                     if self._last_plc_state in ("IDLE",):
                         self.ui.label_SystemState.setText('Turn the Key to Start')
@@ -311,7 +357,7 @@ class MotorsWindow(QtWidgets.QWidget):
                 self.ui.label_SystemState.setText("Motors Off \n State OK")
                 self.ui.label_SystemState.setStyleSheet("background-color: green; color: white")
 
-        if state_key not in ('disconnected', 'emergency'):
+        if state_key not in ('plc_udp_timeout', 'disconnected', 'emergency'):
             self.ui.pushButton_ResetFaults.setEnabled(self.ROS.isManualResetFaults())
 
         ctrl_name = self.ROS.getCurrentControllerName()

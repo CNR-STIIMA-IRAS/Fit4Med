@@ -69,6 +69,8 @@ class MainProgram(QMainWindow):
 
         self._update_window_period = 100
         self._update_TrainingTime = 100
+        self._plc_udp_watchdog_timeout_s = 5.0
+        self._plc_udp_watchdog_period_ms = 1000
         self._toolPosCovFact = 100 # to display coordinatates in centimeters (are given in meters in the yaml files) (used in MovementWindow to display data)
         self._jointPosConvFact = 180/np.pi # conversion from radiants to degrees (used in MovementWindow to display data)
         self.trigger_pause = pyqtSignal(bool) # signal to pause the worker thread
@@ -139,6 +141,10 @@ class MainProgram(QMainWindow):
         self.update_window_timer.timeout.connect(self.updateWindow)
         self.update_window_timer.start(self._update_window_period)
 
+        self.plc_udp_watchdog_timer = QTimer()
+        self.plc_udp_watchdog_timer.timeout.connect(self.checkPlcUdpWatchdog)
+        self.plc_udp_watchdog_timer.start(self._plc_udp_watchdog_period_ms)
+
     def updateWindow(self):
         current_tab = self.ui.tabWidget.currentIndex()
         # Always update motors window (visible across all tabs)
@@ -150,6 +156,9 @@ class MainProgram(QMainWindow):
             self.rehabMovementWindow.updateWindow()
         elif current_tab == 2:
             self.trainingProtocolWindow.updateWindow()
+
+    def checkPlcUdpWatchdog(self):
+        self.motorWindow.updateUdpWatchdog(self._plc_udp_watchdog_timeout_s)
 
     def _shutdown_communications(self):
         self.ros_manager.turnOffMotors()
