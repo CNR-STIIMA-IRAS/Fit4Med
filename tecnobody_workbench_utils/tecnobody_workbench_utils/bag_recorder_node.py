@@ -12,6 +12,7 @@ import os
 import subprocess
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_srvs.srv import Trigger
 
@@ -98,7 +99,7 @@ def main(args=None) -> None:
     node = BagRecorderNode()
     try:
         rclpy.spin(node)
-    except (KeyboardInterrupt, SystemExit):
+    except (KeyboardInterrupt, SystemExit, ExternalShutdownException):
         pass
     finally:
         try:
@@ -106,11 +107,10 @@ def main(args=None) -> None:
         except Exception:
             pass
 
-        if rclpy.ok():
-            try:
-                rclpy.shutdown()
-            except (KeyboardInterrupt, SystemExit):
-                pass
+        try:
+            rclpy.try_shutdown()
+        except (KeyboardInterrupt, SystemExit):
+            pass
 
 
 if __name__ == '__main__':
