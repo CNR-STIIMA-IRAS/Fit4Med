@@ -31,7 +31,7 @@ from typing import Any, Callable
 
 from tecnobody_workbench_utils.utils import (
     check_env, check_env_stopped,
-    make_platform_controller_status_monitor,
+    make_platform_controller_readiness_monitor,
     make_recovery_controller_status_monitor,
     stop_launch_environment
 )
@@ -137,7 +137,7 @@ class PLCControllerInterface(Node):
         # ========== Launcher Health Monitoring ==========
         self.processes_status_cached = False
         self._startup_cleanup_action: Callable[[], None] | None = None
-        self.platform_controller_status_monitor = make_platform_controller_status_monitor(
+        self.platform_controller_readiness_monitor = make_platform_controller_readiness_monitor(
             self,
             callback_group=self.service_group,
             logger=self.get_logger(),
@@ -335,7 +335,7 @@ class PLCControllerInterface(Node):
         """
         self.get_logger().info("Cleanup: Cancelling timers and destroying node.") #type: ignore
         self.client.close()
-        self.platform_controller_status_monitor.destroy()
+        self.platform_controller_readiness_monitor.destroy()
         self.recovery_controller_status_monitor.destroy()
         self.destroy_node()
     
@@ -681,7 +681,7 @@ class PLCControllerInterface(Node):
 
     def _bringup_env(self) -> None:
         self._startup_cleanup_action = self._kill_env
-        self.platform_controller_status_monitor.reset()
+        self.platform_controller_readiness_monitor.reset()
         self.publish_command('PLC_node/z_recovery', 1)
         subprocess.Popen(
             [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"],
@@ -945,7 +945,7 @@ class PLCControllerInterface(Node):
             return False
 
         if check_controller_status:
-            return self.platform_controller_status_monitor.ok()
+            return self.platform_controller_readiness_monitor.ok()
 
         return True
 
@@ -981,7 +981,7 @@ class PLCControllerInterface(Node):
 
     def _kill_env(self) -> None:
         self._startup_cleanup_action = None
-        self.platform_controller_status_monitor.reset()
+        self.platform_controller_readiness_monitor.reset()
         self.publish_command('PLC_node/brake_disable', 0)  # Ensure brakes enabled
         self.publish_command('PLC_node/estop', 1) # Reset SW E-stop to normal operation if it was triggered
 
