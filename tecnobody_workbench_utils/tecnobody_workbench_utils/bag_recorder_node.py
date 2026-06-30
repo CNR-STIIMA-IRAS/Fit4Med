@@ -98,9 +98,19 @@ def main(args=None) -> None:
     node = BagRecorderNode()
     try:
         rclpy.spin(node)
+    except (KeyboardInterrupt, SystemExit):
+        pass
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        try:
+            node.destroy_node()
+        except Exception:
+            pass
+
+        if rclpy.ok():
+            try:
+                rclpy.shutdown()
+            except (KeyboardInterrupt, SystemExit):
+                pass
 
 
 if __name__ == '__main__':
