@@ -134,26 +134,6 @@ def stop_launch_environment(pattern: str, label: str, detach_port: int | None = 
         wait_for_tcp_port(detach_port, 2.0) # 9090
         clear_tcp_port(detach_port)
 
-def check_env_running() -> bool:
-
-    if check_env([
-        "run_platform_control.launch.py",
-        "run_rosbridge.launch.py"
-    ]):
-        return True
-
-    return False
-
-def check_env_running_recovery() -> bool:
-
-    if check_env([
-        "run_z_recovery_control.launch.py",
-        "run_rosbridge.launch.py"
-    ]):
-        return True
-
-    return False
-
 def check_env(launcher_names : list[str]) -> bool:
     
     found : list[bool] = [] 
@@ -163,25 +143,6 @@ def check_env(launcher_names : list[str]) -> bool:
 
     return all(found)
 
-def check_env_running_stopped() -> bool:
-
-    if check_env_stopped([
-        "run_platform_control.launch.py",
-          "run_rosbridge.launch.py"
-    ]):
-        return True
-    
-    return False
-    
-def check_env_running_recovery_stopped() -> bool:
-
-    if check_env_stopped([
-        "run_z_recovery_control.launch.py",
-        "run_rosbridge.launch.py"
-    ]):
-        return True
-    
-    return False
 
 def check_env_stopped(launcher_names : list[str]) -> bool:
     stopped : list[bool] = [] 

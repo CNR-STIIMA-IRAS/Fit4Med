@@ -1,9 +1,11 @@
+from typing import Generic, TypeVar
 from enum import Enum, auto
+
 from dataclasses import dataclass
 from typing import Callable, Optional
 from rclpy.impl.rcutils_logger import RcutilsLogger as Logger
 
-from plc_manager.utils import bcolors
+from tecnobody_workbench_utils.utils import bcolors
 
 
 class InvalidTransition(Exception):
@@ -18,21 +20,8 @@ class TransitionTimeout(Exception):
     pass
 
 
-class State(Enum):
-    IDLE = auto()
-    IDLE_RECOVERY = auto()
-    ESTOP = auto()
-    RUNNING = auto()
-    RUNNING_RECOVERY = auto()
-    RECOVERED = auto()
-    ERROR = auto()
-
-class Event(Enum):
-    SWITCH_MODE = auto()
-    START = auto()
-    STOP = auto()
-    FAIL = auto()
-    NONE = auto()
+StateT = TypeVar("StateT", bound=Enum)
+EventT = TypeVar("EventT", bound=Enum)
 
 class TransitionStatus(Enum):
     COMPLETED = auto()
@@ -41,38 +30,38 @@ class TransitionStatus(Enum):
 
 
 @dataclass
-class Transition:
-    destination: State
+class Transition(Generic[StateT]):
+    destination: StateT
     guard: Optional[Callable[[], bool]] = None
     action: Optional[Callable[[], None]] = None
     success_check: Optional[Callable[[], bool]] = None
     max_steps: int = 1
-    failure_destination: Optional[State] = State.ERROR
+    failure_destination: Optional[StateT] = None
     msg: str = ""
 
 
 @dataclass
-class PendingTransition:
-    source: State
-    event: Event
-    transition: Transition
+class PendingTransition(Generic[StateT, EventT]):
+    source: StateT
+    event: EventT
+    transition: Transition[StateT]
     steps: int = 0
 
 
-class StateMachine:
-    def __init__(self, initial_state: State, logger: Logger | None = None) -> None:
+class StateMachine(Generic[StateT, EventT]):
+    def __init__(self, initial_state: StateT, logger: Logger | None = None) -> None:
         self.state = initial_state
-        self.transitions: dict[tuple[State, Event], Transition] = {}
-        self.pending: Optional[PendingTransition] = None
+        self.transitions: dict[tuple[StateT, EventT], Transition[StateT]] = {}
+        self.pending: Optional[PendingTransition[StateT, EventT]] = None
         self.msg = ""
         self.logger = logger
 
     def _debug_transition(
         self,
         prefix: str,
-        source: State,
-        event: Event,
-        destination: State,
+        source: StateT,
+        event: EventT,
+        destination: StateT,
     ) -> None:
         msg = f"[FSM DEBUG] {prefix}: {source.name} --{event.name}--> {destination.name}"
         if self.logger:
@@ -82,16 +71,16 @@ class StateMachine:
 
     def add_transition(
         self,
-        event: Event,
-        source: State,
-        destination: State,
+        event: EventT,
+        source: StateT,
+        destination: StateT,
         *,
         msg: str,
         guard: Optional[Callable[[], bool]] = None,
         action: Optional[Callable[[], None]] = None,
         success_check: Optional[Callable[[], bool]] = None,
         max_steps: int = 1,
-        failure_destination: Optional[State] = State.ERROR,
+        failure_destination: Optional[StateT] = None,
     ) -> None:
         if max_steps < 1:
             raise ValueError("max_steps must be at least 1")
@@ -107,7 +96,7 @@ class StateMachine:
         )
         self._debug_transition("transition created", source, event, destination)
 
-    def trigger(self, event: Event) -> TransitionStatus:
+    def trigger(self, event: EventT) -> TransitionStatus:
         if self.pending is not None:
             raise InvalidTransition(
                 "Cannot trigger a new event while another transition is pending"
@@ -166,7 +155,7 @@ class StateMachine:
             self._complete(pending.event, transition)
             self.pending = None
 
-            _msg = bcolors.OKGREEN + "✅ Transition Completed: " + transition.msg + bcolors.ENDC
+            _msg = bcolors.OKGREEN + "✅ Transition Completed [" + transition.msg + "]" + bcolors.ENDC
             if self.logger: #type: ignore
                 self.logger.info(_msg ) #type: ignore
             else:
@@ -178,7 +167,7 @@ class StateMachine:
         if pending.steps < transition.max_steps:
             return TransitionStatus.PENDING
         
-        _msg = bcolors.FAIL + "❌ timeout" + transition.msg + bcolors.ENDC
+        _msg = bcolors.FAIL + "❌ timeout [" + transition.msg + "]" + bcolors.ENDC
         if self.logger: #type: ignore
             self.logger.error(  _msg ) #type: ignore
         else:
@@ -198,7 +187,7 @@ class StateMachine:
     def cancel_pending(self) -> None:
         self.pending = None
 
-    def _complete(self, event: Event, transition: Transition) -> None:
+    def _complete(self, event: EventT, transition: Transition) -> None:
         old_state = self.state
         self.state = transition.destination
         print(f"{old_state.name} --{event.name}--> {self.state.name}")

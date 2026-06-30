@@ -5,6 +5,8 @@ import os
 import json
 import types
 import time
+from enum import Enum, auto
+
 
 # Must be BEFORE importing rclpy (sets logging format globally)
 os.environ['RCUTILS_CONSOLE_OUTPUT_FORMAT'] = '[{severity}] [{name}]: {message}'
@@ -27,20 +29,16 @@ import signal
 from enum import Enum
 from typing import Any, Callable
 
-from plc_manager.fsm import (
-    StateMachine, State, Event, InvalidTransition, GuardFailed,
+from tecnobody_workbench_utils.utils import (
+    check_env, check_env_stopped, stop_launch_environment
+)
+from tecnobody_workbench_utils.utils import bcolors as bc
+
+from tecnobody_workbench_utils.fsm import (
+    StateMachine, InvalidTransition, GuardFailed,
     TransitionTimeout, PendingTransition
 )
 from plc_manager.udp_client import UdpClient
-from plc_manager.utils import (
-    check_env_running,
-    check_env_running_recovery,
-    check_env_running_stopped,
-    check_env_running_recovery_stopped,
-    stop_launch_environment
-)
-from plc_manager.utils import bcolors as bc
-
 
 class EStopState(Enum):
     OK = 1
@@ -51,6 +49,64 @@ class EthercatCheckState(Enum):
     PENDING = 1
     READY = 2
     FAILED = 3
+
+
+def check_env_running_stopped() -> bool:
+
+    if check_env_stopped([
+        "run_platform_control.launch.py",
+          "run_rosbridge.launch.py"
+    ]):
+        return True
+    
+    return False
+    
+def check_env_running_recovery_stopped() -> bool:
+
+    if check_env_stopped([
+        "run_z_recovery_control.launch.py",
+        "run_rosbridge.launch.py"
+    ]):
+        return True
+    
+    return False
+
+def check_env_running() -> bool:
+
+    if check_env([
+        "run_platform_control.launch.py",
+        "run_rosbridge.launch.py"
+    ]):
+        return True
+
+    return False
+
+def check_env_running_recovery() -> bool:
+
+    if check_env([
+        "run_z_recovery_control.launch.py",
+        "run_rosbridge.launch.py"
+    ]):
+        return True
+
+    return False
+
+class State(Enum):
+    IDLE = auto()
+    IDLE_RECOVERY = auto()
+    ESTOP = auto()
+    RUNNING = auto()
+    RUNNING_RECOVERY = auto()
+    RECOVERED = auto()
+    ERROR = auto()
+
+class Event(Enum):
+    SWITCH_MODE = auto()
+    START = auto()
+    STOP = auto()
+    FAIL = auto()
+    NONE = auto()
+
 
 class PLCControllerInterface(Node):
 
@@ -191,7 +247,7 @@ class PLCControllerInterface(Node):
         )
         self.start_environment_requested = True
 
-        self.fsm : StateMachine = StateMachine(State.IDLE, self.get_logger()) #type: ignore
+        self.fsm : StateMachine[State, Event] = StateMachine[State,Event](State.IDLE, self.get_logger()) #type: ignore
         self.fsm.add_transition(
             Event.SWITCH_MODE,
             State.IDLE, 
