@@ -126,7 +126,7 @@ class MotorsWindow(QtWidgets.QWidget):
 
     @staticmethod
     def _format_wall_time() -> str:
-        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return datetime.now().strftime("%H:%M:%S")
 
     def _refresh_udp_status_text(self) -> None:
         last_udp_time = self._last_udp_received_wall_time or "never"
