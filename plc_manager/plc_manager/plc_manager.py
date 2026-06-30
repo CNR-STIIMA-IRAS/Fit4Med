@@ -119,9 +119,9 @@ class PLCControllerInterface(Node):
         
         # ========== Command Message Structure ==========
         # Pre-allocate PlcController message with 10 outputs (matches plc_controller.yaml)
-        self.command_msg = PlcController()
-        self.command_msg.values  = [0] * 10
-        self.command_msg.interface_names = [
+        self.plc_outputs = PlcController()
+        self.plc_outputs.values  = [0] * 10
+        self.plc_outputs.interface_names = [
             'PLC_node/mode_of_operation',       # [0] unused
             'PLC_node/power_cutoff',            # [1] unused
             'PLC_node/sonar_teach',             # [2] ultrasonic sensor calibration
@@ -1004,9 +1004,13 @@ class PLCControllerInterface(Node):
             "state": self.fsm.state.name,
             "pending": None,
             "ethercat": self._ethercat_status_payload(),
-            "command_msg": {
-                "interface_names": list(self.command_msg.interface_names), #type: ignore
-                "values": [int(value) for value in self.command_msg.values], #type: ignore
+            "plc_outputs": {
+                "interface_names": list(self.plc_outputs.interface_names), #type: ignore
+                "values": [int(value) for value in self.plc_outputs.values], #type: ignore
+            },
+            "plc_inputs": {
+                "interface_names": list(self.interface_names), #type: ignore
+                "values": [int(value) for value in self.state_values], #type: ignore
             },
         }
 
@@ -1031,7 +1035,7 @@ class PLCControllerInterface(Node):
         """Publish single PLC command by interface name.
         
         Helper function to update and publish a specific PLC command value.
-        Updates the command_msg, finds the interface by name, updates its value,
+        Updates the plc_outputs, finds the interface by name, updates its value,
         and publishes the entire 8-element command vector.
         
         Example:
@@ -1039,7 +1043,7 @@ class PLCControllerInterface(Node):
             publish_command('PLC_node/force_sensors_pwr', 1)  # Enable F/T power
         
         Args:
-            name (str): Interface identifier (must match one in command_msg.interface_names)
+            name (str): Interface identifier (must match one in plc_outputs.interface_names)
             value (int): Command value (typically 0 or 1)
         
         Returns:
@@ -1049,14 +1053,14 @@ class PLCControllerInterface(Node):
             - INFO: "Published command message: [0, 0, 0, 0, 1, 0, 0, 0]"
             - WARN: "Interface name '{name}' not found in command message" if not found
         """
-        if name in self.command_msg.interface_names: #type: ignore
+        if name in self.plc_outputs.interface_names: #type: ignore
             # Find index of interface by name
-            idx = self.command_msg.interface_names.index(name) #type: ignore
+            idx = self.plc_outputs.interface_names.index(name) #type: ignore
             # Update value
-            self.command_msg.values[idx] = value #type: ignore
+            self.plc_outputs.values[idx] = value #type: ignore
             # Publish entire command vector
-            self.command_publisher.publish(self.command_msg)
-            self.get_logger().info(f"Published PLC command: {self.command_msg.values}") #type: ignore
+            self.command_publisher.publish(self.plc_outputs)
+            self.get_logger().info(f"Published PLC command: {self.plc_outputs.values}") #type: ignore
         else:
             self.get_logger().warn( #type: ignore
                 f"Interface name '{name}' not found in command message."

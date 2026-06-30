@@ -18,7 +18,7 @@ class MotorsWindow(QtWidgets.QWidget):
         self.ui.setupUi(self)  #type:ignore # Set up the UI for the secondary widget
         self._last_plc_state = None
         self._last_plc_pending = None
-        self._plc_items = []
+        self._plc_outputs = []
 
     def connect(self, ROS: RosCommunicationManager, parent_timer: QTimer):
         self.ROS : RosCommunicationManager = ROS
@@ -43,12 +43,19 @@ class MotorsWindow(QtWidgets.QWidget):
         self.ui.tableWidget_EthercatNodesInfo.setColumnWidth(0, 300)
         self.ui.tableWidget_EthercatNodesInfo.setColumnWidth(1, 300)
 
-        self.ui.tableWidget_PLC.setRowCount(5)      # Set the number of rows
-        self.ui.tableWidget_PLC.setColumnCount(4)  # Set the number of columns
-        self.ui.tableWidget_PLC.setColumnWidth(0, 250)
-        self.ui.tableWidget_PLC.setColumnWidth(1, 50)
-        self.ui.tableWidget_PLC.setColumnWidth(2, 250)
-        self.ui.tableWidget_PLC.setColumnWidth(3, 50)
+        self.ui.tableWidget_PLC_Outputs.setRowCount(5)      # Set the number of rows
+        self.ui.tableWidget_PLC_Outputs.setColumnCount(4)  # Set the number of columns
+        self.ui.tableWidget_PLC_Outputs.setColumnWidth(0, 250)
+        self.ui.tableWidget_PLC_Outputs.setColumnWidth(1, 50)
+        self.ui.tableWidget_PLC_Outputs.setColumnWidth(2, 250)
+        self.ui.tableWidget_PLC_Outputs.setColumnWidth(3, 50)
+
+        self.ui.tableWidget_PLC_Inputs.setRowCount(5)      # Set the number of rows
+        self.ui.tableWidget_PLC_Inputs.setColumnCount(4)  # Set the number of columns
+        self.ui.tableWidget_PLC_Inputs.setColumnWidth(0, 250)
+        self.ui.tableWidget_PLC_Inputs.setColumnWidth(1, 50)
+        self.ui.tableWidget_PLC_Inputs.setColumnWidth(2, 250)
+        self.ui.tableWidget_PLC_Inputs.setColumnWidth(3, 50)
 
         # Pre-create table items so we don't recreate them every tick
         self._motor_items = []
@@ -69,16 +76,27 @@ class MotorsWindow(QtWidgets.QWidget):
                 row_items.append(item)
             self._ec_items.append(row_items)
 
-        self._plc_items = []
+        self._plc_outputs = []
         for i in range(5):
             row_items = []
             for j in range(4):
                 item = QtWidgets.QTableWidgetItem('')
                 if j in (1, 3):
                     item.setTextAlignment(QtCore.Qt.AlignCenter)
-                self.ui.tableWidget_PLC.setItem(i, j, item)
+                self.ui.tableWidget_PLC_Outputs.setItem(i, j, item)
                 row_items.append(item)
-            self._plc_items.append(row_items)
+            self._plc_outputs.append(row_items)
+
+        self._plc_inputs = []
+        for i in range(5):
+            row_items = []
+            for j in range(4):
+                item = QtWidgets.QTableWidgetItem('')
+                if j in (1, 3):
+                    item.setTextAlignment(QtCore.Qt.AlignCenter)
+                self.ui.tableWidget_PLC_Inputs.setItem(i, j, item)
+                row_items.append(item)
+            self._plc_inputs.append(row_items)
 
         # Cache for emergency state to avoid redundant setText/setStyleSheet
         self._last_emergency_state = None
@@ -151,34 +169,60 @@ class MotorsWindow(QtWidgets.QWidget):
         return "1" if bool(value) else "0"
 
     def _update_plc_table(self, payload: Dict[str, object]) -> None:
-        if not self._plc_items:
+        if not self._plc_outputs:
             return
 
-        command_msg = payload.get("command_msg")
-        if not isinstance(command_msg, dict):
+        plc_outputs = payload.get("plc_outputs")
+        if not isinstance(plc_outputs, dict):
             return
 
-        interface_names = command_msg.get("interface_names")
-        values = command_msg.get("values")
-        if not isinstance(interface_names, list) or not isinstance(values, list):
+        plc_outputs_interface_names = plc_outputs.get("interface_names")
+        values = plc_outputs.get("values")
+        if not isinstance(plc_outputs_interface_names, list) or not isinstance(values, list):
             return
 
-        rows = self.ui.tableWidget_PLC.rowCount()
-        max_commands = rows * 2
-        for command_idx in range(max_commands):
-            row = command_idx % rows
-            column = 0 if command_idx < rows else 2
+        plc_outputs_rows = self.ui.tableWidget_PLC_Outputs.rowCount()
+        plc_outputs_max_commands = plc_outputs_rows * 2
+        for _idx in range(plc_outputs_max_commands):
+            row = _idx % plc_outputs_rows
+            column = 0 if _idx < plc_outputs_rows else 2
             name_text = ""
             value_text = ""
 
-            if command_idx < len(interface_names) and command_idx < len(values):
-                name = interface_names[command_idx]
+            if _idx < len(plc_outputs_interface_names) and _idx < len(values):
+                name = plc_outputs_interface_names[_idx]
                 if isinstance(name, str):
                     name_text = self._format_plc_interface_name(name)
-                value_text = self._format_plc_value(values[command_idx])
+                value_text = self._format_plc_value(values[_idx])
 
-            self._plc_items[row][column].setText(name_text)
-            self._plc_items[row][column + 1].setText(value_text)
+            self._plc_outputs[row][column].setText(name_text)
+            self._plc_outputs[row][column + 1].setText(value_text)
+
+        plc_inputs= payload.get("plc_inputs")
+        if not isinstance(plc_inputs, dict):
+            return
+
+        plc_inputs_interface_names = plc_inputs.get("interface_names")
+        values = plc_inputs.get("values")
+        if not isinstance(plc_inputs_interface_names, list) or not isinstance(values, list):
+            return
+
+        plc_inputs_rows = self.ui.tableWidget_PLC_Inputs.rowCount()
+        plc_inputs_max_commands = plc_inputs_rows * 2
+        for _idx in range(plc_inputs_max_commands):
+            row = _idx % plc_inputs_rows
+            column = 0 if _idx < plc_inputs_rows else 2
+            name_text = ""
+            value_text = ""
+
+            if _idx < len(plc_inputs_interface_names) and _idx < len(values):
+                name = plc_inputs_interface_names[_idx]
+                if isinstance(name, str):
+                    name_text = self._format_plc_interface_name(name)
+                value_text = self._format_plc_value(values[_idx])
+
+            self._plc_inputs[row][column].setText(name_text)
+            self._plc_inputs[row][column + 1].setText(value_text)
 
     def resetFaults(self) -> None:
         if self.ui.comboBox_ResetFaults.currentIndex() == 2:
