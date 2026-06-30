@@ -24,14 +24,14 @@ from tecnobody_workbench_utils.utils import bcolors as bc
 
 from tecnobody_workbench_utils.fsm import (
     InvalidTransition, GuardFailed,
-    TransitionTimeout, PendingTransition
+    TransitionTimeout,
 )
 from plc_manager.environment_manager import EnvironmentManager
 from plc_manager.ethercat_monitor import EthercatMonitor
 from plc_manager.fsm_config import build_plc_fsm
 from plc_manager.gui_status import GuiStatusPublisher
 from plc_manager.plc_commands import PlcCommandPublisher
-from plc_manager.plc_types import EStopState, EthercatCheckState, Event, State
+from plc_manager.plc_types import EStopState, Event, State
 from plc_manager.udp_client import UdpClient
 
 
@@ -91,7 +91,8 @@ class PLCControllerInterface(Node):
         self.environment = EnvironmentManager(
             self,
             service_group=self.service_group,
-            publish_command=self.publish_command,
+            timer_group=self.timer_group,
+            publish_command=self.plc_commands.publish_command,
         )
 
 
@@ -102,6 +103,8 @@ class PLCControllerInterface(Node):
         self.send_running_cnt = 0
         self.send_running_dec = 10  # Send status every 10*50ms = 500ms at 50 Hz
         self.shutdown_requested = False
+        self.shutdown_stop_requested = False
+        self.shutdown_estop_closed = False
 
         # ========== Signal Handlers ==========
         signal.signal(signal.SIGINT, self.signal_handler) #type: ignore
@@ -119,18 +122,7 @@ class PLCControllerInterface(Node):
         self.bringup_done = False
     
     def cleanup(self) -> None:
-        """Perform graceful cleanup and resource deallocation.
-        
-        Called before node destruction to:
-        1. Ask the GUI to stop its ROS communication
-        2. Cancel launcher health check timer
-        3. Close UDP socket
-        4. Destroy node resources
-        
-        Returns:
-            None. Leaves node in destroyed state.
-        """
-        self.get_logger().info("Cleanup: Cancelling timers and destroying node.") #type: ignore
+        self.get_logger().info("Cleanup: destroying node resources.") #type: ignore
         self.client.close()
         self.environment.destroy()
         self.destroy_node()
@@ -149,76 +141,11 @@ class PLCControllerInterface(Node):
     def _ros_gui_connection_failed(self) -> bool:
         return self.client.last_received_message == b"ROS_CONNECTION_FAILED"
 
-    @property
-    def _startup_cleanup_action(self):  # type: ignore
-        return self.environment.startup_cleanup_action
-
-    @_startup_cleanup_action.setter
-    def _startup_cleanup_action(self, value) -> None:  # type: ignore
-        self.environment.startup_cleanup_action = value
-
-    @property
-    def platform_controller_readiness_monitor(self):  # type: ignore
-        return self.environment.platform_controller_readiness_monitor
-
-    @property
-    def recovery_controller_status_monitor(self):  # type: ignore
-        return self.environment.recovery_controller_status_monitor
-
-    @property
-    def plc_outputs(self):  # type: ignore
-        return self.plc_commands.plc_outputs
-
-    @property
-    def ethercat_startup_check_service_name(self) -> str:
-        return self.ethercat.startup_check_service_name
-
-    @property
-    def ethercat_slaves_status_check_client(self):  # type: ignore
-        return self.ethercat.startup_check_client
-
-    @property
-    def ethercat_startup_check_state(self) -> EthercatCheckState:
-        return self.ethercat.startup_check_state
-
-    @ethercat_startup_check_state.setter
-    def ethercat_startup_check_state(self, value: EthercatCheckState) -> None:
-        self.ethercat.startup_check_state = value
-
-    @property
-    def ethercat_startup_check_requested(self) -> bool:
-        return self.ethercat.startup_check_requested
-
-    @ethercat_startup_check_requested.setter
-    def ethercat_startup_check_requested(self, value: bool) -> None:
-        self.ethercat.startup_check_requested = value
-
-    @property
-    def ethercat_check_state(self) -> EthercatCheckState:
-        return self.ethercat.check_state
-
-    @ethercat_check_state.setter
-    def ethercat_check_state(self, value: EthercatCheckState) -> None:
-        self.ethercat.check_state = value
-
-    @property
-    def ethercat_state_timer(self):  # type: ignore
-        return self.ethercat.state_timer
-
     def _ethercat_slaves_status_ok(self) -> bool:
         return self.ethercat.startup_status_ok()
 
     def _ready_to_start(self) -> bool:
         return self._ros_gui_disconnected() and self._ethercat_slaves_status_ok()
-
-    def poll_ethercat_slave_states(self) -> None:
-        self.ethercat.poll_slave_states()
-
-    def _ethercat_status_payload(self) -> dict[str, object]:
-        return self.ethercat.status_payload()
-    
-    def publish_bringup_commands(self) -> None:
-        self.plc_commands.publish_bringup_commands()
 
     def _get_z_limit_switch_state(self) -> bool:
         z_limit_active = False
@@ -227,19 +154,6 @@ class PLCControllerInterface(Node):
                 z_limit_active = (self.state_values[_i] == 1)
                 break
         return z_limit_active
-
-
-    def _bringup_env(self) -> None:
-        self.environment.bringup_env()
-
-    def _bringup_recovery_env(self) -> None:
-        self.environment.bringup_recovery_env()
-
-    def _reset_sw_estop(self) -> None:
-        self.environment.reset_sw_estop()
-
-    def _handle_idle_stop(self) -> None:
-        self.environment.handle_idle_stop()
 
     def _detect_estop_event(
         self,
@@ -256,9 +170,14 @@ class PLCControllerInterface(Node):
         if self.estop_cached == EStopState.OK and estop_value == EStopState.OK:
             if self.sw_estop_cached != sw_estop_value:
                 if sw_estop_value == EStopState.EMERGENCY:
-                    self.publish_command('PLC_node/estop', 0)           # Emergency stop (deactivate)
-                    self.publish_command('PLC_node/manual_mode', 0)     # Return to automatic
-                    self.get_logger().info(bc.FAIL + 'Raised a SW ESTOP!' + bc.ENDC) #type: ignore
+                    self.plc_commands.publish_command('PLC_node/estop', 0)              # SW Emergency stop
+                                                                                        # => Open the Emergency stop 
+                                                                                        #   chain, the next iteration
+                                                                                        #   will see the 
+                                                                                        #   estop_value = EMERGENCY and 
+                                                                                        #   trigger the STOP event
+                    self.plc_commands.publish_command('PLC_node/manual_mode', 0)        # Return to automatic
+                    self.get_logger().info(bc.FAIL + 'Raised a SW ESTOP!' + bc.ENDC)    # type: ignore
                 self.sw_estop_cached = sw_estop_value
             return Event.NONE
 
@@ -266,7 +185,6 @@ class PLCControllerInterface(Node):
             return Event.STOP
 
         return Event.NONE
-
 
     def _state_callback_estop(self, estop_value: EStopState, 
                               z_limit_active: bool, 
@@ -290,8 +208,8 @@ class PLCControllerInterface(Node):
                 self.get_logger().error(f"Guard condition failed: {e}") #type: ignore
                 if event == Event.START:
                     self.environment.startup_cleanup_action = None
-                    self.publish_command('PLC_node/estop', 0)
-                    self.publish_command('PLC_node/manual_mode', 0)
+                    self.plc_commands.publish_command('PLC_node/estop', 0)
+                    self.plc_commands.publish_command('PLC_node/manual_mode', 0)
                     self.estop_cached = ESTOP
                     self.sw_estop_cached = SW_ESTOP
             
@@ -316,10 +234,38 @@ class PLCControllerInterface(Node):
                 self.get_logger().error(f"Guard condition failed: {e}") #type: ignore
             except TransitionTimeout as e:
                 self.get_logger().error(f"Timeout transition: {e}") #type: ignore
-                self._cleanup_timed_out_transition(pending)
-            
-    def _cleanup_timed_out_transition(self, pending: PendingTransition | None) -> None:
-        self.environment.cleanup_timed_out_transition(pending)
+                self.environment.cleanup_timed_out_transition(pending)
+
+    def request_shutdown_stop(self) -> None:
+        if self.shutdown_stop_requested:
+            return
+
+        self.shutdown_stop_requested = True
+        self.get_logger().warning( #type: ignore
+            "Shutdown requested: opening PLC safety chain."
+        )
+        self.plc_commands.publish_command('PLC_node/estop', 0)
+
+    def shutdown_safe_to_exit(self) -> bool:
+        return (
+            self.fsm.pending is None
+            and self.environment.startup_cleanup_action is None
+            and self.fsm.state in (
+                State.IDLE,
+                State.IDLE_RECOVERY,
+                State.RECOVERED,
+            )
+        )
+
+    def close_shutdown_safety_chain(self) -> None:
+        if self.shutdown_estop_closed:
+            return
+
+        self.shutdown_estop_closed = True
+        self.get_logger().warning( #type: ignore
+            "Shutdown complete: closing PLC safety chain before exit."
+        )
+        self.plc_commands.publish_command('PLC_node/estop', 1)
 
     def state_callback(self, msg: PlcStates) -> None:
         # ========== Acquire lock to prevent concurrent execution ==========
@@ -375,13 +321,10 @@ class PLCControllerInterface(Node):
                     self.fsm.trigger(Event.FAIL)
 
             # ========== Process Status info ==========
-            processes_status = \
-                self.check_env_running(False) if self.fsm.state == State.RUNNING else\
-                self.check_env_running_recovery(False) if self.fsm.state == State.RUNNING_RECOVERY else\
-                self.check_env_running_stopped() if self.fsm.state == State.IDLE else\
-                self.check_env_running_recovery_stopped() \
-                    if self.fsm.state == State.RECOVERED or self.fsm.state == State.IDLE_RECOVERY else\
-                False
+            processes_status = self.environment.check_expected_processes(
+                self.fsm.state,
+                self.fsm.pending,
+            )
             if not processes_status:
                 self.get_logger().error( #type: ignore
                     bc.FAIL + 'The state of the processes is not matching the expected state!' + bc.ENDC,
@@ -416,42 +359,17 @@ class PLCControllerInterface(Node):
             self.get_logger().error(f"Exception in state_callback: {e}") #type: ignore
         finally:
             # ========== FSM States info ==========
-            self._notify_gui(self._fsm_status_payload())
+            self.gui_status.notify(self._fsm_status_payload())
             self.lock.release()
-
-    def check_env_running_stopped(self) -> bool:
-        return self.environment.check_env_running_stopped()
-
-    def check_env_running_recovery_stopped(self) -> bool:
-        return self.environment.check_env_running_recovery_stopped()
-
-    def check_env_running(self, check_controller_status: bool = True) -> bool:
-        return self.environment.check_env_running(check_controller_status)
-
-    def check_env_running_recovery(self, check_controller_status: bool = True) -> bool:
-        return self.environment.check_env_running_recovery(check_controller_status)
-
-    def _kill_recovery_env(self) -> None:
-        self.environment.kill_recovery_env()
-
-    def _kill_env(self) -> None:
-        self.environment.kill_env()
 
     def _fsm_status_payload(self) -> bytes:
         return self.gui_status.fsm_status_payload(
             self.fsm,
-            self._ethercat_status_payload(),
-            self.plc_outputs,
+            self.ethercat.status_payload(),
+            self.plc_commands.plc_outputs,
             self.interface_names,
             self.state_values,
         )
-
-    def _notify_gui(self, udp_msg: bytes) -> None:
-        self.gui_status.notify(udp_msg)
-
-
-    def publish_command(self, name: str, value: int) -> None:
-        self.plc_commands.publish_command(name, value)
 
 
     def signal_handler(self, sig: int, frame: types.FrameType) -> None:
@@ -467,7 +385,6 @@ class PLCControllerInterface(Node):
         Returns:
             None. Sets shutdown_requested flag.
         """
-        self.get_logger().info("Signal received. Setting shutdown_requested flag.") #type: ignore
         self.shutdown_requested = True
 
 
@@ -485,7 +402,6 @@ def main(args=None): #type: ignore
         5. Create MultiThreadedExecutor with 2 threads
         6. Run executor spin loop until:
            - shutdown_requested flag set by signal handler
-           - bringup_done flag set after first successful launch
            - rclpy.ok() returns False (system shutdown)
         7. Graceful cleanup and ROS 2 shutdown
     
@@ -529,6 +445,17 @@ def main(args=None): #type: ignore
         while rclpy.ok():
             mt_executor.spin_once(timeout_sec=0.1)
 
+            if node.shutdown_requested:
+                node.get_logger().warning( #type: ignore
+                    'Received graceful shutdown request!',
+                    throttle_duration_sec=5.0,
+                )
+                if node.shutdown_safe_to_exit():
+                    node.close_shutdown_safety_chain()
+                    break
+                node.request_shutdown_stop()
+                continue
+
             if not node.ethercat.run_startup_check(mt_executor):
                 continue
 
@@ -536,14 +463,9 @@ def main(args=None): #type: ignore
             if not node.bringup_done \
             and node._ethercat_slaves_status_ok() \
             and node.command_publisher.get_subscription_count() > 0:
-                node.publish_bringup_commands()
+                node.plc_commands.publish_bringup_commands()
                 node.bringup_done = True
                 node.ethercat.start_runtime_polling()
-                
-            # ========== Check for graceful shutdown request ==========
-            if node.shutdown_requested:
-                node.get_logger().warning('Received graceful shutdown request!') #type: ignore
-                break
 
     except Exception as e:
         node.get_logger().error(f"Unexpected exception in main loop: {e}") #type: ignore
