@@ -10,7 +10,7 @@ from launch.actions import RegisterEventHandler, LogInfo, OpaqueFunction, SetEnv
 import threading
 
 import os
-os.sched_setaffinity(0, {3,7})
+os.sched_setaffinity(0, {2,3})
 
 
 # Funzione per lanciare il nodo che pubblica il flag
