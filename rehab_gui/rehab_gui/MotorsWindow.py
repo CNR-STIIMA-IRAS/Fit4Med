@@ -328,7 +328,7 @@ class MotorsWindow(QtWidgets.QWidget):
             elif state_key == 'disconnected':
                 if self._last_plc_pending is None:
                     if self._last_plc_state in ("IDLE",):
-                        self.ui.label_SystemState.setText('Turn the Key to Start')
+                        self.ui.label_SystemState.setText('Clear the Emergencies and \n Turn the Key to Reset and Start')
                         self.ui.label_SystemState.setStyleSheet("background-color: rgb(0,128,0); color: white")
                     elif self._last_plc_state in ("IDLE_RECOVERY",):
                         self.ui.label_SystemState.setText('Turn the Key to Start Recovery  \n !!!SMALL MOVEMENT EXPECTED!!!')
