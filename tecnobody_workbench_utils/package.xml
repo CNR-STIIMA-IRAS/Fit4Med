@@ -11,6 +11,7 @@
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>control_msgs</exec_depend>
+  <exec_depend>controller_manager_msgs</exec_depend>
   <depend>sensor_msgs</depend>
   <depend>std_srvs</depend>
   <depend>tecnobody_msgs</depend>

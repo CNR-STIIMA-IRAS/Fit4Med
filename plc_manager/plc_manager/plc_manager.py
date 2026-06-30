@@ -30,7 +30,10 @@ from enum import Enum
 from typing import Any, Callable
 
 from tecnobody_workbench_utils.utils import (
-    check_env, check_env_stopped, stop_launch_environment
+    check_env, check_env_stopped,
+    make_platform_controller_status_monitor,
+    make_recovery_controller_status_monitor,
+    stop_launch_environment
 )
 from tecnobody_workbench_utils.utils import bcolors as bc
 
@@ -50,46 +53,6 @@ class EthercatCheckState(Enum):
     READY = 2
     FAILED = 3
 
-
-def check_env_running_stopped() -> bool:
-
-    if check_env_stopped([
-        "run_platform_control.launch.py",
-          "run_rosbridge.launch.py"
-    ]):
-        return True
-    
-    return False
-    
-def check_env_running_recovery_stopped() -> bool:
-
-    if check_env_stopped([
-        "run_z_recovery_control.launch.py",
-        "run_rosbridge.launch.py"
-    ]):
-        return True
-    
-    return False
-
-def check_env_running() -> bool:
-
-    if check_env([
-        "run_platform_control.launch.py",
-        "run_rosbridge.launch.py"
-    ]):
-        return True
-
-    return False
-
-def check_env_running_recovery() -> bool:
-
-    if check_env([
-        "run_z_recovery_control.launch.py",
-        "run_rosbridge.launch.py"
-    ]):
-        return True
-
-    return False
 
 class State(Enum):
     IDLE = auto()
@@ -174,6 +137,18 @@ class PLCControllerInterface(Node):
         # ========== Launcher Health Monitoring ==========
         self.processes_status_cached = False
         self._startup_cleanup_action: Callable[[], None] | None = None
+        self.platform_controller_status_monitor = make_platform_controller_status_monitor(
+            self,
+            callback_group=self.service_group,
+            logger=self.get_logger(),
+        )
+
+        self.recovery_controller_status_monitor = make_recovery_controller_status_monitor(
+            self,
+            callback_group=self.service_group,
+            logger=self.get_logger(),
+        )
+
 
         # ========== UDP Status Client ==========#  
         # Coordinates with rehab_gui for emergency stop and status
@@ -268,7 +243,7 @@ class PLCControllerInterface(Node):
             msg="🔑 KEY TURN DETECTED: E-stop 0=>1 (IDLE=>RUNNING)",
             guard=self._ready_to_start, 
             action=self._bringup_env,
-            success_check=check_env_running,
+            success_check=self.check_env_running,
             max_steps=5000,
             failure_destination=State.ERROR,
         )
@@ -279,7 +254,7 @@ class PLCControllerInterface(Node):
             msg="🔑 KEY TURN DETECTED: E-stop 0=>1 (IDLE_RECOVERY=>RUNNING_RECOVERY)",
             guard=self._ready_to_start, 
             action=self._bringup_recovery_env,
-            success_check=check_env_running_recovery,
+            success_check=self.check_env_running_recovery,
             max_steps=5000,
             failure_destination=State.ERROR
         )
@@ -290,7 +265,7 @@ class PLCControllerInterface(Node):
             State.RECOVERED,
             msg="🛑 EMERGENCY STOP REQUESTED (RUNNING_RECOVERY=>RECOVERED)",
             action=self._kill_recovery_env,
-            success_check=check_env_running_recovery_stopped,
+            success_check=self.check_env_running_recovery_stopped,
             max_steps=5000,
             failure_destination=State.ERROR
         )
@@ -301,7 +276,7 @@ class PLCControllerInterface(Node):
             State.IDLE, 
             msg="🛑 EMERGENCY STOP REQUESTED (RUNNING=>IDLE)",
             action=self._kill_env,
-            success_check=check_env_running_stopped,
+            success_check=self.check_env_running_stopped,
             max_steps=5000,
             failure_destination=State.ERROR
         )
@@ -312,7 +287,7 @@ class PLCControllerInterface(Node):
             State.ERROR, 
             msg="� SYSTEM FAILURE (RUNNING=>ERROR)",
             action=self._kill_env,
-            success_check=check_env_running_stopped,
+            success_check=self.check_env_running_stopped,
             max_steps=5000,
             failure_destination=State.ERROR
         )
@@ -322,7 +297,7 @@ class PLCControllerInterface(Node):
                 State.ERROR, 
                 msg=" SYSTEM FAILURE (RUNNING_RECOVERY=>ERROR)",
                 action=self._kill_recovery_env,
-                success_check=check_env_running_recovery_stopped,
+                success_check=self.check_env_running_recovery_stopped,
                 max_steps=5000,
                 failure_destination=State.ERROR)
 
@@ -331,7 +306,7 @@ class PLCControllerInterface(Node):
                 State.IDLE,
                 msg="🛑 EMERGENCY STOP REQUESTED (IDLE=>IDLE)",
                 action=self._handle_idle_stop,
-                success_check=check_env_running_stopped,
+                success_check=self.check_env_running_stopped,
                 max_steps=5000,
                 failure_destination=State.ERROR)
         
@@ -340,7 +315,7 @@ class PLCControllerInterface(Node):
                 State.IDLE_RECOVERY,
                 msg="🛑 EMERGENCY STOP REQUESTED (IDLE_RECOVERY=>IDLE_RECOVERY)",
                 action=self._handle_idle_stop,
-                success_check=check_env_running_recovery_stopped,
+                success_check=self.check_env_running_recovery_stopped,
                 max_steps=5000,
                 failure_destination=State.ERROR)
 
@@ -360,6 +335,8 @@ class PLCControllerInterface(Node):
         """
         self.get_logger().info("Cleanup: Cancelling timers and destroying node.") #type: ignore
         self.client.close()
+        self.platform_controller_status_monitor.destroy()
+        self.recovery_controller_status_monitor.destroy()
         self.destroy_node()
     
     def _ros_gui_disconnected(self) -> bool:
@@ -704,6 +681,7 @@ class PLCControllerInterface(Node):
 
     def _bringup_env(self) -> None:
         self._startup_cleanup_action = self._kill_env
+        self.platform_controller_status_monitor.reset()
         self.publish_command('PLC_node/z_recovery', 1)
         subprocess.Popen(
             [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"],
@@ -719,6 +697,7 @@ class PLCControllerInterface(Node):
 
     def _bringup_recovery_env(self) -> None:
         self._startup_cleanup_action = self._kill_recovery_env
+        self.recovery_controller_status_monitor.reset()
         self.publish_command('PLC_node/z_recovery', 0)
         subprocess.Popen(
             [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env_z_recovery.sh"],
@@ -894,10 +873,10 @@ class PLCControllerInterface(Node):
 
             # ========== Process Status info ==========
             processes_status = \
-                check_env_running() if self.fsm.state == State.RUNNING else\
-                check_env_running_recovery() if self.fsm.state == State.RUNNING_RECOVERY else\
-                check_env_running_stopped() if self.fsm.state == State.IDLE else\
-                check_env_running_recovery_stopped() \
+                self.check_env_running(False) if self.fsm.state == State.RUNNING else\
+                self.check_env_running_recovery(False) if self.fsm.state == State.RUNNING_RECOVERY else\
+                self.check_env_running_stopped() if self.fsm.state == State.IDLE else\
+                self.check_env_running_recovery_stopped() \
                     if self.fsm.state == State.RECOVERED or self.fsm.state == State.IDLE_RECOVERY else\
                 False
             if not processes_status:
@@ -937,8 +916,55 @@ class PLCControllerInterface(Node):
             self._notify_gui(self._fsm_status_payload())
             self.lock.release()
 
+    def check_env_running_stopped(self) -> bool:
+
+        if check_env_stopped([
+            "run_platform_control.launch.py",
+            "run_rosbridge.launch.py"
+        ]):
+            return True
+
+        return False
+
+    def check_env_running_recovery_stopped(self) -> bool:
+
+        if check_env_stopped([
+            "run_z_recovery_control.launch.py",
+            "run_rosbridge.launch.py"
+        ]):
+            return True
+
+        return False
+
+    def check_env_running(self, check_controller_status: bool = True) -> bool:
+
+        if not check_env([
+            "run_platform_control.launch.py",
+            "run_rosbridge.launch.py"
+        ]):
+            return False
+
+        if check_controller_status:
+            return self.platform_controller_status_monitor.ok()
+
+        return True
+
+    def check_env_running_recovery(self, check_controller_status: bool = True) -> bool:
+
+        if not check_env([
+            "run_z_recovery_control.launch.py",
+            "run_rosbridge.launch.py"
+        ]):
+            return False
+
+        if check_controller_status:
+            return self.recovery_controller_status_monitor.ok()
+
+        return True
+
     def _kill_recovery_env(self) -> None:
         self._startup_cleanup_action = None
+        self.recovery_controller_status_monitor.reset()
         self.publish_command('PLC_node/brake_disable', 0)  # Ensure brakes enabled
         self.publish_command('PLC_node/z_recovery', 1)
         
@@ -955,6 +981,7 @@ class PLCControllerInterface(Node):
 
     def _kill_env(self) -> None:
         self._startup_cleanup_action = None
+        self.platform_controller_status_monitor.reset()
         self.publish_command('PLC_node/brake_disable', 0)  # Ensure brakes enabled
         self.publish_command('PLC_node/estop', 1) # Reset SW E-stop to normal operation if it was triggered
 
