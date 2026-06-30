@@ -232,16 +232,19 @@ class MotorsWindow(QtWidgets.QWidget):
                         self.ui.lineEdit_Emergency.setText('Turn the Key to Start')
                         self.ui.lineEdit_Emergency.setStyleSheet("background-color: rgb(0,128,0); color: white")
                     elif self._last_plc_state in ("IDLE_RECOVERY",):
-                        self.ui.lineEdit_Emergency.setText('Turn the Key to Start Recovery (SMALL MOVEMENT EXPECTED)')
+                        self.ui.lineEdit_Emergency.setText('Turn the Key to Start Recovery  \n !!!SMALL MOVEMENT EXPECTED!!!')
                         self.ui.lineEdit_Emergency.setStyleSheet("background-color: rgb(255,150,00); color: white")
                 else:
                     if self._last_plc_pending.get("source") == "IDLE":
-                        self.ui.lineEdit_Emergency.setText('CoE Drivers and Controller Bring-up')
+                        self.ui.lineEdit_Emergency.setText('CoE Drivers and Controllers Bring-up')
                         self.ui.lineEdit_Emergency.setStyleSheet("background-color: rgb(255,215,00); color: white")
                     elif self._last_plc_pending.get("source") == "IDLE_RECOVERY":
-                        self.ui.lineEdit_Emergency.setText('Recovery Bring-up (!!! SMALL MOVEMENT EXPECTED!!!)')
+                        self.ui.lineEdit_Emergency.setText('Recovery Bring-up \n !!!SMALL MOVEMENT EXPECTED!!!')
                         self.ui.lineEdit_Emergency.setStyleSheet("background-color: rgb(255,140,00); color: white")
             elif state_key == 'emergency':
+                if self._last_plc_pending is not None\
+                    and self._last_plc_pending.get("source") in ("IDLE", "IDLE_RECOVERY"):
+                    pass
                 self.ui.lineEdit_Emergency.setText('!!! Emergency !!!')
                 self.ui.lineEdit_Emergency.setStyleSheet("background-color: red; color: white")
             elif state_key == 'fault':
