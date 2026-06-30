@@ -84,7 +84,7 @@ class MotorsWindow(QtWidgets.QWidget):
     def onUdpMessageReceived(self, data, addr):
         previous_plc_status = (self._last_plc_state, self._last_plc_pending)
         message = self._format_udp_message(data)
-        self.ui.plainTextEdit_udp_channel.setPlainText(message)
+        self.ui.plainTextEdit_udp_channel.setPlainText("ROBOT State:" + message)
         current_plc_status = (self._last_plc_state, self._last_plc_pending)
         if current_plc_status != previous_plc_status:
             self._last_emergency_state = None
@@ -269,7 +269,7 @@ class MotorsWindow(QtWidgets.QWidget):
         ctrl_name = self.ROS.getCurrentControllerName()
         if ctrl_name != self._last_controller_name:
             self._last_controller_name = ctrl_name
-            self.ui.plainTextEdit_controller_name.setPlainText(ctrl_name)
+            self.ui.plainTextEdit_controller_name.setPlainText("CTRL: "+ ctrl_name)
 
         # Update table items in-place (setText instead of creating new QTableWidgetItems)
         for i, name in enumerate(self.ROS.getJointNames()):
