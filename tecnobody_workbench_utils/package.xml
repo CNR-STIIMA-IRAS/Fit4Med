@@ -11,7 +11,11 @@
 
   <exec_depend>rclpy</exec_depend>
   <exec_depend>control_msgs</exec_depend>
-
+  <depend>sensor_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>tecnobody_msgs</depend>
+  <depend>ethercat_controller_msgs</depend>
+  
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>

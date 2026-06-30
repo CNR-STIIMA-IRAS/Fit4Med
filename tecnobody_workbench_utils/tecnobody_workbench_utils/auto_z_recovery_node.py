@@ -15,7 +15,8 @@ Replicates what plc_manager + rehab_gui do together during z_recovery:
      fault_present  →  reset_fault
      mode != CSV    →  switch_mode_of_operation
      not drives_on  →  start_motors
-     all OK         →  jog Z+ by RECOVERY_DISTANCE_M
+     all OK         →  jog Z+ by RECOVERY_DISTANCE_M, or until the
+                       expected safety reclosure raises emergency
 4. After jogging: stops jog + stops motors.
 
 State flow:
@@ -28,7 +29,7 @@ State flow:
        │ not drives_on                                  │
        ├──→ STARTING_MOTORS ──→ RETRY_DELAY ────────────┘
        │ all OK
-       └──→ JOGGING → STOPPING_JOG → DONE
+       └──→ STARTING_JOG → JOGGING → STOPPING_JOG → DONE
 """
 
 import enum
@@ -51,6 +52,11 @@ CSV_MODE              = 9
 DISABLED_STR          = 'STATE_SWITCH_ON_DISABLED'
 RETRY_DELAY_S         = 1.5
 LOG_PERIOD_S          = 3.0
+JOG_STATE_POLL_S      = 0.2
+JOG_EMERGENCY_ARM_S   = 0.3
+JOG_MOTION_CONFIRM_M  = 0.001
+JOG_TIMEOUT_S         = 10.0
+STOP_TIMEOUT_S        = 5.0
 
 
 class _S(enum.Enum):
@@ -63,9 +69,10 @@ class _S(enum.Enum):
     SETTING_MODE     = 6
     STARTING_MOTORS  = 7
     RETRY_DELAY      = 8
-    JOGGING          = 9
-    STOPPING_JOG     = 10
-    DONE             = 11
+    STARTING_JOG     = 9
+    JOGGING          = 10
+    STOPPING_JOG     = 11
+    DONE             = 12
 
 
 class AutoZRecoveryNode(Node):
@@ -83,6 +90,14 @@ class AutoZRecoveryNode(Node):
 
         self._pending_jog_stop = None
         self._pending_stop     = None
+        self._mode_request_joint = None
+        self._jog_started_at = None
+        self._jog_last_poll = None
+        self._jog_state_future = None
+        self._jog_stop_reason = ''
+        self._stop_start = None
+        self._shutdown_timer = None
+        self._cleanup_done = False
 
         plc_qos = rclpy.qos.QoSProfile(
             depth=10, reliability=rclpy.qos.ReliabilityPolicy.RELIABLE)
@@ -142,6 +157,24 @@ class AutoZRecoveryNode(Node):
         msg.values = [value]
         self._plc_pub.publish(msg)
 
+    def _restore_z_recovery(self):
+        if self._cleanup_done:
+            return
+        self._publish_plc('PLC_node/z_recovery', 1)
+        self._cleanup_done = True
+
+    def _take_future_result(self, future, label: str):
+        try:
+            return future.result()
+        except Exception as exc:
+            self.get_logger().error(f'{label} failed: {exc}')
+            return None
+
+    def _seconds_since(self, start_time) -> float:
+        if start_time is None:
+            return 0.0
+        return (self.get_clock().now() - start_time).nanoseconds / 1e9
+
     def _go_check(self):
         self._active_future = self._get_states_cli.call_async(GetDriveStates.Request())
         self._state = _S.CHECKING
@@ -150,12 +183,70 @@ class AutoZRecoveryNode(Node):
         self._delay_start = self.get_clock().now()
         self._state = _S.RETRY_DELAY
 
-    def _send_csv_mode(self):
+    def _first_non_csv_joint(self, states):
+        dof_names = list(states.dof_names)
+        modes = list(states.modes_of_operation)
         for joint in JOINT_NAMES:
-            req = SwitchDriveModeOfOperation.Request()
-            req.dof_name = joint
-            req.mode_of_operation = CSV_MODE
-            self._set_mode_cli.call_async(req)
+            try:
+                idx = dof_names.index(joint)
+            except ValueError:
+                self.get_logger().warning(
+                    f'{joint} missing from drive-state response (dofs={dof_names}).')
+                return None, 'missing_drive_state'
+            if idx >= len(modes):
+                self.get_logger().warning(
+                    f'{joint} missing mode from drive-state response (modes={modes}).')
+                return None, 'missing_mode'
+            if modes[idx] != CSV_MODE_STR:
+                mode = modes[idx]
+                return joint, mode
+        return None, None
+
+    def _request_csv_mode(self, joint: str):
+        req = SwitchDriveModeOfOperation.Request()
+        req.dof_name = joint
+        req.mode_of_operation = CSV_MODE
+        self._mode_request_joint = joint
+        self._active_future = self._set_mode_cli.call_async(req)
+        self._state = _S.SETTING_MODE
+
+    def _start_jog_state_poll(self):
+        if self._jog_state_future is None:
+            self._jog_last_poll = self.get_clock().now()
+            self._jog_state_future = self._get_states_cli.call_async(
+                GetDriveStates.Request())
+
+    def _consume_jog_state_poll(self):
+        if self._jog_state_future is None:
+            if (self._jog_last_poll is None
+                    or self._seconds_since(self._jog_last_poll) >= JOG_STATE_POLL_S):
+                self._start_jog_state_poll()
+            return None
+
+        if not self._jog_state_future.done():
+            return None
+
+        response = self._take_future_result(
+            self._jog_state_future, 'jog get_drive_states')
+        self._jog_state_future = None
+        return response.states if response is not None else None
+
+    def _begin_stop(self, reason: str):
+        self._jog_stop_reason = reason
+        self.get_logger().info(f'Stopping recovery motion: {reason}')
+        self._jog_state_future = None
+        try:
+            self._pending_jog_stop = self._jog_stop_cli.call_async(Trigger.Request())
+        except Exception as exc:
+            self.get_logger().error(f'soft_movement_stop request failed: {exc}')
+            self._pending_jog_stop = None
+        try:
+            self._pending_stop = self._stop_motors_cli.call_async(Trigger.Request())
+        except Exception as exc:
+            self.get_logger().error(f'stop_motors request failed: {exc}')
+            self._pending_stop = None
+        self._stop_start = self.get_clock().now()
+        self._state = _S.STOPPING_JOG
 
     # ------------------------------------------------------------------ #
     # Main loop
@@ -199,17 +290,34 @@ class AutoZRecoveryNode(Node):
             if not self._active_future.done():
                 return
 
-            dstates = list(self._active_future.result().states.drive_states)
+            response = self._take_future_result(
+                self._active_future, 'wait_for_power get_drive_states')
             self._active_future = None
+            if response is None:
+                self._publish_plc('PLC_node/z_recovery', 0)
+                self._active_future = self._get_states_cli.call_async(
+                    GetDriveStates.Request())
+                return
 
-            if all(d == DISABLED_STR for d in dstates):
+            states = response.states
+            fault   = states.fault_present
+            dstates = list(states.drive_states)
+            all_disabled = all(m == DISABLED_STR for m in dstates)
+
+
+            if all_disabled:
                 self.get_logger().info(
                     f'Key turned — all drives in SWITCH_ON_DISABLED. Proceeding to check loop.')
                 self._go_check()
+            elif fault:
+                self.get_logger().warning(
+                    f'Fault detected (states={dstates}) — resetting.')
+                self._active_future = self._reset_fault_cli.call_async(Trigger.Request())
+                self._state = _S.RESETTING_FAULTS
             else:
                 self._throttled_log(
                     'power',
-                    f'Emergency active (states={dstates}). Turn the recovery key to proceed...')
+                    f'Emergency active (states={dstates}).')
                 # Re-publish z_recovery=0 each poll cycle so it is never lost
                 self._publish_plc('PLC_node/z_recovery', 0)
                 self._active_future = self._get_states_cli.call_async(GetDriveStates.Request())
@@ -219,14 +327,19 @@ class AutoZRecoveryNode(Node):
             if not self._active_future.done():
                 return
 
-            states = self._active_future.result().states
+            response = self._take_future_result(
+                self._active_future, 'checking get_drive_states')
             self._active_future = None
+            if response is None:
+                self._go_delay_then_check()
+                return
 
+            states = response.states
             fault   = states.fault_present
             drives  = states.drives_on
             modes   = list(states.modes_of_operation)
             dstates = list(states.drive_states)
-            all_csv = all(m == CSV_MODE_STR for m in modes)
+            joint_to_set, current_mode = self._first_non_csv_joint(states)
 
             self.get_logger().debug(
                 f'CHECK  fault={fault}  drives_on={drives}  '
@@ -238,11 +351,14 @@ class AutoZRecoveryNode(Node):
                 self._active_future = self._reset_fault_cli.call_async(Trigger.Request())
                 self._state = _S.RESETTING_FAULTS
 
-            elif not all_csv:
-                self.get_logger().info(
-                    f'Setting CSV mode on all joints (current={modes}).')
-                self._send_csv_mode()
+            elif current_mode in ('missing_drive_state', 'missing_mode'):
                 self._go_delay_then_check()
+
+            elif joint_to_set is not None:
+                self.get_logger().info(
+                    f'Setting CSV mode on {joint_to_set} '
+                    f'(current={current_mode}, all={modes}).')
+                self._request_csv_mode(joint_to_set)
 
             elif not drives:
                 self.get_logger().info(
@@ -259,29 +375,52 @@ class AutoZRecoveryNode(Node):
                 req.data.amplitude = float(RECOVERY_VELOCITY_MPS)
                 req.data.time_constant = float(JOG_TIME_CONSTANT_S)
                 req.data.jog_joint_idx = 2  # joint_z
-                self._jog_start_cli.call_async(req)
-                self._state = _S.JOGGING
+                self._active_future = self._jog_start_cli.call_async(req)
+                self._state = _S.STARTING_JOG
 
         # ── 6. Wait for reset_fault → retry ──────────────────────────────
         elif s == _S.RESETTING_FAULTS:
             if not self._active_future.done():
                 return
-            self.get_logger().info(
-                f'reset_fault: {self._active_future.result().message}')
+            result = self._take_future_result(
+                self._active_future, 'reset_fault')
             self._active_future = None
+            if result is not None:
+                if result.success:
+                    self.get_logger().info(f'reset_fault OK: {result.message}')
+                else:
+                    self.get_logger().warning(
+                        f'reset_fault failed: {result.message} — will retry.')
+            self._go_delay_then_check()
+
+        # ── 6b. Wait for switch_mode_of_operation → verify via CHECKING ───
+        elif s == _S.SETTING_MODE:
+            if not self._active_future.done():
+                return
+            joint = self._mode_request_joint
+            result = self._take_future_result(
+                self._active_future,
+                f'switch_mode_of_operation({joint})')
+            self._active_future = None
+            self._mode_request_joint = None
+            if result is not None:
+                self.get_logger().info(
+                    f'switch_mode_of_operation {joint}: {result.return_message}')
             self._go_delay_then_check()
 
         # ── 7. Wait for start_motors → retry regardless of result ────────
         elif s == _S.STARTING_MOTORS:
             if not self._active_future.done():
                 return
-            result = self._active_future.result()
-            if result.success:
-                self.get_logger().info(f'start_motors OK: {result.message}')
-            else:
-                self.get_logger().warning(
-                    f'start_motors failed: {result.message} — will retry.')
+            result = self._take_future_result(
+                self._active_future, 'start_motors')
             self._active_future = None
+            if result is not None:
+                if result.success:
+                    self.get_logger().info(f'start_motors OK: {result.message}')
+                else:
+                    self.get_logger().warning(
+                        f'start_motors failed: {result.message} — will retry.')
             self._go_delay_then_check()
 
         # ── 8. Fixed pause before returning to CHECKING ──────────────────
@@ -290,30 +429,117 @@ class AutoZRecoveryNode(Node):
             if elapsed >= RETRY_DELAY_S:
                 self._go_check()
 
-        # ── 9. Jog Z+ until RECOVERY_DISTANCE_M ─────────────────────────
+        # ── 9. Wait for soft_movement_start before watching motion ───────
+        elif s == _S.STARTING_JOG:
+            if not self._active_future.done():
+                return
+            result = self._take_future_result(
+                self._active_future, 'soft_movement_start')
+            self._active_future = None
+
+            if result is None:
+                self._go_delay_then_check()
+                return
+
+            if not result.success:
+                self.get_logger().warning(
+                    f'soft_movement_start failed: {result.message} — will retry.')
+                self._go_delay_then_check()
+                return
+
+            self.get_logger().info(f'soft_movement_start OK: {result.message}')
+            self._jog_started_at = self.get_clock().now()
+            self._jog_last_poll = None
+            self._jog_state_future = None
+            self._jog_stop_reason = ''
+            self._start_jog_state_poll()
+            self._state = _S.JOGGING
+
+        # ── 10. Jog Z+ until distance or expected safety reclosure ───────
         elif s == _S.JOGGING:
-            distance = self._z_current - self._z_start
+            distance = (
+                self._z_current - self._z_start
+                if self._z_current is not None and self._z_start is not None
+                else 0.0
+            )
+            states = self._consume_jog_state_poll()
             self._throttled_log(
                 'jogging',
                 f'Jogging Z+: {distance*100:.1f} / {RECOVERY_DISTANCE_M*100:.0f} cm')
+
             if distance >= RECOVERY_DISTANCE_M:
                 self.get_logger().info(
                     f'Moved {distance*100:.1f} cm — stopping.')
-                self._pending_jog_stop = self._jog_stop_cli.call_async(Trigger.Request())
-                self._pending_stop = self._stop_motors_cli.call_async(Trigger.Request())
-                self._state = _S.STOPPING_JOG
-
-        # ── 10. Wait for both stop acks ──────────────────────────────────
-        elif s == _S.STOPPING_JOG:
-            if not self._pending_jog_stop.done() or not self._pending_stop.done():
+                self._begin_stop(f'target distance reached ({distance*100:.1f} cm)')
                 return
-            self.get_logger().info('Recovery complete — jog stopped, motors off.')
+
+            if self._seconds_since(self._jog_started_at) >= JOG_TIMEOUT_S:
+                self.get_logger().warning(
+                    f'Jog timeout after {JOG_TIMEOUT_S:.1f} s '
+                    f'(distance={distance*100:.1f} cm).')
+                self._begin_stop('jog timeout')
+                return
+
+            if states is not None:
+                emergency = states.fault_present or not states.drives_on
+                if emergency:
+                    dstates = list(states.drive_states)
+                    armed = (
+                        self._seconds_since(self._jog_started_at) >= JOG_EMERGENCY_ARM_S
+                        or distance >= JOG_MOTION_CONFIRM_M
+                    )
+                    if armed:
+                        self.get_logger().info(
+                            'Expected safety reclosure detected after Z+ jog '
+                            f'(states={dstates}, distance={distance*100:.1f} cm).')
+                        self._begin_stop('expected safety reclosure')
+                    else:
+                        self.get_logger().warning(
+                            'Safety reclosure detected before motion confirmation '
+                            f'(states={dstates}, distance={distance*100:.1f} cm).')
+                        self._begin_stop('early safety reclosure')
+
+        # ── 11. Wait for both stop acks, but do not block forever ─────────
+        elif s == _S.STOPPING_JOG:
+            jog_done = (
+                self._pending_jog_stop is None or self._pending_jog_stop.done())
+            stop_done = (
+                self._pending_stop is None or self._pending_stop.done())
+            timed_out = self._seconds_since(self._stop_start) >= STOP_TIMEOUT_S
+
+            if not (jog_done and stop_done) and not timed_out:
+                return
+
+            if self._pending_jog_stop is not None and jog_done:
+                result = self._take_future_result(
+                    self._pending_jog_stop, 'soft_movement_stop')
+                if result is not None and not result.success:
+                    self.get_logger().warning(
+                        f'soft_movement_stop failed: {result.message}')
+            elif self._pending_jog_stop is not None:
+                self.get_logger().warning('soft_movement_stop timed out.')
+
+            if self._pending_stop is not None and stop_done:
+                result = self._take_future_result(
+                    self._pending_stop, 'stop_motors')
+                if result is not None and not result.success:
+                    self.get_logger().warning(f'stop_motors failed: {result.message}')
+            elif self._pending_stop is not None:
+                self.get_logger().warning('stop_motors timed out.')
+
+            self._pending_jog_stop = None
+            self._pending_stop = None
+            self._restore_z_recovery()
+            self.get_logger().info(
+                f'Recovery complete — {self._jog_stop_reason}; '
+                'jog stopped, motors off.')
             self._state = _S.DONE
-            self.create_timer(0.5, self._shutdown)
+            self._shutdown_timer = self.create_timer(0.5, self._shutdown)
 
     # ------------------------------------------------------------------ #
 
     def _shutdown(self):
+        self._restore_z_recovery()
         self.get_logger().info('AutoZRecoveryNode shutting down.')
         self.destroy_node()
         if rclpy.ok():
@@ -322,12 +548,18 @@ class AutoZRecoveryNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = AutoZRecoveryNode()
+    node = None
     try:
+        node = AutoZRecoveryNode()
         rclpy.spin(node)
     except (KeyboardInterrupt, SystemExit):
         pass
     finally:
+        if node is not None and rclpy.ok():
+            try:
+                node._restore_z_recovery()
+            except Exception:
+                pass
         if rclpy.ok():
             rclpy.shutdown()
 
