@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'ui/MotorsWindow.ui'
+# Form implementation generated from reading ui file 'rehab_gui/rehab_gui/ui/MotorsWindow.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.10
 #
@@ -49,6 +49,7 @@ class Ui_MotorsWindow(object):
         font.setBold(True)
         self.lineEdit_Emergency.setFont(font)
         self.lineEdit_Emergency.setAutoFillBackground(False)
+        self.lineEdit_Emergency.setAlignment(QtCore.Qt.AlignCenter)
         self.lineEdit_Emergency.setReadOnly(True)
         self.lineEdit_Emergency.setObjectName("lineEdit_Emergency")
         self.gridLayout.addWidget(self.lineEdit_Emergency, 0, 1, 2, 1)
@@ -80,6 +81,7 @@ class Ui_MotorsWindow(object):
         font = QtGui.QFont()
         font.setPointSize(8)
         self.plainTextEdit_controller_name.setFont(font)
+        self.plainTextEdit_controller_name.setStyleSheet("background-color: rgb(255, 255, 127);")
         self.plainTextEdit_controller_name.setFrameShape(QtWidgets.QFrame.NoFrame)
         self.plainTextEdit_controller_name.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
         self.plainTextEdit_controller_name.setObjectName("plainTextEdit_controller_name")
@@ -111,21 +113,25 @@ class Ui_MotorsWindow(object):
         self.tab_3 = QtWidgets.QWidget()
         self.tab_3.setObjectName("tab_3")
         self.plainTextEdit_udp_channel = QtWidgets.QPlainTextEdit(self.tab_3)
-        self.plainTextEdit_udp_channel.setGeometry(QtCore.QRect(0, 0, 601, 31))
-        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+        self.plainTextEdit_udp_channel.setGeometry(QtCore.QRect(0, 0, 600, 32))
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Maximum, QtWidgets.QSizePolicy.Minimum)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.plainTextEdit_udp_channel.sizePolicy().hasHeightForWidth())
         self.plainTextEdit_udp_channel.setSizePolicy(sizePolicy)
         font = QtGui.QFont()
         font.setPointSize(8)
+        font.setBold(True)
         self.plainTextEdit_udp_channel.setFont(font)
-        self.plainTextEdit_udp_channel.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self.plainTextEdit_udp_channel.setAutoFillBackground(False)
+        self.plainTextEdit_udp_channel.setStyleSheet("background-color: rgb(255, 255, 127);")
+        self.plainTextEdit_udp_channel.setFrameShape(QtWidgets.QFrame.Box)
+        self.plainTextEdit_udp_channel.setSizeAdjustPolicy(QtWidgets.QAbstractScrollArea.AdjustToContents)
         self.plainTextEdit_udp_channel.setTextInteractionFlags(QtCore.Qt.NoTextInteraction)
         self.plainTextEdit_udp_channel.setObjectName("plainTextEdit_udp_channel")
         self.tableWidget_PLC = QtWidgets.QTableWidget(self.tab_3)
         self.tableWidget_PLC.setEnabled(True)
-        self.tableWidget_PLC.setGeometry(QtCore.QRect(0, 30, 601, 181))
+        self.tableWidget_PLC.setGeometry(QtCore.QRect(0, 33, 600, 181))
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.MinimumExpanding)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -147,6 +153,12 @@ class Ui_MotorsWindow(object):
         self.tableWidget_PLC.horizontalHeader().setVisible(False)
         self.tableWidget_PLC.verticalHeader().setVisible(False)
         self.tableWidget_PLC.verticalHeader().setHighlightSections(False)
+        self.verticalLayoutWidget_2 = QtWidgets.QWidget(self.tab_3)
+        self.verticalLayoutWidget_2.setGeometry(QtCore.QRect(110, 0, 258, 392))
+        self.verticalLayoutWidget_2.setObjectName("verticalLayoutWidget_2")
+        self.verticalLayout_2 = QtWidgets.QVBoxLayout(self.verticalLayoutWidget_2)
+        self.verticalLayout_2.setContentsMargins(0, 0, 0, 0)
+        self.verticalLayout_2.setObjectName("verticalLayout_2")
         self.tabWidget.addTab(self.tab_3, "")
         self.tab_2 = QtWidgets.QWidget()
         self.tab_2.setObjectName("tab_2")
@@ -183,7 +195,7 @@ class Ui_MotorsWindow(object):
         self.tabWidget.addTab(self.tab_2, "")
 
         self.retranslateUi(MotorsWindow)
-        self.tabWidget.setCurrentIndex(1)
+        self.tabWidget.setCurrentIndex(2)
         QtCore.QMetaObject.connectSlotsByName(MotorsWindow)
 
     def retranslateUi(self, MotorsWindow):
@@ -196,5 +208,5 @@ class Ui_MotorsWindow(object):
         self.lineEdit_Emergency.setText(_translate("MotorsWindow", "EMERGENCY"))
         self.pushButton_ResetFaults.setText(_translate("MotorsWindow", "Reset Faults"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab), _translate("MotorsWindow", "Joint States"))
-        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_3), _translate("MotorsWindow", "Page"))
+        self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_3), _translate("MotorsWindow", "PLC Info"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab_2), _translate("MotorsWindow", "Ethercat States"))
