@@ -240,10 +240,10 @@ class MotorsWindow(QtWidgets.QWidget):
                         self.ui.label_SystemState.setStyleSheet("background-color: rgb(255,150,00); color: white")
                 else:
                     if self._last_plc_pending.get("source") == "IDLE":
-                        self.ui.label_SystemState.setText('CoE Drivers and Controllers Bring-up')
+                        self.ui.label_SystemState.setText('CoE Drivers and Controllers Bringing-up')
                         self.ui.label_SystemState.setStyleSheet("background-color: rgb(255,215,00); color: white")
                     elif self._last_plc_pending.get("source") == "IDLE_RECOVERY":
-                        self.ui.label_SystemState.setText('Recovery Bring-up \n !!!SMALL MOVEMENT EXPECTED!!!')
+                        self.ui.label_SystemState.setText('Recovery Bringing-up \n !!!SMALL MOVEMENT EXPECTED!!!')
                         self.ui.label_SystemState.setStyleSheet("background-color: rgb(255,140,00); color: white")
             elif state_key == 'emergency':
                 if self._last_plc_pending is not None\
@@ -255,7 +255,7 @@ class MotorsWindow(QtWidgets.QWidget):
                 self.ui.label_SystemState.setText("MOTORS FAULT")
                 self.ui.label_SystemState.setStyleSheet("background-color: red; color: white")
             elif state_key == 'no_mode':
-                self.ui.label_SystemState.setText("CoE Drivers with No Mode Set")
+                self.ui.label_SystemState.setText("CoE Drivers Up with No Mode Set")
                 self.ui.label_SystemState.setStyleSheet("background-color: rgb(255,140,0); color: white")
             elif state_key == 'motors_on':
                 self.ui.label_SystemState.setText("Warning \n Motors On")

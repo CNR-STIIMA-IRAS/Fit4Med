@@ -208,7 +208,7 @@ class Ui_MotorsWindow(object):
         self.pushButton_ResetFaults.setObjectName("pushButton_ResetFaults")
         self.gridLayout.addWidget(self.frame, 2, 0, 1, 1)
         self.gridLayout.setColumnStretch(0, 1)
-        self.gridLayout.setColumnStretch(1, 3)
+        self.gridLayout.setColumnStretch(1, 4)
 
         self.retranslateUi(MotorsWindow)
         self.tabWidget.setCurrentIndex(0)
