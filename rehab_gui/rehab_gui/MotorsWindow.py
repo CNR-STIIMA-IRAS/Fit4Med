@@ -229,38 +229,38 @@ class MotorsWindow(QtWidgets.QWidget):
             if state_key == 'disconnected':
                 if self._last_plc_pending is None:
                     if self._last_plc_state in ("IDLE",):
-                        self.ui.plainTextEdit_SystemState.setText('Turn the Key to Start')
+                        self.ui.plainTextEdit_SystemState.setPlainText('Turn the Key to Start')
                         self.ui.plainTextEdit_SystemState.setStyleSheet("background-color: rgb(0,128,0); color: white")
                     elif self._last_plc_state in ("IDLE_RECOVERY",):
-                        self.ui.plainTextEdit_SystemState.setText('Turn the Key to Start Recovery  \n !!!SMALL MOVEMENT EXPECTED!!!')
+                        self.ui.plainTextEdit_SystemState.setPlainText('Turn the Key to Start Recovery  \n !!!SMALL MOVEMENT EXPECTED!!!')
                         self.ui.plainTextEdit_SystemState.setStyleSheet("background-color: rgb(255,150,00); color: white")
                 else:
                     if self._last_plc_pending.get("source") == "IDLE":
-                        self.ui.plainTextEdit_SystemState.setText('CoE Drivers and Controllers Bring-up')
+                        self.ui.plainTextEdit_SystemState.setPlainText('CoE Drivers and Controllers Bring-up')
                         self.ui.plainTextEdit_SystemState.setStyleSheet("background-color: rgb(255,215,00); color: white")
                     elif self._last_plc_pending.get("source") == "IDLE_RECOVERY":
-                        self.ui.plainTextEdit_SystemState.setText('Recovery Bring-up \n !!!SMALL MOVEMENT EXPECTED!!!')
+                        self.ui.plainTextEdit_SystemState.setPlainText('Recovery Bring-up \n !!!SMALL MOVEMENT EXPECTED!!!')
                         self.ui.plainTextEdit_SystemState.setStyleSheet("background-color: rgb(255,140,00); color: white")
             elif state_key == 'emergency':
                 if self._last_plc_pending is not None\
                     and self._last_plc_pending.get("source") in ("IDLE", "IDLE_RECOVERY"):
                     pass
-                self.ui.plainTextEdit_SystemState.setText('!!! Emergency !!!')
+                self.ui.plainTextEdit_SystemState.setPlainText('!!! Emergency !!!')
                 self.ui.plainTextEdit_SystemState.setStyleSheet("background-color: red; color: white")
             elif state_key == 'fault':
-                self.ui.plainTextEdit_SystemState.setText("MOTORS FAULT")
+                self.ui.plainTextEdit_SystemState.setPlainText("MOTORS FAULT")
                 self.ui.plainTextEdit_SystemState.setStyleSheet("background-color: red; color: white")
             elif state_key == 'no_mode':
-                self.ui.plainTextEdit_SystemState.setText("CoE Drivers with No Mode Set")
+                self.ui.plainTextEdit_SystemState.setPlainText("CoE Drivers with No Mode Set")
                 self.ui.plainTextEdit_SystemState.setStyleSheet("background-color: rgb(255,140,0); color: white")
             elif state_key == 'motors_on':
-                self.ui.plainTextEdit_SystemState.setText("Warning \n Motors On")
+                self.ui.plainTextEdit_SystemState.setPlainText("Warning \n Motors On")
                 self.ui.plainTextEdit_SystemState.setStyleSheet("background-color: rgb(255,215,00); color: white")
             elif state_key == 'suspended':
-                self.ui.plainTextEdit_SystemState.setText("SUSPENSION STATE")
+                self.ui.plainTextEdit_SystemState.setPlainText("SUSPENSION STATE")
                 self.ui.plainTextEdit_SystemState.setStyleSheet("background-color: rgb(255,140,0); color: white")
             else:
-                self.ui.plainTextEdit_SystemState.setText("Motors Off \n State OK")
+                self.ui.plainTextEdit_SystemState.setPlainText("Motors Off \n State OK")
                 self.ui.plainTextEdit_SystemState.setStyleSheet("background-color: green; color: white")
 
         if state_key not in ('disconnected', 'emergency'):
