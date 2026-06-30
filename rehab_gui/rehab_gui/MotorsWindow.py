@@ -273,7 +273,10 @@ class MotorsWindow(QtWidgets.QWidget):
         ctrl_name = self.ROS.getCurrentControllerName()
         if ctrl_name != self._last_controller_name:
             self._last_controller_name = ctrl_name
-            self.ui.plainTextEdit_controller_name.setPlainText("CTRL: "+ ctrl_name)
+            if ctrl_name is None:
+                self.ui.plainTextEdit_controller_name.setPlainText("CTRL: None")
+            else:
+                self.ui.plainTextEdit_controller_name.setPlainText("CTRL: "+ ctrl_name)
 
         # Update table items in-place (setText instead of creating new QTableWidgetItems)
         for i, name in enumerate(self.ROS.getJointNames()):
