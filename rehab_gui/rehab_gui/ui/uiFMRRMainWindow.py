@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'FMRRMainWindow.ui'
+# Form implementation generated from reading ui file 'rehab_gui/rehab_gui/ui/FMRRMainWindow.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.10
 #
@@ -14,7 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_FMRRMainWindow(object):
     def setupUi(self, FMRRMainWindow):
         FMRRMainWindow.setObjectName("FMRRMainWindow")
-        FMRRMainWindow.resize(600, 900)
+        FMRRMainWindow.resize(600, 930)
         self.tabWidget = QtWidgets.QTabWidget(FMRRMainWindow)
         self.tabWidget.setGeometry(QtCore.QRect(0, 0, 600, 600))
         font = QtGui.QFont()
@@ -51,13 +51,13 @@ class Ui_FMRRMainWindow(object):
         self.verticalLayout_TrainingProtocol.setObjectName("verticalLayout_TrainingProtocol")
         self.tabWidget.addTab(self.tabTrainingProtocol, "")
         self.verticalLayoutWidget = QtWidgets.QWidget(FMRRMainWindow)
-        self.verticalLayoutWidget.setGeometry(QtCore.QRect(0, 610, 601, 261))
+        self.verticalLayoutWidget.setGeometry(QtCore.QRect(0, 610, 601, 281))
         self.verticalLayoutWidget.setObjectName("verticalLayoutWidget")
         self.verticalLayout_MotorsManagement = QtWidgets.QVBoxLayout(self.verticalLayoutWidget)
         self.verticalLayout_MotorsManagement.setContentsMargins(0, 0, 0, 0)
         self.verticalLayout_MotorsManagement.setObjectName("verticalLayout_MotorsManagement")
         self.pushButton_CloseProgram = QtWidgets.QPushButton(FMRRMainWindow)
-        self.pushButton_CloseProgram.setGeometry(QtCore.QRect(500, 870, 80, 25))
+        self.pushButton_CloseProgram.setGeometry(QtCore.QRect(490, 900, 80, 25))
         icon = QtGui.QIcon.fromTheme("application-exit")
         self.pushButton_CloseProgram.setIcon(icon)
         self.pushButton_CloseProgram.setAutoDefault(True)

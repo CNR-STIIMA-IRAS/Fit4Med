@@ -76,6 +76,7 @@ class Ui_MotorsWindow(object):
         self.plainTextEdit_controller_name.setMaximumSize(QtCore.QSize(16777215, 32))
         font = QtGui.QFont()
         font.setPointSize(8)
+        font.setBold(True)
         self.plainTextEdit_controller_name.setFont(font)
         self.plainTextEdit_controller_name.setStyleSheet("background-color: rgb(255, 255, 127);")
         self.plainTextEdit_controller_name.setFrameShape(QtWidgets.QFrame.NoFrame)
