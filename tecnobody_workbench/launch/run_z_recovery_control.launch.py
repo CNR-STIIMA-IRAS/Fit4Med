@@ -172,10 +172,10 @@ def generate_launch_description():
     )
 
     rosbridge_pkg = FindPackageShare('tecnobody_workbench').find('tecnobody_workbench')
-    xml_launch = os.path.join(rosbridge_pkg, 'launch', 'rosbridge_websocket_launch.xml')
-    rosbridge_launch = IncludeLaunchDescription(
-        AnyLaunchDescriptionSource(xml_launch)
-    )
+    # xml_launch = os.path.join(rosbridge_pkg, 'launch', 'rosbridge_websocket_launch.xml')
+    # rosbridge_launch = IncludeLaunchDescription(
+    #     AnyLaunchDescriptionSource(xml_launch)
+    # )
 
     ld = LaunchDescription()
     ld.add_action(declare_auto_recover)
@@ -186,5 +186,5 @@ def generate_launch_description():
     ld.add_action(after_forward_vel)
     ld.add_action(after_fsb)
     ld.add_action(controller_unspawner)
-    ld.add_action(rosbridge_launch)
+    #ld.add_action(rosbridge_launch)
     return ld
