@@ -6,7 +6,7 @@ from typing import Dict
 
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import QTimer, Qt
 
 from ui.uiMotorsWindow import Ui_MotorsWindow
 from RosCommunicationManager import RosCommunicationManager
@@ -28,7 +28,9 @@ class MotorsWindow(QtWidgets.QWidget):
 
         
         self.ui.textEdit_SystemState.setReadOnly(True)
-        self.ui.textEdit_SystemState.setAlignment(QtCore.Qt.AlignCenter)
+        self.ui.textEdit_SystemState.setAlignment(
+            Qt.Alignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
+        )
 
 
         # Create a QTableWidget
