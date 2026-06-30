@@ -227,15 +227,20 @@ class MotorsWindow(QtWidgets.QWidget):
         if state_key != self._last_emergency_state:
             self._last_emergency_state = state_key
             if state_key == 'disconnected':
-                if (
-                    self._last_plc_pending is None
-                    and self._last_plc_state in ("IDLE_RECOVERY", "IDLE")
-                ):
-                    self.ui.lineEdit_Emergency.setText('PLC Ready -- Turn the Key to Start')
-                    self.ui.lineEdit_Emergency.setStyleSheet("background-color: rgb(0,128,0); color: white")
+                if self._last_plc_pending is None:
+                    if self._last_plc_state in ("IDLE",):
+                        self.ui.lineEdit_Emergency.setText('Turn the Key to Start')
+                        self.ui.lineEdit_Emergency.setStyleSheet("background-color: rgb(0,128,0); color: white")
+                    elif self._last_plc_state in ("IDLE_RECOVERY",):
+                        self.ui.lineEdit_Emergency.setText('Turn the Key to Start Recovery (SMALL MOVEMENT EXPECTED)')
+                        self.ui.lineEdit_Emergency.setStyleSheet("background-color: rgb(255,150,00); color: white")
                 else:
-                    self.ui.lineEdit_Emergency.setText('Disconnected')
-                    self.ui.lineEdit_Emergency.setStyleSheet("background-color: rgb(255,215,00); color: white")
+                    if self._last_plc_pending.get("source") == "IDLE":
+                        self.ui.lineEdit_Emergency.setText('CoE Drivers and Controller Bring-up')
+                        self.ui.lineEdit_Emergency.setStyleSheet("background-color: rgb(255,215,00); color: white")
+                    elif self._last_plc_pending.get("source") == "IDLE_RECOVERY":
+                        self.ui.lineEdit_Emergency.setText('Recovery Bring-up (!!! SMALL MOVEMENT EXPECTED!!!)')
+                        self.ui.lineEdit_Emergency.setStyleSheet("background-color: rgb(255,140,00); color: white")
             elif state_key == 'emergency':
                 self.ui.lineEdit_Emergency.setText('!!! Emergency !!!')
                 self.ui.lineEdit_Emergency.setStyleSheet("background-color: red; color: white")
@@ -243,7 +248,7 @@ class MotorsWindow(QtWidgets.QWidget):
                 self.ui.lineEdit_Emergency.setText("MOTORS FAULT")
                 self.ui.lineEdit_Emergency.setStyleSheet("background-color: red; color: white")
             elif state_key == 'no_mode':
-                self.ui.lineEdit_Emergency.setText("No Mode Set")
+                self.ui.lineEdit_Emergency.setText("CoE Drivers with No Mode Set")
                 self.ui.lineEdit_Emergency.setStyleSheet("background-color: rgb(255,140,0); color: white")
             elif state_key == 'motors_on':
                 self.ui.lineEdit_Emergency.setText("Warning \n Motors On")

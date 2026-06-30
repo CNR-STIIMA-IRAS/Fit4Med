@@ -125,9 +125,6 @@ class UdpCommunicationManager(QObject):
 
     start_ros_communication : pyqtSignal = pyqtSignal()
     stop_ros_communication : pyqtSignal = pyqtSignal()
-    z_recovery_start_signal : pyqtSignal = pyqtSignal()
-    z_recovery_mode_signal : pyqtSignal = pyqtSignal()
-    z_recovery_done_signal : pyqtSignal = pyqtSignal()
     udp_message_received : pyqtSignal = pyqtSignal(bytes, tuple)
     plc_status_payload_received : pyqtSignal = pyqtSignal(dict)
 
@@ -136,9 +133,6 @@ class UdpCommunicationManager(QObject):
 
         self.start_ros_communication_emitted  : bool = False
         self.stop_ros_communication_emitted  : bool = False
-        self.z_recovery_start_signal_emitted : bool = False
-        self.z_recovery_mode_signal_emitted : bool = False
-        self.z_recovery_done_signal_emitted : bool = False
         self._ros_communication_active_checker: Optional[Callable[[], bool]] = None
 
         self.remote_ip = remote_ip
@@ -251,16 +245,7 @@ class UdpCommunicationManager(QObject):
 
         if state in ('IDLE', 'IDLE_RECOVERY', 'ERROR', 'RECOVERED') and pending is None:
             if not self.stop_ros_communication_emitted:
-                self.requestRosCommunicationStop("UDP STOP request received.")
-            if state == 'IDLE_RECOVERY' and not self.z_recovery_start_signal_emitted:
-                self.z_recovery_start_signal.emit()
-                self.z_recovery_start_signal_emitted = True
-                self.z_recovery_done_signal_emitted = False
-            elif state == 'RECOVERED' and not self.z_recovery_done_signal_emitted:
-                self.z_recovery_done_signal.emit()
-                self.z_recovery_done_signal_emitted = True
-                self.z_recovery_mode_signal_emitted = False
-                self.z_recovery_start_signal_emitted = False
+                self.requestRosCommunicationStop("Request from PLC via UDP to stop the ROS communication received.")
 
         elif state in ('RUNNING', 'RUNNING_RECOVERY') and pending is None:
             self.stop_ros_communication_emitted = False
@@ -275,10 +260,6 @@ class UdpCommunicationManager(QObject):
             if not self.start_ros_communication_emitted:
                 self.start_ros_communication_emitted = True
                 self.start_ros_communication.emit()
-                if state == 'RUNNING_RECOVERY' and not self.z_recovery_mode_signal_emitted:
-                    self.z_recovery_mode_signal.emit()
-                    self.z_recovery_mode_signal_emitted = True
-                    self.z_recovery_done_signal_emitted = False
 
 def main(args=None): #type: ignore
     # TODO
