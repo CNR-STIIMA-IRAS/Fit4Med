@@ -35,6 +35,7 @@ class Transition(Generic[StateT]):
     guard: Optional[Callable[[], bool]] = None
     action: Optional[Callable[[], None]] = None
     success_check: Optional[Callable[[], bool]] = None
+    timeout_action: Optional[Callable[[], None]] = None
     max_steps: int = 1
     failure_destination: Optional[StateT] = None
     msg: str = ""
@@ -79,6 +80,7 @@ class StateMachine(Generic[StateT, EventT]):
         guard: Optional[Callable[[], bool]] = None,
         action: Optional[Callable[[], None]] = None,
         success_check: Optional[Callable[[], bool]] = None,
+        timeout_action: Optional[Callable[[], None]] = None,
         max_steps: int = 1,
         failure_destination: Optional[StateT] = None,
     ) -> None:
@@ -90,6 +92,7 @@ class StateMachine(Generic[StateT, EventT]):
             guard=guard,
             action=action,
             success_check=success_check,
+            timeout_action=timeout_action,
             max_steps=max_steps,
             failure_destination=failure_destination,
             msg=msg
@@ -178,11 +181,22 @@ class StateMachine(Generic[StateT, EventT]):
         if transition.failure_destination is not None:
             self.state = transition.failure_destination
 
-        raise TransitionTimeout(
+        timeout_error = TransitionTimeout(
             f"{pending.source.name} --{pending.event.name}--> "
             f"{transition.destination.name} failed after "
             f"{transition.max_steps} steps"
         )
+        if transition.timeout_action is not None:
+            try:
+                transition.timeout_action()
+            except Exception as e:
+                _msg = f"Transition timeout action failed: {e}"
+                if self.logger:
+                    self.logger.error(_msg)  # type: ignore
+                else:
+                    print(_msg)
+
+        raise timeout_error
 
     def cancel_pending(self) -> None:
         self.pending = None

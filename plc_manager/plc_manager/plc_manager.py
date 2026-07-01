@@ -92,7 +92,6 @@ class PLCControllerInterface(Node):
             self,
             service_group=self.service_group,
             timer_group=self.timer_group,
-            publish_command=self.plc_commands.publish_command,
         )
 
 
@@ -145,7 +144,33 @@ class PLCControllerInterface(Node):
         return self.ethercat.startup_status_ok()
 
     def _ready_to_start(self) -> bool:
-        return self._ros_gui_disconnected() and self._ethercat_slaves_status_ok()
+        return self._ros_gui_disconnected() \
+            and self._ethercat_slaves_status_ok()
+
+    def _bringup_env(self) -> None:
+        self.environment.bringup_env()
+        self.plc_commands.wire_endstroke_to_emergency_chain()
+
+    def _bringup_recovery_env(self) -> None:
+        self.environment.bringup_recovery_env()
+        self.plc_commands.detach_endstroke_from_emergency_chain()
+
+    def _handle_idle_stop(self) -> None:
+        self.environment.handle_idle_stop()
+        self.plc_commands.raise_sw_estop()
+        self.plc_commands.set_automatic_mode()
+
+    def _kill_env(self) -> None:
+        self.environment.kill_env()
+        self.plc_commands.set_automatic_mode()
+        self.plc_commands.brake_enable()
+        self.plc_commands.wire_endstroke_to_emergency_chain()
+
+    def _kill_recovery_env(self) -> None:
+        self.environment.kill_recovery_env()
+        self.plc_commands.set_automatic_mode()
+        self.plc_commands.brake_enable()
+        self.plc_commands.wire_endstroke_to_emergency_chain()
 
     def _get_z_limit_switch_state(self) -> bool:
         z_limit_active = False
@@ -170,13 +195,8 @@ class PLCControllerInterface(Node):
         if self.estop_cached == EStopState.OK and estop_value == EStopState.OK:
             if self.sw_estop_cached != sw_estop_value:
                 if sw_estop_value == EStopState.EMERGENCY:
-                    self.plc_commands.publish_command('PLC_node/estop', 0)              # SW Emergency stop
-                                                                                        # => Open the Emergency stop 
-                                                                                        #   chain, the next iteration
-                                                                                        #   will see the 
-                                                                                        #   estop_value = EMERGENCY and 
-                                                                                        #   trigger the STOP event
-                    self.plc_commands.publish_command('PLC_node/manual_mode', 0)        # Return to automatic
+                    self.plc_commands.raise_sw_estop()
+                    self.plc_commands.set_automatic_mode()
                     self.get_logger().info(bc.FAIL + 'Raised a SW ESTOP!' + bc.ENDC)    # type: ignore
                 self.sw_estop_cached = sw_estop_value
             return Event.NONE
@@ -208,8 +228,8 @@ class PLCControllerInterface(Node):
                 self.get_logger().error(f"Guard condition failed: {e}") #type: ignore
                 if event == Event.START:
                     self.environment.startup_cleanup_action = None
-                    self.plc_commands.publish_command('PLC_node/estop', 0)
-                    self.plc_commands.publish_command('PLC_node/manual_mode', 0)
+                    self.plc_commands.raise_sw_estop()
+                    self.plc_commands.set_automatic_mode()
                     self.estop_cached = ESTOP
                     self.sw_estop_cached = SW_ESTOP
             
@@ -234,7 +254,6 @@ class PLCControllerInterface(Node):
                 self.get_logger().error(f"Guard condition failed: {e}") #type: ignore
             except TransitionTimeout as e:
                 self.get_logger().error(f"Timeout transition: {e}") #type: ignore
-                self.environment.cleanup_timed_out_transition(pending)
 
     def request_shutdown_stop(self) -> None:
         if self.shutdown_stop_requested:
@@ -244,7 +263,7 @@ class PLCControllerInterface(Node):
         self.get_logger().warning( #type: ignore
             "Shutdown requested: opening PLC safety chain."
         )
-        self.plc_commands.publish_command('PLC_node/estop', 0)
+        self.plc_commands.raise_sw_estop()
 
     def shutdown_safe_to_exit(self) -> bool:
         return (
@@ -265,7 +284,7 @@ class PLCControllerInterface(Node):
         self.get_logger().warning( #type: ignore
             "Shutdown complete: closing PLC safety chain before exit."
         )
-        self.plc_commands.publish_command('PLC_node/estop', 1)
+        self.plc_commands.clear_sw_estop()
 
     def state_callback(self, msg: PlcStates) -> None:
         # ========== Acquire lock to prevent concurrent execution ==========
@@ -316,7 +335,8 @@ class PLCControllerInterface(Node):
                         throttle_duration_sec=5.0
                     )
 
-                if self.fsm.state in (State.RUNNING, State.RUNNING_RECOVERY) and self._ros_gui_connection_failed():
+                if self.fsm.state in (State.RUNNING, State.RUNNING_RECOVERY)\
+                and self._ros_gui_connection_failed():
                     self.client.clear_last_message()
                     self.fsm.trigger(Event.FAIL)
 

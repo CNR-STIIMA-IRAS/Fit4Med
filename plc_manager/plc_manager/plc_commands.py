@@ -28,12 +28,7 @@ class PlcCommandPublisher:
         self.plc_outputs.values = [0] * 10
         self.plc_outputs.interface_names = list(PLC_COMMAND_INTERFACE_NAMES)
 
-    def publish_bringup_commands(self) -> None:
-        self.publish_command('PLC_node/estop', 1)
-        self.publish_command('PLC_node/z_recovery', 1)
-        self.publish_command('PLC_node/force_sensors_pwr', 1)
-
-    def publish_command(self, name: str, value: int) -> None:
+    def _publish_command(self, name: str, value: int) -> None:
         if name in self.plc_outputs.interface_names:  # type: ignore
             idx = self.plc_outputs.interface_names.index(name)  # type: ignore
             self.plc_outputs.values[idx] = value  # type: ignore
@@ -43,3 +38,53 @@ class PlcCommandPublisher:
             self.logger.warn(  # type: ignore
                 f"Interface name '{name}' not found in command message."
             )
+
+    def set_automatic_mode(self) -> None:
+        self._publish_command('PLC_node/manual_mode', 0)
+
+    def set_manual_mode(self) -> None:
+        self._publish_command('PLC_node/manual_mode', 1)
+
+    def brake_enable(self) -> None:
+        self._publish_command('PLC_node/brake_disable', 0)
+
+    def brake_disable(self) -> None:
+        self._publish_command('PLC_node/brake_disable', 1)
+
+    def wire_endstroke_to_emergency_chain(self) -> None:
+        """
+        Wire the end-stroke limit switch to the emergency chain.
+        This is done by setting the 'z_recovery' command to 0, which
+        enables the end-stroke switch to trigger an emergency stop.
+        """
+        self._publish_command('PLC_node/z_recovery', 1)
+
+    def detach_endstroke_from_emergency_chain(self) -> None:
+        """
+        Detach the end-stroke limit switch from the emergency chain.
+        This is done by setting the 'z_recovery' command to 0, which
+        disables the end-stroke switch from triggering an emergency stop.
+        """
+        self._publish_command('PLC_node/z_recovery', 0)
+
+    def raise_sw_estop(self) -> None:
+        """
+        SW Emergency stop
+            =>  Open the Emergency stop chain, the next iteration
+                will see the estop_value = EMERGENCY and trigger the STOP event
+        """
+        self._publish_command('PLC_node/estop', 0)
+
+    def clear_sw_estop(self) -> None:
+        self._publish_command('PLC_node/estop', 1)
+
+    def power_force_sensors(self) -> None:
+        self._publish_command('PLC_node/force_sensors_pwr', 1)
+
+    def cut_power_force_sensors(self) -> None:
+        self._publish_command('PLC_node/force_sensors_pwr', 0)
+
+    def publish_bringup_commands(self) -> None:
+        self.clear_sw_estop()
+        self.wire_endstroke_to_emergency_chain()
+        self.power_force_sensors()

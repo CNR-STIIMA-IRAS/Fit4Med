@@ -14,7 +14,7 @@ from tecnobody_workbench_utils.utils import (
     stop_launch_environment,
 )
 
-from plc_manager.plc_types import Event, State
+from plc_manager.plc_types import State
 
 
 class EnvironmentManager:
@@ -27,10 +27,8 @@ class EnvironmentManager:
         node,
         service_group,
         timer_group,
-        publish_command: Callable[[str, int], None],
     ) -> None:
         self.node = node
-        self.publish_command = publish_command
         self.startup_cleanup_action: Callable[[], None] | None = None
         self.node.declare_parameter('environment_process_poll_period', 0.5)
         self._process_cache_lock = threading.Lock()
@@ -153,7 +151,7 @@ class EnvironmentManager:
     def bringup_env(self) -> None:
         self.startup_cleanup_action = self.kill_env
         self.platform_controller_readiness_monitor.reset()
-        self.publish_command('PLC_node/z_recovery', 1)
+
         subprocess.Popen(
             [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"],
             shell=True,
@@ -168,7 +166,7 @@ class EnvironmentManager:
     def bringup_recovery_env(self) -> None:
         self.startup_cleanup_action = self.kill_recovery_env
         self.recovery_controller_status_monitor.reset()
-        self.publish_command('PLC_node/z_recovery', 0)
+
         subprocess.Popen(
             [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env_z_recovery.sh"],
             shell=True,
@@ -181,10 +179,6 @@ class EnvironmentManager:
             executable="/bin/bash"
         )
 
-    def reset_sw_estop(self) -> None:
-        self.publish_command('PLC_node/estop', 1)
-        self.publish_command('PLC_node/manual_mode', 0)
-
     def handle_idle_stop(self) -> None:
         cleanup_action = self.startup_cleanup_action
         self.startup_cleanup_action = None
@@ -193,13 +187,9 @@ class EnvironmentManager:
             cleanup_action()
             return
 
-        self.reset_sw_estop()
-
     def kill_recovery_env(self) -> None:
         self.startup_cleanup_action = None
         self.recovery_controller_status_monitor.reset()
-        self.publish_command('PLC_node/brake_disable', 0)
-        self.publish_command('PLC_node/z_recovery', 1)
 
         stop_launch_environment(
             "run_z_recovery_control.launch.py",
@@ -215,8 +205,6 @@ class EnvironmentManager:
     def kill_env(self) -> None:
         self.startup_cleanup_action = None
         self.platform_controller_readiness_monitor.reset()
-        self.publish_command('PLC_node/brake_disable', 0)
-        self.publish_command('PLC_node/estop', 1)
 
         stop_launch_environment(
             "run_platform_control.launch.py",
@@ -228,21 +216,3 @@ class EnvironmentManager:
             "run_rosbridge.launch",
             9090
         )
-
-    def cleanup_timed_out_transition(
-        self,
-        pending: PendingTransition | None,
-    ) -> None:
-        if pending is None:
-            return
-
-        if pending.event == Event.START:
-            if pending.source == State.IDLE:
-                self.kill_env()
-            elif pending.source == State.IDLE_RECOVERY:
-                self.kill_recovery_env()
-        elif pending.event == Event.STOP or pending.event == Event.FAIL:
-            if pending.source == State.RUNNING:
-                self.kill_env()
-            elif pending.source == State.RUNNING_RECOVERY:
-                self.kill_recovery_env()
