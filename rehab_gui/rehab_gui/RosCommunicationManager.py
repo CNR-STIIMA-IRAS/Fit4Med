@@ -242,7 +242,7 @@ class RosCommunicationManager(QObject):
         self.ROS.publish_plc_command(['PLC_node/manual_mode'], [0])
         return self.ROS.turn_off_motors() if self.areMotorsOn() else True
 
-    def setModeOfOperation(self, mode: int) -> bool:
+    def setExerciseType(self, mode: int) -> bool:
         if not self.rOk():
             return False
         self.ROS.publish_plc_command(['PLC_node/mode_of_operation'], [mode])

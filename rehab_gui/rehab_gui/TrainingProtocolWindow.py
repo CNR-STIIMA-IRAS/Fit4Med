@@ -16,6 +16,7 @@ from rich.traceback import install
 install(show_locals=True)
 
 from ui.uiTrainingProtocolWindow import Ui_TrainingProtocolWindow
+from RehabilitationMovementWindow import ExerciseType
 from RosCommunicationManager import RosCommunicationManager
 from copy import deepcopy
 
@@ -243,23 +244,21 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
                 self.ui.radioButton_SideLeft.blockSignals(False)
                 self.ui.radioButton_SideRight.blockSignals(False)
 
-        movement_type = self.ui_main.rehabMovementWindow.TypeOfMovement
+        movement_type: ExerciseType = self.ui_main.rehabMovementWindow.TypeOfMovement
         if movement_type != self._last_type:
             self._last_type = movement_type
-            if movement_type == 1:
+            if movement_type == ExerciseType.REACHING:
                 self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(True)
                 self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(True)
                 self.ui.radioButton_TypeOfExercise_Reaching.setChecked(True)
                 self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(False)
                 self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(False)
-                self.ROS.setModeOfOperation(2) # 2: switch sensor
-            elif movement_type == 2:
+            elif movement_type == ExerciseType.HAND_TO_MOUTH:
                 self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(True)
                 self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(True)
                 self.ui.radioButton_TypeOfExercise_HandtoMouth.setChecked(True)
                 self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(False)
                 self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(False)
-                self.ROS.setModeOfOperation(1) # 1: proximity sensor
             else:
                 self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(True)
                 self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(True)
@@ -267,7 +266,6 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
                 self.ui.radioButton_TypeOfExercise_HandtoMouth.setChecked(False)
                 self.ui.radioButton_TypeOfExercise_Reaching.blockSignals(False)
                 self.ui.radioButton_TypeOfExercise_HandtoMouth.blockSignals(False)
-                self.ROS.setModeOfOperation(0)
 
         if self.NumberExecMovements != self._last_movement_count:
             self._last_movement_count = self.NumberExecMovements
@@ -436,6 +434,12 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
             
     def startStopTraining(self, start: bool):
         if start:
+            if self.ui_main.rehabMovementWindow.TypeOfMovement == ExerciseType.REACHING:
+                self.ROS.setExerciseType(2) # 2: switch sensor
+            elif self.ui_main.rehabMovementWindow.TypeOfMovement == ExerciseType.HAND_TO_MOUTH:
+                self.ROS.setExerciseType(1) # 1: proximity sensor
+            else:
+                self.ROS.setExerciseType(0) # 0: no sensor
             self.ui.pushButton_PauseTrainig.setEnabled(True)
             self.ui.pushButton_STARTtrainig.setStyleSheet("background-color: rgb(255, 69, 0); color: black;")
             self.ui.pushButton_STARTtrainig.setText("STOP TRAINING")

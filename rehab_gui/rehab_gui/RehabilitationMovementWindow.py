@@ -9,6 +9,7 @@
 #
 # WARNING! All changes made in this file will be lost!
 
+from enum import Enum
 import sys
 from pathlib import Path
 from PyQt5 import QtWidgets, QtCore
@@ -21,6 +22,11 @@ from yaml.loader import SafeLoader
 import numpy as np
 from copy import deepcopy
 #MC Classes/methods
+
+class ExerciseType(Enum):
+    NONE = 0
+    REACHING = 1
+    HAND_TO_MOUTH = 2
 
 class SimpleFileDialog(QFileDialog):
     def __init__(self, *args, **kwargs):
@@ -53,7 +59,7 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
         self.ui.setupUi(self)
         self.main_app = main_app
         self.SideOfMovement = 0 
-        self.TypeOfMovement = 0
+        self.TypeOfMovement : ExerciseType = ExerciseType.NONE
         self.vel_profile = 2
 
         self.main_app.movement_loaded = 0
@@ -130,11 +136,11 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
             self.SideOfMovement = 0
               
         if self.ui.radioButton_TypeOfExercise_Reaching.isChecked() == True:
-            self.TypeOfMovement = 1
+            self.TypeOfMovement = ExerciseType.REACHING
         elif self.ui.radioButton_TypeOfExercise_HandtoMouth.isChecked() == True:
-            self.TypeOfMovement = 2
+            self.TypeOfMovement = ExerciseType.HAND_TO_MOUTH
         else:
-            self.TypeOfMovement = 0
+            self.TypeOfMovement = ExerciseType.NONE
             
         x_begin = 0.0        
         y_begin = 0.0
@@ -161,13 +167,13 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
         _numPoints = numSamples * 1000 #lenght of oversampled vectors
         v1 = np.zeros( (numSamples,), dtype = float, order='C' )    
 
-        if self.TypeOfMovement == 1:  # Reaching (rectilinear trajectory)
+        if self.TypeOfMovement == ExerciseType.REACHING:  # Reaching (rectilinear trajectory)
             x = np.linspace( x1, x2, _numPoints)
             y = np.linspace( y1, y2, _numPoints )
             z = np.linspace( z1, z2, _numPoints )
             L = L12
             _ContinueCreateMovement = 1
-        elif self.TypeOfMovement == 2:    # Hand to Mouth
+        elif self.TypeOfMovement == ExerciseType.HAND_TO_MOUTH:    # Hand to Mouth
             filename = QtWidgets.QFileDialog.getOpenFileName(None, "Load Movement", MovementsPath, "*.yaml")
             if bool(filename[0]):
                 print('This is the filename of the loaded movement:')
@@ -406,7 +412,7 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
             TrjYamlData = dict()
     #        
             a_movement_definition = dict()
-            a_movement_definition['type']= [ self.TypeOfMovement ]
+            a_movement_definition['type']= [ self.TypeOfMovement.value ]
             a_movement_definition['side'] = [ self.SideOfMovement ]
             a_movement_definition['vel_profile'] = [ self.vel_profile ]
             a_movement_definition['max_velocity'] = [ float(Vmax*100) ]
@@ -523,7 +529,7 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
                 #####                                                                                                    #####
                 ############################################################################################################## 
 
-                self.TypeOfMovement = self.TrjYamlData.get("a_movement_definition").get("type")[0]           
+                self.TypeOfMovement = ExerciseType(self.TrjYamlData.get("a_movement_definition").get("type")[0])
                 self.SideOfMovement = self.TrjYamlData.get("a_movement_definition").get("side")[0]
                 self.vel_profile = self.TrjYamlData.get("a_movement_definition").get("vel_profile")[0]            
                 MovTime =  self.TrjYamlData.get("a_movement_definition").get("total_time")[0]
@@ -534,11 +540,11 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
                 self.main_app.Vmax = Vmax
                 self.main_app.PhaseDuration = 2* MovTime
 
-                if self.TypeOfMovement == 1:
+                if self.TypeOfMovement == ExerciseType.REACHING:
                     self.ui.radioButton_TypeOfExercise_Reaching.setChecked(True)
                     print('Type of movements is ''Reaching'' ')
                     pass
-                elif self.TypeOfMovement == 2:
+                elif self.TypeOfMovement == ExerciseType.HAND_TO_MOUTH:
                     self.ui.radioButton_TypeOfExercise_HandtoMouth.setChecked(True)
                     print('Type of movements is ''Hand to Mouth'' ')
                     pass
