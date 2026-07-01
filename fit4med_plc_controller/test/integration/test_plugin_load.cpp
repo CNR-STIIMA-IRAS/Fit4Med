@@ -13,7 +13,7 @@ TEST(PlcControllerPlugin, LoadsControllerInterfacePlugin)
   pluginlib::ClassLoader<controller_interface::ControllerInterface> loader(
     "controller_interface", "controller_interface::ControllerInterface");
 
-  auto controller = loader.createSharedInstance("plc_controller/PLCController");
+  auto controller = loader.createSharedInstance("fit4med_plc_controller/PLCController");
   ASSERT_NE(controller, nullptr);
 
   const auto command_config = controller->command_interface_configuration();

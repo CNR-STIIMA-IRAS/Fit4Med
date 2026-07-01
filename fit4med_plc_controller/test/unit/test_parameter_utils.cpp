@@ -7,9 +7,9 @@
 
 #include <gtest/gtest.h>
 
-#include "plc_controller/parameter_utils.hpp"
+#include "fit4med_plc_controller/parameter_utils.hpp"
 
-namespace plc_controller
+namespace fit4med_plc_controller
 {
 namespace
 {
@@ -63,4 +63,4 @@ TEST(ParameterUtils, AllInterfaceListsEmptyDetectsNonEmpty)
   EXPECT_FALSE(parameter_utils::all_interface_lists_empty(config));
 }
 
-}  // namespace plc_controller
+}  // namespace fit4med_plc_controller

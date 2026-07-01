@@ -10,9 +10,9 @@
 #include <string>
 #include <vector>
 
-#include "plc_controller/plc_controller.hpp"
+#include "fit4med_plc_controller/fit4med_plc_controller.hpp"
 
-namespace plc_controller
+namespace fit4med_plc_controller
 {
 namespace parameter_utils
 {
@@ -54,6 +54,6 @@ bool all_interface_lists_empty(const GpioMap & gpios_map)
 }
 
 }  // namespace parameter_utils
-}  // namespace plc_controller
+}  // namespace fit4med_plc_controller
 
 #endif  // PLC_CONTROLLER__PARAMETER_UTILS_HPP_

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * @file plc_controller.hpp
+ * @file fit4med_plc_controller.hpp
  * @brief ROS 2 Control plugin for safety PLC GPIO command/state bridging.
  * 
  * This header defines the PLCController class, a ros2_control ControllerInterface
@@ -34,7 +34,7 @@
  * 
  * 
  * Lifecycle:
- *     1. on_init(): Load parameters from plc_controller.yaml via ParamListener
+ *     1. on_init(): Load parameters from fit4med_plc_controller.yaml via ParamListener
  *     2. on_configure(): Parse YAML, create subscriber/publisher, validate interfaces
  *     3. on_activate(): Create maps linking interface names to LoanedInterface references
  *     4. update() [called at 500 Hz]: Read commands, apply to PLC, publish states
@@ -53,7 +53,7 @@
  * 
  * @note This controller requires the EtherCAT driver plugin to be loaded by
  *       the parent controller_manager.
- * @note Parameters are loaded from plc_controller.yaml during on_configure().
+ * @note Parameters are loaded from fit4med_plc_controller.yaml during on_configure().
  * @note All interfaces must be pre-declared in sickPLC.ros2_control.urdf.
  */
 
@@ -65,7 +65,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "tecnobody_msgs/msg/plc_controller.hpp"
+#include "tecnobody_msgs/msg/fit4med_plc_controller.hpp"
 #include "tecnobody_msgs/msg/plc_states.hpp"
 #include "controller_interface/controller_interface.hpp"
 #include "rclcpp_lifecycle/node_interfaces/lifecycle_node_interface.hpp"
@@ -73,9 +73,9 @@
 #include "realtime_tools/realtime_buffer.hpp"
 #include "realtime_tools/realtime_publisher.hpp"
 
-#include "plc_controller/plc_controller_parameters.hpp"
+#include "fit4med_plc_controller/fit4med_plc_controller_parameters.hpp"
 
-namespace plc_controller
+namespace fit4med_plc_controller
 {
 /// @brief Convenience type alias for PlcController ROS message type
 using CmdType = tecnobody_msgs::msg::PlcController;
@@ -116,14 +116,14 @@ using StateInterfaces =
  * 
  * Key Design Decisions:
  *   1. Real-time safe: Uses lock-free RealtimeBuffer for command passing
- *   2. Parameter-driven: All GPIO names/interfaces loaded from YAML (plc_controller.yaml)
+ *   2. Parameter-driven: All GPIO names/interfaces loaded from YAML (fit4med_plc_controller.yaml)
  *   3. Flexible: Supports arbitrary GPIO count and naming via parameters
  *   4. Safe: Validates interface names at configure-time, not at runtime
  * 
  * Usage in Launch File:
  *     - Loaded via controller_manager spawner:
- *       spawner PLC_controller -c /plc_controller_manager
- *     - Configuration file: plc_controller.yaml
+ *       spawner PLC_controller -c /fit4med_plc_controller_manager
+ *     - Configuration file: fit4med_plc_controller.yaml
  *     - Hardware definition: sickPLC.ros2_control.urdf (via URDF xacro includes)
  * 
  * @see https://ros-controls.github.io/control.ros.org/
@@ -233,7 +233,7 @@ private:
    *   2. Iterates state_interface_types_ and reads each LoanedStateInterface
    *   3. Converts double values to uint8_t (GPIO are boolean/digital)
    *   4. Populates PlcStates message with interface names and values
-   *   5. Publishes to /plc_controller_manager/PLC_controller/plc_states
+   *   5. Publishes to /fit4med_plc_controller_manager/PLC_controller/plc_states
    * 
    * Called every 2 ms (500 Hz) from update(). Uses try_lock() for non-blocking
    * operation; skips publish if lock unavailable (no blocking in real-time loop).
@@ -373,12 +373,12 @@ private:
   realtime_tools::RealtimeBuffer<std::shared_ptr<CmdType>> rt_command_ptr_{};
 
   /// @brief ROS subscription to PlcController command topic
-  /// Topic: /plc_controller_manager/PLC_controller/plc_commands
+  /// Topic: /fit4med_plc_controller_manager/PLC_controller/plc_commands
   /// QoS: Best-effort (fire-and-forget for low-latency updates)
   rclcpp::Subscription<CmdType>::SharedPtr plc_command_subscriber_{};
 
   /// @brief ROS publisher for PlcStates state feedback
-  /// Topic: /plc_controller_manager/PLC_controller/plc_states
+  /// Topic: /fit4med_plc_controller_manager/PLC_controller/plc_states
   /// QoS: System default (reliable, keep-last=1)
   std::shared_ptr<rclcpp::Publisher<StateType>> plc_state_publisher_{};
 
@@ -389,13 +389,13 @@ private:
 
   /// @brief ROS 2 parameter listener (auto-generated from parameter_library)
   /// Listens for parameter changes and provides access to current values
-  std::shared_ptr<plc_controller_parameters::ParamListener> param_listener_{};
+  std::shared_ptr<fit4med_plc_controller_parameters::ParamListener> param_listener_{};
 
-  /// @brief Current parameter values loaded from plc_controller.yaml
+  /// @brief Current parameter values loaded from fit4med_plc_controller.yaml
   /// Includes gpios list, command_interfaces map, state_interfaces map
-  plc_controller_parameters::Params params_;
+  fit4med_plc_controller_parameters::Params params_;
 };
 
-}  // namespace plc_controller
+}  // namespace fit4med_plc_controller
 
 #endif  // PLC_CONTROLLER__PLC_CONTROLLER_HPP_

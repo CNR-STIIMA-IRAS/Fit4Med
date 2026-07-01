@@ -2,8 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-#include "plc_controller/plc_controller.hpp"
-#include "plc_controller/parameter_utils.hpp"
+#include "fit4med_plc_controller/fit4med_plc_controller.hpp"
+#include "fit4med_plc_controller/parameter_utils.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -60,7 +60,7 @@ std::vector<hardware_interface::ComponentInfo> extract_gpios_from_hardware_info(
 }  // namespace
 
 
-namespace plc_controller
+namespace fit4med_plc_controller
 {
 
 // ========== Constructor ==========
@@ -84,7 +84,7 @@ PLCController::PLCController() : controller_interface::ControllerInterface() {}
  *   2. Load initial parameters via listener->get_params()
  *   3. Catch and log any parameter loading exceptions
  * 
- * Expected parameters from plc_controller.yaml:
+ * Expected parameters from fit4med_plc_controller.yaml:
  *   gpios: [list of GPIO names to control]
  *   command_interfaces: {gpio_name: {interfaces: [list of command interface names]}}
  *   state_interfaces: {gpio_name: {interfaces: [list of state interface names]}}
@@ -97,7 +97,7 @@ PLCController::PLCController() : controller_interface::ControllerInterface() {}
 CallbackReturn PLCController::on_init()
 try
 {
-  param_listener_ = std::make_shared<plc_controller_parameters::ParamListener>(get_node());
+  param_listener_ = std::make_shared<fit4med_plc_controller_parameters::ParamListener>(get_node());
   params_ = param_listener_->get_params();
   return CallbackReturn::SUCCESS;
 }
@@ -374,7 +374,7 @@ bool PLCController::update_dynamic_map_parameters()
  * Converts params_.command_interfaces (map of GPIO → interface lists) into
  * a flat vector of full interface names: "gpio_name/interface_name".
  * 
- * Example Input (from plc_controller.yaml):
+ * Example Input (from fit4med_plc_controller.yaml):
  *   command_interfaces:
  *     PLC_node:
  *       - interfaces: [estop, sonar_teach, force_sensors_pwr, ...]
@@ -830,9 +830,9 @@ void PLCController::update_plc_states()
 }
 
 
-}  // namespace plc_controller
+}  // namespace fit4med_plc_controller
 
 #include "pluginlib/class_list_macros.hpp"
 
 PLUGINLIB_EXPORT_CLASS(
-  plc_controller::PLCController, controller_interface::ControllerInterface)
+  fit4med_plc_controller::PLCController, controller_interface::ControllerInterface)
