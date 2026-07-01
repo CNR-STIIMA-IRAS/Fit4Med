@@ -198,6 +198,7 @@ class FollowJointTrajectoryActionManager(Node):
 
         # ========== Status Tracking ==========
         self._goal_status = GoalStatus.STATUS_UNKNOWN
+        self._goal_acceptance_pending : bool = False
         self._init_time = self.get_clock().now().nanoseconds
         self.timer_group = MutuallyExclusiveCallbackGroup()
         self.subscriber_group = MutuallyExclusiveCallbackGroup()
@@ -790,6 +791,7 @@ class FollowJointTrajectoryActionManager(Node):
         """
         self.get_logger().info(f'Sending goal number {self.exercise_cnt} to the FJT Controller')
         self._send_goal_future = self.follow_joint_trajectory_action_client.send_goal_async(self.goal_fjt[self.exercise_cnt])
+        self._goal_acceptance_pending = True
         self._send_goal_future.add_done_callback(on_goal_accepted)
         return True
 
@@ -819,11 +821,21 @@ class FollowJointTrajectoryActionManager(Node):
             - Logs rejection if goal not accepted by server
             - Does not retry or escalate; caller must handle
         """
+        self._goal_acceptance_pending = False
         self._goal_handle = future.result()
         if not self._goal_handle.accepted:
             self.get_logger().info('Trajectory Goal rejected!!')
+            if self.cancel_from_gui:
+                self._notify_movement_stopped()
+                self.clear(0)
+                self._goal_handle = None
             return
         self.get_logger().info('Trajectory Goal accepted!!')
+        if self.cancel_from_gui:
+            self.get_logger().warn('Trajectory goal accepted after stop request; cancelling immediately.')
+            cancel_future = self._goal_handle.cancel_goal_async()
+            cancel_future.add_done_callback(self.on_cancelled)
+            return
         self._get_goal_result_future = self._goal_handle.get_result_async()
         self._get_goal_result_future.add_done_callback(self.on_trajectory_goal_done)
         self._goal_status = GoalStatus.STATUS_UNKNOWN
@@ -887,11 +899,21 @@ class FollowJointTrajectoryActionManager(Node):
         Returns:
             None. Sets up result and progress callbacks if accepted.
         """
+        self._goal_acceptance_pending = False
         self._goal_handle = future.result()
         if not self._goal_handle.accepted:
             self.get_logger().info('Exercise Goal rejected!!')
+            if self.cancel_from_gui:
+                self._notify_movement_stopped()
+                self.clear(0)
+                self._goal_handle = None
             return
         self.get_logger().info(f'Exercise Goal accepted!!')
+        if self.cancel_from_gui:
+            self.get_logger().warn('Exercise goal accepted after stop request; cancelling immediately.')
+            cancel_future = self._goal_handle.cancel_goal_async()
+            cancel_future.add_done_callback(self.on_cancelled)
+            return
         self._get_goal_result_future = self._goal_handle.get_result_async()
         self._get_goal_result_future.add_done_callback(self.on_exercise_goal_done)
         self._goal_status = GoalStatus.STATUS_UNKNOWN
@@ -900,6 +922,11 @@ class FollowJointTrajectoryActionManager(Node):
 
         # Start progress monitoring
         self.exercise_status_timer = self.create_timer(0.02, self.check_exercise_status, callback_group=self.timer_group)
+
+    def _cancel_exercise_status_timer(self) -> None:
+        if self.exercise_status_timer is not None:
+            self.exercise_status_timer.cancel()
+            self.exercise_status_timer = None
 
     def _advance_exercise(self) -> None:
         """Advance to the next repetition or signal exercise completion."""
@@ -912,8 +939,7 @@ class FollowJointTrajectoryActionManager(Node):
             client.call_async(Trigger.Request())
 
         # Cancel old timer
-        if self.exercise_status_timer is not None:
-            self.exercise_status_timer.cancel()
+        self._cancel_exercise_status_timer()
 
         self._goal_handle = None
 
@@ -989,6 +1015,22 @@ class FollowJointTrajectoryActionManager(Node):
         # ========== Safety check: goal must be active ==========
         if self._goal_handle is None:
             return
+
+        if self.cancel_from_gui:
+            return
+
+        if (
+            self.exercise_cnt >= len(self._total_time_s)
+            or self.exercise_cnt >= len(self.speed_scaling_factor)
+        ):
+            self.get_logger().warning(
+                'Skipping exercise status update because progress state is inconsistent: '
+                f'exercise_cnt={self.exercise_cnt}, '
+                f'total_time_len={len(self._total_time_s)}, '
+                f'speed_scaling_len={len(self.speed_scaling_factor)}'
+            )
+            self._cancel_exercise_status_timer()
+            return
         
         self._goal_status = self._goal_handle.status #type: ignore
         
@@ -1026,6 +1068,14 @@ class FollowJointTrajectoryActionManager(Node):
             #self.repetition_ovrs = future.result().repetition_ovrs.tolist()
         self.additional_speed_override = future.result().additional_speed_override
         
+    def _notify_movement_stopped(self) -> None:
+        client : Client = self.create_client(Trigger, '/rehab_gui/movement_stopped')
+        if not client.wait_for_service(timeout_sec=5.0):
+            self.get_logger().info('Movement Stopped Server is not available.')
+            return
+
+        client.call_async(Trigger.Request())
+
     def on_cancelled(self, future) -> None:  # type: ignore
         """Callback for cancelled exercise goals (emergency stop).
         
@@ -1039,32 +1089,26 @@ class FollowJointTrajectoryActionManager(Node):
             None. Performs cleanup and signals GUI.
         """
         self.get_logger().warn('The Goal has been succesfully cancelled. Notify to the remote GUI')
-        client : Client = self.create_client(Trigger, '/rehab_gui/movement_stopped')
-        if not client.wait_for_service(timeout_sec=5.0):
-            self.get_logger().info('Movement Stopped Server is not available.')
-        else:        
-            req = Trigger.Request()
-            client.call_async(req)
-
-            if future.result() is not None:
-                self.get_logger().info(f'Goal cancelled: {future.result()}')
-            else:
-                self.get_logger().info('Goal cancelled without result')
+        self._notify_movement_stopped()
+        if future.result() is not None:
+            self.get_logger().info(f'Goal cancelled: {future.result()}')
+        else:
+            self.get_logger().info('Goal cancelled without result')
         
         self.clear(0)
         self._goal_handle = None
 
-    def stop(self, request, response) -> Trigger.Response:  # type: ignore
+    def stop(self, request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:  # type: ignore
         """Stop current exercise and cancel running goal (emergency stop).
         
         Service handler for /stop_movement requests from GUI. Cancels the active
-        goal, clears state, and signals GUI that movement stopped.
+        goal, or records the stop request until a pending goal handle arrives.
         
         Actions:
-            1. Clear repetition_ovrs to break repetition loop
+            1. Latch cancellation so repetition advancement stops
             2. Cancel progress monitoring timer
             3. Cancel active goal if present (calls controller to stop trajectory)
-            4. Invoke on_cancelled callback for cleanup
+            4. Let on_cancelled clear state after the controller acknowledges cancel
         
         Args:
             request: Empty Trigger request
@@ -1074,11 +1118,9 @@ class FollowJointTrajectoryActionManager(Node):
             Trigger.Response: success=True if goal cancelled, False otherwise
         """
         self.cancel_from_gui = True
-        self._total_time_s = []
         
         # Cancel progress timer
-        if self.exercise_status_timer is not None:
-            self.exercise_status_timer.cancel()
+        self._cancel_exercise_status_timer()
         
         # Cancel active goal
         if hasattr(self, '_goal_handle') and self._goal_handle is not None:
@@ -1086,6 +1128,9 @@ class FollowJointTrajectoryActionManager(Node):
             cancel_future = self._goal_handle.cancel_goal_async()
 
             cancel_future.add_done_callback(self.on_cancelled)
+            response.success = True
+        elif self._goal_acceptance_pending:
+            self.get_logger().info('Stop requested while goal handle is pending; it will be cancelled on acceptance.')
             response.success = True
         else:
             self.get_logger().info('Goal handle has not been created yet')
