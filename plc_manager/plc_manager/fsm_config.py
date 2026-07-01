@@ -38,7 +38,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         guard=controller._ready_to_start,
         action=environment.bringup_env,
         success_check=environment.check_env_running,
-        max_steps=5000,
+        max_steps=20000,
         failure_destination=State.ERROR,
     )
     fsm.add_transition(
@@ -49,7 +49,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         guard=controller._ready_to_start,
         action=environment.bringup_recovery_env,
         success_check=environment.check_env_running_recovery,
-        max_steps=5000,
+        max_steps=20000,
         failure_destination=State.ERROR,
     )
 
@@ -60,7 +60,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         msg="🛑 EMERGENCY STOP REQUESTED (RUNNING_RECOVERY=>RECOVERED)",
         action=environment.kill_recovery_env,
         success_check=environment.check_env_running_recovery_stopped,
-        max_steps=5000,
+        max_steps=20000,
         failure_destination=State.ERROR,
     )
 
@@ -71,7 +71,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         msg="🛑 EMERGENCY STOP REQUESTED (RUNNING=>IDLE)",
         action=environment.kill_env,
         success_check=environment.check_env_running_stopped,
-        max_steps=5000,
+        max_steps=20000,
         failure_destination=State.ERROR,
     )
 
@@ -82,7 +82,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         msg="� SYSTEM FAILURE (RUNNING=>ERROR)",
         action=environment.kill_env,
         success_check=environment.check_env_running_stopped,
-        max_steps=5000,
+        max_steps=20000,
         failure_destination=State.ERROR,
     )
 
@@ -93,7 +93,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         msg="� SYSTEM FAILURE (RUNNING_RECOVERY=>ERROR)",
         action=environment.kill_recovery_env,
         success_check=environment.check_env_running_recovery_stopped,
-        max_steps=5000,
+        max_steps=20000,
         failure_destination=State.ERROR,
     )
 
@@ -104,7 +104,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         msg="🛑 EMERGENCY STOP REQUESTED (IDLE=>IDLE)",
         action=environment.handle_idle_stop,
         success_check=environment.check_env_running_stopped,
-        max_steps=5000,
+        max_steps=20000,
         failure_destination=State.ERROR,
     )
 
@@ -115,8 +115,19 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         msg="🛑 EMERGENCY STOP REQUESTED (IDLE_RECOVERY=>IDLE_RECOVERY)",
         action=environment.handle_idle_stop,
         success_check=environment.check_env_running_recovery_stopped,
-        max_steps=5000,
+        max_steps=20000,
         failure_destination=State.ERROR,
     )
+    
+    fsm.add_transition(
+        Event.STOP,
+        State.ERROR,
+        State.ERROR,
+        msg="🛑 EMERGENCY STOP REQUESTED (ERROR=>ERROR)",
+        action=environment.handle_idle_stop,
+        max_steps=20000,
+        failure_destination=State.ERROR,
+    )
+
 
     return fsm
