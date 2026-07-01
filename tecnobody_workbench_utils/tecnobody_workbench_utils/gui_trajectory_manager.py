@@ -1136,9 +1136,12 @@ def main(args=None):
             time.sleep(0.05)
 
     except KeyboardInterrupt:
-        try:
-            fjtam.get_logger().info('Keyboard interrupt, shutting down.\n')
-        except Exception:
+        if rclpy.ok():
+            try:
+                fjtam.get_logger().info('Keyboard interrupt, shutting down.\n')
+            except Exception:
+                print('[fct_manager_node] Keyboard interrupt, shutting down.')
+        else:
             print('[fct_manager_node] Keyboard interrupt, shutting down.')
 
     # Cleanup

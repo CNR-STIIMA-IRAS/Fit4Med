@@ -104,6 +104,8 @@ def main(args=None) -> None:
     finally:
         try:
             node.destroy_node()
+        except (KeyboardInterrupt, SystemExit):
+            pass
         except Exception:
             pass
 
