@@ -46,6 +46,6 @@ class GuiStatusPublisher:
 
     def notify(self, udp_msg: bytes) -> None:
         try:
-            self.client.send(udp_msg)
+            self.client.send_status(udp_msg)
         except Exception as exception:  # noqa: BLE001
             self.logger.warn(f"Error communicating with GUI: {exception}")  # type: ignore

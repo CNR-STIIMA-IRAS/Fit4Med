@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import json
 import socket
 import threading
 import time
@@ -20,11 +21,13 @@ class UdpClient:
         local_port: int = 0,
         timeout: float = 2.0,
         on_message: Callable[[bytes, Any], None] | None = None,
+        status_period: float = 0.5,
     ):
         self.target_ip = target_ip
         self.target_port = target_port
         self.timeout = timeout
         self._on_message = on_message
+        self.status_period = max(0.05, status_period)
 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind(("0.0.0.0", local_port))
@@ -37,6 +40,12 @@ class UdpClient:
         self._messages: list[tuple[bytes, Any]] = []
         self._last_message: tuple[bytes, Any] | None = None
         self._max_messages = 100
+        self._send_lock = threading.Lock()
+        self._tx_condition = threading.Condition()
+        self._latest_status: bytes | None = None
+        self._latest_status_dirty = False
+        self._last_status_key: tuple[Any, ...] | None = None
+        self._urgent_statuses: list[bytes] = []
 
         self._rx_thread = threading.Thread(
             target=self._receive_loop,
@@ -44,9 +53,97 @@ class UdpClient:
             daemon=True,
         )
         self._rx_thread.start()
+        self._tx_thread = threading.Thread(
+            target=self._send_loop,
+            name="UdpClientTxThread",
+            daemon=True,
+        )
+        self._tx_thread.start()
 
     def send(self, message: bytes) -> None:
-        self.sock.sendto(message, (self.target_ip, self.target_port))
+        self._send_now(message)
+
+    def send_status(self, message: bytes) -> None:
+        status_key = self._status_key_from_payload(message)
+
+        with self._tx_condition:
+            self._latest_status = message
+            self._latest_status_dirty = True
+            if status_key is None or status_key != self._last_status_key:
+                if status_key is not None:
+                    self._last_status_key = status_key
+                self._urgent_statuses.append(message)
+            self._tx_condition.notify_all()
+
+    def _send_now(self, message: bytes) -> None:
+        with self._send_lock:
+            self.sock.sendto(message, (self.target_ip, self.target_port))
+
+    def _send_loop(self) -> None:
+        next_status_send = time.monotonic() + self.status_period
+
+        while not self._stop_event.is_set():
+            message: bytes | None = None
+
+            with self._tx_condition:
+                while not self._stop_event.is_set():
+                    now = time.monotonic()
+                    if self._urgent_statuses:
+                        message = self._urgent_statuses.pop(0)
+                        if message == self._latest_status:
+                            self._latest_status_dirty = False
+                        next_status_send = now + self.status_period
+                        break
+
+                    if (
+                        self._latest_status is not None
+                        and self._latest_status_dirty
+                        and now >= next_status_send
+                    ):
+                        message = self._latest_status
+                        self._latest_status_dirty = False
+                        next_status_send = now + self.status_period
+                        break
+
+                    timeout = None
+                    if self._latest_status is not None:
+                        timeout = max(0.0, next_status_send - now)
+                    self._tx_condition.wait(timeout)
+
+            if message is None:
+                continue
+
+            try:
+                self._send_now(message)
+            except OSError as exc:
+                if not self._stop_event.is_set():
+                    print(f"[UdpClient] Error sending status: {exc}")
+
+    def _status_key_from_payload(self, message: bytes) -> tuple[Any, ...] | None:
+        try:
+            payload = json.loads(message.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return None
+
+        if not isinstance(payload, dict):
+            return None
+
+        schema = payload.get("schema")
+        if schema != "fit4med.plc_fsm_status.v1":
+            return None
+
+        state = payload.get("state")
+        pending = payload.get("pending")
+        if not isinstance(pending, dict):
+            return (schema, state, None, None, None)
+
+        return (
+            schema,
+            state,
+            pending.get("event"),
+            pending.get("source"),
+            pending.get("target"),
+        )
 
     def _receive_loop(self, bufsize: int = 4096) -> None:
         while not self._stop_event.is_set():
@@ -139,7 +236,10 @@ class UdpClient:
         self._stop_event.set()
         with self._condition:
             self._condition.notify_all()
+        with self._tx_condition:
+            self._tx_condition.notify_all()
 
+        self._tx_thread.join(timeout=1.0)
         try:
             self.sock.close()
         except OSError:
