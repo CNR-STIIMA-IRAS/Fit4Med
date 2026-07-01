@@ -3,7 +3,7 @@
 
 import gc
 import time
-from typing import Any, Dict, List
+from typing import Any, List
 from PyQt5.QtWidgets import QMessageBox, QPushButton, QWidget
 from PyQt5.QtCore import QThread, QObject, pyqtSignal
 import roslibpy
@@ -57,9 +57,7 @@ class RosCommunicationManager(QObject):
         self.roslib_first_time_connection = True
         self.manual_mode_activated = False
         self._exercise_in_suspension: bool = False
-        self._cached_slave_names: List[str] = ['n/a'] * self.number_of_ec_slaves
-        self._cached_slave_states: List[str] = ['n/a'] * self.number_of_ec_slaves
-        self._last_ethercat_payload: Dict[str, Any] = {}
+        self._plc_status_provider: Any = None
         self._stop_signal_emitted = False
         self._ros_stop_requested = False
         self._worker_stop_timeout_msec = 5000
@@ -67,6 +65,19 @@ class RosCommunicationManager(QObject):
 
         self.worker_thread = Worker(self.updateState, loop_period_s=0.2)
         self.worker_thread.finished.connect(self.onUpdateWorkerThreadFinished)
+
+    def setPlcStatusProvider(self, provider: Any) -> None:
+        self._plc_status_provider = provider
+
+    def _is_manual_switch_pressed(self) -> bool:
+        if self._plc_status_provider is None:
+            return False
+
+        try:
+            return bool(self._plc_status_provider.isManualSwitchPressed())
+        except Exception as exc:
+            print(f"Failed to read manual switch state from UDP status provider: {exc}")
+            return False
     
     def onUpdateWorkerThreadFinished(self):
         self._emit_stop_ros_communication_once()
@@ -252,7 +263,7 @@ class RosCommunicationManager(QObject):
     def turnOnMotors(self, show_warning: bool = True) -> bool:
         if self.rOk():
             if self.manual_mode_activated:
-                if self.ROS.plc_states['manual_switch_pressed']:
+                if self._is_manual_switch_pressed():
                     # set manual mode during movement
                     self.ROS.publish_plc_command(['PLC_node/manual_mode'], [1])
                 else:
@@ -321,39 +332,6 @@ class RosCommunicationManager(QObject):
     
     def getGoToStartControllerName(self) -> str:
         return self.ROS.go_to_start_controller_name if self.rOk() else "n/a"
-
-    def _fit_slave_values(self, values: List[str]) -> List[str]:
-        fitted_values = list(values[:self.number_of_ec_slaves])
-        fitted_values.extend(['n/a'] * (self.number_of_ec_slaves - len(fitted_values)))
-        return fitted_values
-
-    def updatePlcStatusPayload(self, payload: Dict[str, Any]) -> None:
-        ethercat_payload = payload.get("ethercat")
-        if not isinstance(ethercat_payload, dict):
-            return
-
-        slave_names: List[str] = []
-        slave_states: List[str] = []
-        slaves = ethercat_payload.get("slaves")
-        if isinstance(slaves, list):
-            for slave in slaves:
-                if not isinstance(slave, dict):
-                    continue
-                slave_name = slave.get("name")
-                slave_state = slave.get("state")
-                slave_names.append(str(slave_name) if slave_name is not None else "n/a")
-                slave_states.append(str(slave_state) if slave_state is not None else "n/a")
-
-        self._last_ethercat_payload = ethercat_payload
-        self._cached_slave_names = self._fit_slave_values(slave_names)
-        self._cached_slave_states = self._fit_slave_values(slave_states)
-
-
-    def getSlaveNames(self) -> List[str]:
-        return list(self._cached_slave_names)
-    
-    def getSlaveStates(self) -> List[str]:
-        return list(self._cached_slave_states)
 
     def getDriversStates(self) -> List[str]:
         return self.ROS.coe_drive_states.coe_drive_states if self.rOk() else ['n/a'] * len(self.joint_names)
@@ -447,13 +425,6 @@ class RosCommunicationManager(QObject):
     def setExercise(self, CartesianPositions, TimeFromStart, Ovr: list, durations: list, eeg_mode: bool)-> None:
         _ = self.ROS.set_exercise(CartesianPositions, TimeFromStart, Ovr, durations, eeg_mode) if self.rOk() else False
         return 
-    
-    def getPLCStates(self) -> dict:
-        ret : dict = {'s_input.0' : False, 'estop' : False, 'reset': False, 'manual_switch_pressed' : False, 's_input.5' : False, 's_input.6' : False, 's_input.7' : False, 's_input.8' : False }
-        return self.ROS.plc_states if self.rOk() else ret
-
-    def isEmergencyActive(self) : 
-        return not self.ROS.plc_states['estop'] if self.rOk() and 'estop' in self.ROS.plc_states else True
     
     def driveLogicSwitchOff(self) :
         if not self.rOk():

@@ -9,6 +9,7 @@ from PyQt5.QtCore import QTimer, QObject, Qt, pyqtSignal, QThread
 from ui.uiRobotWindow import Ui_RobotWindow
 from ui.uiFMRRMainWindow import Ui_FMRRMainWindow
 from RosCommunicationManager import RosCommunicationManager
+from UdpCommunicationManager import UdpCommunicationManager
 from copy import deepcopy
 import time
 
@@ -85,8 +86,9 @@ class RobotWindow(QtWidgets.QDialog):
             pb.setChecked(previous_state)
             QMessageBox.warning(self, "Exception", str(e))
 
-    def connect(self, ROS: RosCommunicationManager, parent_timer: QTimer):
+    def connect(self, ROS: RosCommunicationManager, UDP: UdpCommunicationManager, parent_timer: QTimer):
         self.ROS = ROS
+        self.UDP = UDP
         self.parent_timer = parent_timer
 
         # Collega i segnali di cambiamento a funzioni di callback
@@ -134,9 +136,9 @@ class RobotWindow(QtWidgets.QDialog):
     
     def onBehaviourActivation(self, index):
         print(f"MOO option activated to: {index}")
-        slave_states = self.ROS.getSlaveStates()
+        slave_states = self.UDP.getSlaveStates()
         if not all([state == 'OP' for state in slave_states]):
-            slave_names = self.ROS.getSlaveNames()
+            slave_names = self.UDP.getSlaveNames()
             slave_states_dict = dict(zip(slave_names, slave_states))
             move_states = [
                 slave_state for slave_name, slave_state in slave_states_dict.items()

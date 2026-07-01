@@ -140,7 +140,6 @@ class SyncRosManager:
         self.admittance_controller_name : str = 'admittance_controller'
         self.current_controller_name : str = None # type: ignore
         self.jog_cmd_pos = []
-        self.plc_states = {}
 
         self.trajectory_completed = False
         self.exercise_completed = False
@@ -199,15 +198,6 @@ class SyncRosManager:
             queue_length=1)     # only the latest message matters for display
         self.joint_subscriber.subscribe(self.getJointAndToolState)
 
-        self.plc_states_subscriber : roslibpy.Topic = roslibpy.Topic(
-            self.ros_client,
-            '/PLC_controller/plc_states',
-            'tecnobody_msgs/msg/PlcStates',
-            throttle_rate=200,  # 5 Hz is sufficient for PLC state display
-            queue_length=1
-        )
-        self.plc_states_subscriber.subscribe(self.getPLCStates)
-
         self.movement_status_subscriber : roslibpy.Topic = roslibpy.Topic(
             self.ros_client,
             '/tecnobody_workbench_utils/movement_status',
@@ -228,7 +218,6 @@ class SyncRosManager:
 
     def detach_publisher_and_subscribers(self):
         self.joint_subscriber.unsubscribe()
-        self.plc_states_subscriber.unsubscribe()
         self.movement_status_subscriber.unsubscribe()
         
         self.plc_command_publisher.unadvertise()
@@ -387,9 +376,6 @@ class SyncRosManager:
         ]
         self.RobotJointPosition = positions
         self.HandlePosition = positions
-
-    def getPLCStates(self, data):
-        self.plc_states = dict(zip(data['interface_names'], data['values']))
 
     def update_controller_and_driver_states(self) -> None:
         

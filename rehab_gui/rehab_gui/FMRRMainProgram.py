@@ -85,7 +85,7 @@ class MainProgram(QMainWindow):
         self.udp_port : int = udp_port
         self.roslibpy_port : int = roslibpy_port
         print(f"FMRRMainProgram: remote_ip={self.remote_ip}, udp_port={self.udp_port}, roslibpy_port={self.roslibpy_port}")
-        self.udp = UdpCommunicationManager(self.remote_ip, self.udp_port)
+        self.udp = UdpCommunicationManager(self.remote_ip, self.udp_port, self.number_of_ec_slaves)
         print(f"upd:{self.udp}")
         
         self.ros_manager = RosCommunicationManager(JOINT_NAMES,  self.number_of_ec_slaves,  self.remote_ip, self.roslibpy_port, self)
@@ -120,8 +120,9 @@ class MainProgram(QMainWindow):
 
     def connect(self):
         self.update_window_timer = QTimer()
-        self.motorWindow.connect(self.ros_manager, self.update_window_timer)
-        self.robotWindow.connect(self.ros_manager, self.update_window_timer)
+        self.ros_manager.setPlcStatusProvider(self.udp)
+        self.motorWindow.connect(self.ros_manager, self.udp, self.update_window_timer)
+        self.robotWindow.connect(self.ros_manager, self.udp, self.update_window_timer)
         self.rehabMovementWindow.connect(self.ros_manager, self.update_window_timer)
         self.trainingProtocolWindow.connect(self.ros_manager, self.update_window_timer)
 
@@ -133,7 +134,6 @@ class MainProgram(QMainWindow):
         self.udp.start_ros_communication.connect(self.ros_manager.startRosCommunication)
         self.udp.stop_ros_communication.connect(self.ros_manager.stopRosCommunication)
         self.udp.udp_message_received.connect(self.motorWindow.onUdpMessageReceived)
-        self.udp.plc_status_payload_received.connect(self.ros_manager.updatePlcStatusPayload)
         self.ros_manager.stop_ros_communication_signal.connect(self.udp.onResetRosCommunication)
         self.ros_manager.ros_communication_established_signal.connect(self.udp.onRosCommunicationEstablished)
         self.ros_manager.ros_communication_failed_signal.connect(self.udp.onRosCommunicationFailed)
