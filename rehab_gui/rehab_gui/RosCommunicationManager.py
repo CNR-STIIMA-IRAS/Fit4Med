@@ -245,6 +245,7 @@ class RosCommunicationManager(QObject):
     def setExerciseType(self, mode: int) -> bool:
         if not self.rOk():
             return False
+        print(f"Setting exercise type to {mode} [2 proximity, 1 proximity, 0 no sensor]...")
         self.ROS.publish_plc_command(['PLC_node/mode_of_operation'], [mode])
         return True
         
