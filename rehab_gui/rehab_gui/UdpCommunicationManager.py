@@ -5,7 +5,7 @@ from PyQt5.QtCore import QThread, QObject, pyqtSignal, pyqtSlot
 import json
 import socket
 from datetime import datetime
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 ################################################
 #
@@ -162,10 +162,10 @@ class UdpCommunicationManager(QObject):
         self._last_ethercat_payload: Dict[str, Any] = {}
         self._plc_inputs: Dict[str, Any] = dict(self.DEFAULT_PLC_STATES)
         self._plc_outputs: Dict[str, Any] = {}
-        self._plc_input_items: list[Tuple[str, Any]] = []
-        self._plc_output_items: list[Tuple[str, Any]] = []
-        self._cached_slave_names: list[str] = self._fit_slave_values([])
-        self._cached_slave_states: list[str] = self._fit_slave_values([])
+        self._plc_input_items: List[Tuple[str, Any]] = []
+        self._plc_output_items: List[Tuple[str, Any]] = []
+        self._cached_slave_names: List[str] = self._fit_slave_values([])
+        self._cached_slave_states: List[str] = self._fit_slave_values([])
         self.udp_thread = QThread()
         self.server = UdpServer(port=remote_port)
         self.server.moveToThread(self.udp_thread)
@@ -233,7 +233,7 @@ class UdpCommunicationManager(QObject):
         self._last_udp_received_monotonic = time.monotonic()
         self._last_udp_received_wall_time = self._format_wall_time()
 
-    def _fit_slave_values(self, values: list[str]) -> list[str]:
+    def _fit_slave_values(self, values: List[str]) -> List[str]:
         if self.number_of_ec_slaves <= 0:
             return list(values)
 
@@ -242,7 +242,7 @@ class UdpCommunicationManager(QObject):
         return fitted_values
 
     @staticmethod
-    def _interface_items(payload: Any) -> Optional[list[Tuple[str, Any]]]:
+    def _interface_items(payload: Any) -> Optional[List[Tuple[str, Any]]]:
         if not isinstance(payload, dict):
             return None
 
@@ -251,7 +251,7 @@ class UdpCommunicationManager(QObject):
         if not isinstance(interface_names, list) or not isinstance(values, list):
             return None
 
-        items: list[Tuple[str, Any]] = []
+        items: List[Tuple[str, Any]] = []
         for name, value in zip(interface_names, values):
             if isinstance(name, str):
                 items.append((name, value))
@@ -267,8 +267,8 @@ class UdpCommunicationManager(QObject):
         if not isinstance(ethercat_payload, dict):
             return
 
-        slave_names: list[str] = []
-        slave_states: list[str] = []
+        slave_names: List[str] = []
+        slave_states: List[str] = []
         slaves = ethercat_payload.get("slaves")
         if isinstance(slaves, list):
             for slave in slaves:
@@ -369,10 +369,10 @@ class UdpCommunicationManager(QObject):
     def getPLCOutputs(self) -> Dict[str, Any]:
         return dict(self._plc_outputs)
 
-    def getPLCInputItems(self) -> list[Tuple[str, Any]]:
+    def getPLCInputItems(self) -> List[Tuple[str, Any]]:
         return list(self._plc_input_items)
 
-    def getPLCOutputItems(self) -> list[Tuple[str, Any]]:
+    def getPLCOutputItems(self) -> List[Tuple[str, Any]]:
         return list(self._plc_output_items)
 
     def isEmergencyActive(self) -> bool:
@@ -383,10 +383,10 @@ class UdpCommunicationManager(QObject):
     def isManualSwitchPressed(self) -> bool:
         return self._value_as_bool(self._plc_inputs.get('manual_switch_pressed', False))
 
-    def getSlaveNames(self) -> list[str]:
+    def getSlaveNames(self) -> List[str]:
         return list(self._cached_slave_names)
 
-    def getSlaveStates(self) -> list[str]:
+    def getSlaveStates(self) -> List[str]:
         return list(self._cached_slave_states)
 
     def _parse_plc_status(
