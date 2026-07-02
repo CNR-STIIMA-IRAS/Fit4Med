@@ -364,17 +364,17 @@ class PLCControllerInterface(Node):
             if self.fsm.pending is None:
                 if self.fsm.state in (State.IDLE, State.ESTOP) and z_limit_active:
                     self.get_logger().info( #type: ignore
-                        bc.MAGENTA + 'Caught a Z-LIMIT event! Set IDLE_RECOVERY state' + bc.ENDC,
+                        bc.MAGENTA + 'Z-LIMIT Reached! Set IDLE_RECOVERY state' + bc.ENDC,
                         throttle_duration_sec=5.0
                     )
-                    self.fsm.trigger(Event.SWITCH_MODE, "Caught a Z-LIMIT")
+                    self.fsm.trigger(Event.SWITCH_MODE, "Z-LIMIT Reached - Entering Recovery Mode")
                 
                 if self.fsm.state in (State.RECOVERED, State.ESTOP_RECOVERY) and not z_limit_active:
                     self.get_logger().info( #type: ignore
-                        bc.MAGENTA + 'Recovered the Z-LIMIT event' + bc.ENDC,
+                        bc.MAGENTA + 'Z-LIMIT Recovered! Set IDLE state' + bc.ENDC,
                         throttle_duration_sec=5.0
                     )
-                    self.fsm.trigger(Event.SWITCH_MODE, "Recovered the Z-LIMIT")
+                    self.fsm.trigger(Event.SWITCH_MODE, "Z-LIMIT Recovered - Entering IDLE Mode")
             
                 if self.fsm.state == State.IDLE:    
                     self.get_logger().info( #type: ignore

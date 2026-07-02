@@ -29,7 +29,7 @@ class PlcCommandPublisher:
         self.plc_outputs.interface_names = list(PLC_COMMAND_INTERFACE_NAMES)
         self._last_published_values: list[int] | None = None
 
-    def _publish_command(self, name: str, value: int) -> None:
+    def _publish_command(self, name: str, value: int, force_print: bool = False) -> None:
         if name in self.plc_outputs.interface_names:  # type: ignore
             idx = self.plc_outputs.interface_names.index(name)  # type: ignore
             self.plc_outputs.values[idx] = value  # type: ignore
@@ -37,7 +37,7 @@ class PlcCommandPublisher:
 
             self.command_publisher.publish(self.plc_outputs)
 
-            if self._last_published_values == current_values:
+            if not force_print and self._last_published_values == current_values:
                 return
             
             self._last_published_values = current_values
@@ -71,7 +71,7 @@ class PlcCommandPublisher:
         This is done by setting the 'z_recovery' command to 1, which
         enables the end-stroke switch to trigger an emergency stop.
         """
-        self._publish_command('PLC_node/z_recovery', 1)
+        self._publish_command('PLC_node/z_recovery', 1, force_print=True)
 
     def detach_endstroke_from_emergency_chain(self) -> None:
         """
@@ -79,7 +79,7 @@ class PlcCommandPublisher:
         This is done by setting the 'z_recovery' command to 0, which
         disables the end-stroke switch from triggering an emergency stop.
         """
-        self._publish_command('PLC_node/z_recovery', 0)
+        self._publish_command('PLC_node/z_recovery', 0, force_print=True)
 
     def raise_sw_estop(self) -> None:
         """
