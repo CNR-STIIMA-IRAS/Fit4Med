@@ -9,6 +9,8 @@ from PyQt5.QtCore import QThread, QObject, pyqtSignal
 import roslibpy
 from sync_ros_events import SyncRosManager
 
+from typing import Tuple
+
 class Worker(QThread):
     finished : pyqtSignal = pyqtSignal() #type: ignore
     thread_running : bool = False
@@ -395,23 +397,24 @@ class RosCommunicationManager(QObject):
         else:
             return self.ROS.controller_and_op_mode_switch(8, self.ROS.trajectory_controller_name)
 
-    def requestControllerBehaviour(self, behaviour: str) -> bool:
+    def requestControllerBehaviour(self, behaviour: str) -> Tuple[bool,str]:
         if not self.rOk():
-            return False
+            return False, "ROS communication not established."
         target = self._controller_behaviour_target(behaviour)
         if target is None:
-            return False
+            return False, f"Invalid controller behaviour: {behaviour}"
         target_mode, target_controller = target
         self._clear_pending_controller_behaviour()
         self.turnOffMotors()
-        ok = self.ROS.request_controller_and_op_mode_switch(target_mode, target_controller)
+        ok, msg = self.ROS.request_controller_and_op_mode_switch(target_mode, target_controller)
         if ok:
             self._start_pending_controller_behaviour(
                 behaviour,
                 target_mode,
                 target_controller,
             )
-        return ok
+            
+        return ok, msg
         
     def toogleJoggingBehaviour(self, axis : int, direction: int):
         return self.ROS.jog_command(direction=direction, joint_to_move=axis) if self.rOk() else None

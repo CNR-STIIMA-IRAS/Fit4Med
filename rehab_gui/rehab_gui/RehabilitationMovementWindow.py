@@ -662,14 +662,13 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
         self._go_to_start_request_pending = True
         self.ui.pushButton_GoToZERO.setEnabled(False)
         self.ROS.setManualMode(False)
-        if not self.ROS.requestControllerBehaviour("GoToStart"):
+        ok, msg = self.ROS.requestControllerBehaviour("GoToStart")
+        if not ok:
             self._go_to_start_request_pending = False
             self.ui.pushButton_GoToZERO.setEnabled(self.ROS.isRosCommunicationActive())
             QMessageBox.warning(
                 self, "Warning",
-                f"Could not request GoToStart controller behaviour "
-                f"(active: {self.ROS.getCurrentControllerName()}).\n"
-                f"Drive modes: {self.ROS.getDriversModeOfOperations()}"
+                f"{msg}\n"
             )
             return False
         return True
