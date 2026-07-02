@@ -434,8 +434,19 @@ class SyncRosManager:
 
     def switch_controller(self, controller_to_activate, controller_to_deactivate) -> dict:
         switch_req = {
-            'activate_controllers': self._controller_request_list(controller_to_activate),
-            'deactivate_controllers': self._controller_request_list(controller_to_deactivate),
+            'activate_controllers': [] if controller_to_activate is None else [controller_to_activate],
+            'deactivate_controllers': [] if controller_to_deactivate is None else [controller_to_deactivate],
+            'strictness': 2,  # BEST_EFFORT = 1, STRICT = 2
+            'activate_asap': True,
+        }
+        if not hasattr(self, 'switch_controller_client'):
+            self.init_service_clients()
+        return self.switch_controller_client.call(switch_req)  # type: ignore
+
+    def request_switch_controller(self, controllers_to_activate, controllers_to_deactivate) -> dict:
+        switch_req = {
+            'activate_controllers': self._controller_request_list(controllers_to_activate),
+            'deactivate_controllers': self._controller_request_list(controllers_to_deactivate),
             'strictness': 2,  # BEST_EFFORT = 1, STRICT = 2
             'activate_asap': True,
         }
@@ -584,7 +595,7 @@ class SyncRosManager:
                 controller_states,
                 new_controller,
             )
-            response = self.switch_controller(new_controller, controllers_to_deactivate)
+            response = self.request_switch_controller(new_controller, controllers_to_deactivate)
             ok = isinstance(response, dict) and response.get('ok', False)
             print(f"{GREEN}....{NC} <<<< Request Switch Controller [{GREEN+'OK'+NC if ok else RED+'FAILED'+NC}]")
             if not ok:
