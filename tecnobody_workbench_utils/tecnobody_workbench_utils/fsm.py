@@ -1,8 +1,7 @@
-from typing import Generic, TypeVar
+from typing import Callable, Generic, Iterable, Optional, TypeVar
 from enum import Enum, auto
 
 from dataclasses import dataclass
-from typing import Callable, Optional
 from rclpy.impl.rcutils_logger import RcutilsLogger as Logger
 
 from tecnobody_workbench_utils.utils import bcolors
@@ -22,6 +21,8 @@ class TransitionTimeout(Exception):
 
 StateT = TypeVar("StateT", bound=Enum)
 EventT = TypeVar("EventT", bound=Enum)
+CallbackT = TypeVar("CallbackT")
+
 
 class TransitionStatus(Enum):
     COMPLETED = auto()
@@ -32,10 +33,10 @@ class TransitionStatus(Enum):
 @dataclass
 class Transition(Generic[StateT]):
     destination: StateT
-    guard: Optional[Callable[[], bool]] = None
-    action: Optional[Callable[[], None]] = None
-    success_check: Optional[Callable[[], bool]] = None
-    timeout_action: Optional[Callable[[], None]] = None
+    guards: tuple[Callable[[], bool], ...] = ()
+    actions: tuple[Callable[[], None], ...] = ()
+    success_checks: tuple[Callable[[], bool], ...] = ()
+    timeout_actions: tuple[Callable[[], None], ...] = ()
     max_steps: int = 1
     failure_destination: Optional[StateT] = None
     msg: str = ""
@@ -63,8 +64,9 @@ class StateMachine(Generic[StateT, EventT]):
         source: StateT,
         event: EventT,
         destination: StateT,
+        info: str = "",
     ) -> None:
-        msg = f"[FSM DEBUG] {prefix}: {source.name} --{event.name}--> {destination.name}"
+        msg = f"[FSM DEBUG] {prefix}: {source.name} + {event.name} --> {destination.name} [{info}]"
         if self.logger:
             self.logger.info(msg) #type: ignore
         else:
@@ -76,30 +78,60 @@ class StateMachine(Generic[StateT, EventT]):
         source: StateT,
         destination: StateT,
         *,
-        msg: str,
         guard: Optional[Callable[[], bool]] = None,
+        guards: Optional[Iterable[Callable[[], bool]]] = None,
         action: Optional[Callable[[], None]] = None,
+        actions: Optional[Iterable[Callable[[], None]]] = None,
         success_check: Optional[Callable[[], bool]] = None,
+        success_checks: Optional[Iterable[Callable[[], bool]]] = None,
         timeout_action: Optional[Callable[[], None]] = None,
+        timeout_actions: Optional[Iterable[Callable[[], None]]] = None,
         max_steps: int = 1,
         failure_destination: Optional[StateT] = None,
     ) -> None:
         if max_steps < 1:
             raise ValueError("max_steps must be at least 1")
-        
+
         self.transitions[(source, event)] = Transition(
             destination=destination,
-            guard=guard,
-            action=action,
-            success_check=success_check,
-            timeout_action=timeout_action,
+            guards=self._ordered_callbacks(guard, guards, "guard", "guards"),
+            actions=self._ordered_callbacks(action, actions, "action", "actions"),
+            success_checks=self._ordered_callbacks(
+                success_check,
+                success_checks,
+                "success_check",
+                "success_checks",
+            ),
+            timeout_actions=self._ordered_callbacks(
+                timeout_action,
+                timeout_actions,
+                "timeout_action",
+                "timeout_actions",
+            ),
             max_steps=max_steps,
             failure_destination=failure_destination,
-            msg=msg
+            msg="",
         )
         self._debug_transition("transition created", source, event, destination)
 
-    def trigger(self, event: EventT) -> TransitionStatus:
+    @staticmethod
+    def _ordered_callbacks(
+        callback: Optional[CallbackT],
+        callbacks: Optional[Iterable[CallbackT]],
+        callback_name: str,
+        callbacks_name: str,
+    ) -> tuple[CallbackT, ...]:
+        if callback is not None and callbacks is not None:
+            raise ValueError(
+                f"Use either {callback_name} or {callbacks_name}, not both"
+            )
+        if callback is not None:
+            return (callback,)
+        if callbacks is None:
+            return ()
+        return tuple(callbacks)
+
+    def trigger(self, event: EventT, msg: str = "") -> TransitionStatus:
         if self.pending is not None:
             raise InvalidTransition(
                 "Cannot trigger a new event while another transition is pending"
@@ -107,36 +139,41 @@ class StateMachine(Generic[StateT, EventT]):
 
         key = (self.state, event)
         if key not in self.transitions:
-            raise InvalidTransition(f"No transition for {self.state.name} + {event.name}")
+            raise InvalidTransition(
+                f"No transition for {self.state.name} + {event.name} [{msg}]"
+            )
 
         transition = self.transitions[key]
+        transition.msg = (
+            f"[{self.state.name} + {event.name} => "
+            f"{transition.destination.name} ] {msg}"
+        )
         self._debug_transition(
             "transition called",
             self.state,
             event,
             transition.destination,
+            info=msg
         )
 
+        _msg = (
+            bcolors.OKBLUE
+            + transition.msg
+            + "Transition Started ⚠️"
+            + bcolors.ENDC
+        )
         if self.logger:
-            self.logger.info( #type: ignore
-                bcolors.OKBLUE +
-                transition.msg +
-                bcolors.ENDC
-            )
+            self.logger.info(_msg) #type: ignore
         else:
-            print(
-                bcolors.OKBLUE +
-                transition.msg +
-                bcolors.ENDC
-            )
+            print(_msg)
 
-        if transition.guard and not transition.guard():
-            raise GuardFailed(f"Guard failed for {self.state.name} + {event.name}")
+        if not all(guard() for guard in transition.guards):
+            raise GuardFailed(f"{transition.msg} Transition Guard failed 🚨!")
 
-        if transition.action:
-            transition.action()
+        for action in transition.actions:
+            action()
 
-        if transition.success_check is None:
+        if not transition.success_checks:
             self._complete(event, transition)
             return TransitionStatus.COMPLETED
 
@@ -154,11 +191,18 @@ class StateMachine(Generic[StateT, EventT]):
         pending = self.pending
         transition = pending.transition
 
-        if transition.success_check is not None and transition.success_check():
+        if transition.success_checks and all(
+            success_check() for success_check in transition.success_checks
+        ):
             self._complete(pending.event, transition)
             self.pending = None
 
-            _msg = bcolors.OKGREEN + "✅ Transition Completed [" + transition.msg + "]" + bcolors.ENDC
+            _msg = (
+                bcolors.OKGREEN
+                + transition.msg
+                + "Transition Completed ✅"
+                + bcolors.ENDC
+            )
             if self.logger: #type: ignore
                 self.logger.info(_msg ) #type: ignore
             else:
@@ -170,7 +214,7 @@ class StateMachine(Generic[StateT, EventT]):
         if pending.steps < transition.max_steps:
             return TransitionStatus.PENDING
         
-        _msg = bcolors.FAIL + "❌ timeout [" + transition.msg + "]" + bcolors.ENDC
+        _msg = bcolors.FAIL + transition.msg + "Transition ❌" + bcolors.ENDC
         if self.logger: #type: ignore
             self.logger.error(  _msg ) #type: ignore
         else:
@@ -186,11 +230,14 @@ class StateMachine(Generic[StateT, EventT]):
             f"{transition.destination.name} failed after "
             f"{transition.max_steps} steps"
         )
-        if transition.timeout_action is not None:
+        for timeout_action in transition.timeout_actions:
             try:
-                transition.timeout_action()
+                timeout_action()
             except Exception as e:
-                _msg = f"Transition timeout action failed: {e}"
+                _msg = (
+                    f"{transition.msg} Transition timeout action failed "
+                    f"🚨with error: {e}"
+                )
                 if self.logger:
                     self.logger.error(_msg)  # type: ignore
                 else:
@@ -201,7 +248,5 @@ class StateMachine(Generic[StateT, EventT]):
     def cancel_pending(self) -> None:
         self.pending = None
 
-    def _complete(self, event: EventT, transition: Transition) -> None:
-        old_state = self.state
+    def _complete(self, event: EventT, transition: Transition[StateT]) -> None:
         self.state = transition.destination
-        print(f"{old_state.name} --{event.name}--> {self.state.name}")

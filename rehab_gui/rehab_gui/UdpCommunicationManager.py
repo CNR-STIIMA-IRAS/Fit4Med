@@ -424,6 +424,7 @@ class UdpCommunicationManager(QObject):
             RUNNING_RECOVERY = auto()
             RECOVERED = auto()
             ERROR = auto()
+            ERROR_RECOVERY = auto()
         """
         state, pending, payload = self._parse_plc_status(data)
         if payload is not None:
@@ -439,7 +440,7 @@ class UdpCommunicationManager(QObject):
             self.requestRosCommunicationStop("UDP pending stop/fail transition received.")
             return
 
-        if state in ('IDLE', 'IDLE_RECOVERY', 'ERROR', 'RECOVERED') and pending is None:
+        if state in ('IDLE', 'IDLE_RECOVERY', 'ERROR', 'ERROR_RECOVERY', 'RECOVERED') and pending is None:
             if not self.stop_ros_communication_emitted:
                 self.requestRosCommunicationStop("Request from PLC via UDP to stop the ROS communication received.")
 

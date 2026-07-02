@@ -81,6 +81,13 @@ class EthercatMonitor:
         return self.startup_check_state == EthercatCheckState.READY
 
     def run_startup_check(self, executor: Any) -> bool:
+        if os.environ.get('PLC_MANAGER_SKIP_ETHERCAT', '0') == '1':
+            self.startup_check_state = EthercatCheckState.READY
+            self._last_error = (
+                'Skipped EtherCAT startup check '
+                '(PLC_MANAGER_SKIP_ETHERCAT=1).'
+            )
+            return True
         if not self.startup_check_requested:
             return True
 

@@ -54,7 +54,7 @@ class PlcCommandPublisher:
     def wire_endstroke_to_emergency_chain(self) -> None:
         """
         Wire the end-stroke limit switch to the emergency chain.
-        This is done by setting the 'z_recovery' command to 0, which
+        This is done by setting the 'z_recovery' command to 1, which
         enables the end-stroke switch to trigger an emergency stop.
         """
         self._publish_command('PLC_node/z_recovery', 1)
@@ -88,3 +88,9 @@ class PlcCommandPublisher:
         self.clear_sw_estop()
         self.wire_endstroke_to_emergency_chain()
         self.power_force_sensors()
+
+    def disable_eeg_sync(self) -> None:
+        self._publish_command('PLC_node/eeg_sync', 0)
+
+    def enable_eeg_sync(self) -> None:
+        self._publish_command('PLC_node/eeg_sync', 1)

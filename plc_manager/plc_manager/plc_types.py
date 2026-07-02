@@ -23,6 +23,7 @@ class State(Enum):
     RUNNING = auto()
     RUNNING_RECOVERY = auto()
     RECOVERED = auto()
+    ERROR_RECOVERY = auto()
     ERROR = auto()
 
 

@@ -2,8 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
  
 import os
+import time
 import types
 
+from typing import Tuple
 
 # Must be BEFORE importing rclpy (sets logging format globally)
 os.environ['RCUTILS_CONSOLE_OUTPUT_FORMAT'] = '[{severity}] [{name}]: {message}'
@@ -33,6 +35,10 @@ from plc_manager.gui_status import GuiStatusPublisher
 from plc_manager.plc_commands import PlcCommandPublisher
 from plc_manager.plc_types import EStopState, Event, State
 from plc_manager.udp_client import UdpClient
+
+
+class FailedSafeShutdown(Exception):
+    pass
 
 
 class PLCControllerInterface(Node):
@@ -143,35 +149,6 @@ class PLCControllerInterface(Node):
     def _ethercat_slaves_status_ok(self) -> bool:
         return self.ethercat.startup_status_ok()
 
-    def _ready_to_start(self) -> bool:
-        return self._ros_gui_disconnected() \
-            and self._ethercat_slaves_status_ok()
-
-    def _bringup_env(self) -> None:
-        self.environment.bringup_env()
-        self.plc_commands.wire_endstroke_to_emergency_chain()
-
-    def _bringup_recovery_env(self) -> None:
-        self.environment.bringup_recovery_env()
-        self.plc_commands.detach_endstroke_from_emergency_chain()
-
-    def _handle_idle_stop(self) -> None:
-        self.environment.handle_idle_stop()
-        self.plc_commands.raise_sw_estop()
-        self.plc_commands.set_automatic_mode()
-
-    def _kill_env(self) -> None:
-        self.environment.kill_env()
-        self.plc_commands.set_automatic_mode()
-        self.plc_commands.brake_enable()
-        self.plc_commands.wire_endstroke_to_emergency_chain()
-
-    def _kill_recovery_env(self) -> None:
-        self.environment.kill_recovery_env()
-        self.plc_commands.set_automatic_mode()
-        self.plc_commands.brake_enable()
-        self.plc_commands.wire_endstroke_to_emergency_chain()
-
     def _get_z_limit_switch_state(self) -> bool:
         z_limit_active = False
         for _i in range(len(self.interface_names)):
@@ -184,13 +161,13 @@ class PLCControllerInterface(Node):
         self,
         estop_value: EStopState,
         sw_estop_value: EStopState,
-    ) -> Event:
+    ) -> Tuple[Event,str]:
         if (
             self.estop_cached == EStopState.EMERGENCY
             and estop_value == EStopState.OK
             and sw_estop_value == EStopState.OK
         ):
-            return Event.START
+            return (Event.START, "The Emergency stop has been reset, No SW ESTOP present - Start Drivers and Controllers Bringup")
 
         if self.estop_cached == EStopState.OK and estop_value == EStopState.OK:
             if self.sw_estop_cached != sw_estop_value:
@@ -199,12 +176,12 @@ class PLCControllerInterface(Node):
                     self.plc_commands.set_automatic_mode()
                     self.get_logger().info(bc.FAIL + 'Raised a SW ESTOP!' + bc.ENDC)    # type: ignore
                 self.sw_estop_cached = sw_estop_value
-            return Event.NONE
+            return (Event.NONE, "The Emergency stop has been reset, No SW ESTOP Present, and cached ESTOP already OK - No action needed")
 
         if self.estop_cached == EStopState.OK and estop_value == EStopState.EMERGENCY:
-            return Event.STOP
+            return (Event.STOP, "!!! Emergency stop triggered !!! - Stop Drivers and Controllers")
 
-        return Event.NONE
+        return (Event.NONE, f"[ESTOP={estop_value}, SW_ESTOP={sw_estop_value}] - No action needed")
 
     def _state_callback_estop(self, estop_value: EStopState, 
                               z_limit_active: bool, 
@@ -214,12 +191,12 @@ class PLCControllerInterface(Node):
         SW_ESTOP: EStopState = sw_estop_value
        
         
-        event = self._detect_estop_event(ESTOP, SW_ESTOP)
+        event, msg = self._detect_estop_event(ESTOP, SW_ESTOP)
         if self.fsm.pending is None:
             
             try:
                 if event != Event.NONE:
-                    self.fsm.trigger(event) #type: ignore 
+                    self.fsm.trigger(event, msg) #type: ignore
                     self.estop_cached = ESTOP
                     self.sw_estop_cached = SW_ESTOP
             except InvalidTransition as e:
@@ -242,7 +219,7 @@ class PLCControllerInterface(Node):
                         "Cancelling startup and triggering STOP."
                     )
                     self.fsm.cancel_pending()
-                    self.fsm.trigger(Event.STOP) #type: ignore
+                    self.fsm.trigger(Event.STOP, "Emergency stop requested while START transition is pending.")
                     self.estop_cached = ESTOP
                     self.sw_estop_cached = SW_ESTOP
                     return
@@ -255,7 +232,7 @@ class PLCControllerInterface(Node):
             except TransitionTimeout as e:
                 self.get_logger().error(f"Timeout transition: {e}") #type: ignore
 
-    def request_shutdown_stop(self) -> None:
+    def force_shutdown_stop(self) -> None:
         if self.shutdown_stop_requested:
             return
 
@@ -264,6 +241,9 @@ class PLCControllerInterface(Node):
             "Shutdown requested: opening PLC safety chain."
         )
         self.plc_commands.raise_sw_estop()
+        self.plc_commands.brake_enable()
+        self.plc_commands.set_automatic_mode()
+        self.plc_commands.wire_endstroke_to_emergency_chain()
 
     def shutdown_safe_to_exit(self) -> bool:
         return (
@@ -311,17 +291,17 @@ class PLCControllerInterface(Node):
             if self.fsm.pending is None:
                 if self.fsm.state == State.IDLE and z_limit_active:
                     self.get_logger().info( #type: ignore
-                        bc.MAGENTA + 'Raised a Z-LIMIT event! Set IDLE_RECOVERY state' + bc.ENDC,
+                        bc.MAGENTA + 'Caught a Z-LIMIT event! Set IDLE_RECOVERY state' + bc.ENDC,
                         throttle_duration_sec=5.0
                     )
-                    self.fsm.trigger(Event.SWITCH_MODE)
+                    self.fsm.trigger(Event.SWITCH_MODE, "Caught a Z-LIMIT")
                 
                 if self.fsm.state == State.RECOVERED and not z_limit_active:
                     self.get_logger().info( #type: ignore
                         bc.MAGENTA + 'Recovered the Z-LIMIT event' + bc.ENDC,
                         throttle_duration_sec=5.0
                     )
-                    self.fsm.trigger(Event.SWITCH_MODE)
+                    self.fsm.trigger(Event.SWITCH_MODE, "Recovered the Z-LIMIT")
             
                 if self.fsm.state == State.IDLE:    
                     self.get_logger().info( #type: ignore
@@ -338,7 +318,7 @@ class PLCControllerInterface(Node):
                 if self.fsm.state in (State.RUNNING, State.RUNNING_RECOVERY)\
                 and self._ros_gui_connection_failed():
                     self.client.clear_last_message()
-                    self.fsm.trigger(Event.FAIL)
+                    self.fsm.trigger(Event.FAIL, "ROS GUI connection failed")
 
             # ========== Process Status info ==========
             processes_status = self.environment.check_expected_processes(
@@ -358,19 +338,39 @@ class PLCControllerInterface(Node):
             ):
                 sw_estop = EStopState.EMERGENCY
 
-            if self.fsm.state == State.ERROR:
+            if self.fsm.state in (State.ERROR, State.ERROR_RECOVERY):
                 sw_estop = EStopState.EMERGENCY
                         
             self.processes_status_cached = processes_status
 
             # ========== Search for E-stop signal in state message ==========
-            for int_idx in range(len(self.interface_names)):
-                if self.interface_names[int_idx] == "estop":
-                    self._state_callback_estop(
-                        EStopState.OK if self.state_values[int_idx] == 1 else EStopState.EMERGENCY, #type: ignore
-                        z_limit_active, 
-                        sw_estop
-                    )
+            if "estop" in self.interface_names:
+                estop_index = self.interface_names.index("estop")
+                estop_value = EStopState.OK if self.state_values[estop_index] == 1 else EStopState.EMERGENCY
+                self._state_callback_estop(
+                    estop_value,
+                    z_limit_active, 
+                    sw_estop
+                )
+            else:
+                self.get_logger().error( #type: ignore
+                    bc.FAIL + 'No estop signal in the PLC state message! Escalate the shutdown' + bc.ENDC,
+                    throttle_duration_sec=5.0
+                )
+                if self.fsm.state == State.RUNNING or \
+                    (self.fsm.state == State.IDLE and \
+                     self.fsm.pending is not None and self.fsm.pending.event == Event.START):
+                    if self.fsm.pending is not None:
+                        self.fsm.cancel_pending()
+                    self.environment.kill_env()
+                elif self.fsm.state == State.RUNNING_RECOVERY or \
+                    (self.fsm.state == State.IDLE_RECOVERY and \
+                     self.fsm.pending is not None and self.fsm.pending.event == Event.START):
+                    if self.fsm.pending is not None:
+                        self.fsm.cancel_pending()
+                    self.environment.kill_recovery_env()
+                self.signal_handler(sig=signal.SIGTERM, frame=sys._getframe()) #type: ignore
+
         except InvalidTransition as e:
             self.get_logger().error(f"Invalid transition: {e}") #type: ignore
         except GuardFailed as e:
@@ -473,8 +473,9 @@ def main(args=None): #type: ignore
                 if node.shutdown_safe_to_exit():
                     node.close_shutdown_safety_chain()
                     break
-                node.request_shutdown_stop()
-                continue
+                else:
+                    node.force_shutdown_stop()
+                    raise FailedSafeShutdown("Shutdown not safe to exit. Forced an SW ESTOP and cleanup actions.")
 
             if not node.ethercat.run_startup_check(mt_executor):
                 continue
@@ -486,10 +487,20 @@ def main(args=None): #type: ignore
                 node.plc_commands.publish_bringup_commands()
                 node.bringup_done = True
                 node.ethercat.start_runtime_polling()
-
+    except FailedSafeShutdown as e:
+        pass
     except Exception as e:
         node.get_logger().error(f"Unexpected exception in main loop: {e}") #type: ignore
-    
+        node.force_shutdown_stop()
+    finally:
+        watchdog = time.monotonic() + 5.0  # 5 seconds timeout for cleanup
+        while not node.shutdown_safe_to_exit() and time.monotonic() < watchdog:
+            mt_executor.spin_once(timeout_sec=0.1)
+            if node.fsm.state in \
+                (State.IDLE, State.IDLE_RECOVERY, State.RECOVERED, 
+                 State.ERROR, State.ERROR_RECOVERY):
+                break
+        node.plc_commands.clear_sw_estop()
     # ========== Graceful cleanup ==========
     try:
         node.cleanup()
