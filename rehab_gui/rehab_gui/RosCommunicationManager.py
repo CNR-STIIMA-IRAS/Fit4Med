@@ -441,16 +441,6 @@ class RosCommunicationManager(QObject):
             return
         self.ROS.publish_plc_command(['PLC_node/force_sensors_pwr'], [value])
 
-    def brakeSwitchOn(self) :
-        if not self.rOk():
-            return
-        self.ROS.publish_plc_command(['PLC_node/brake_disable'], [1])
-
-    def brakeSwitchOff(self) :
-        if not self.rOk():
-            return
-        self.ROS.publish_plc_command(['PLC_node/brake_disable'], [0])
-
     def stopAnyMovement(self) -> bool:
         return self.ROS.stop_movement() if self.rOk() else False
     

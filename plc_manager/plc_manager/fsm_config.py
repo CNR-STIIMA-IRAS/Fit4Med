@@ -18,27 +18,27 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
     )
     platform_bringup_actions = (
         environment.bringup_env,
-        plc_commands.brake_enable,
+        plc_commands.close_brake,
         plc_commands.set_automatic_mode,
         plc_commands.wire_endstroke_to_emergency_chain,
         plc_commands.clear_sw_estop
     )
     recovery_bringup_actions = (
         environment.bringup_recovery_env,
-        plc_commands.brake_enable,
+        plc_commands.close_brake,
         plc_commands.set_automatic_mode,
         plc_commands.detach_endstroke_from_emergency_chain,
         plc_commands.clear_sw_estop
     )
     platform_cleanup_actions = (
-        plc_commands.brake_enable,
+        plc_commands.close_brake,
         environment.kill_env,
         plc_commands.set_automatic_mode,
         plc_commands.wire_endstroke_to_emergency_chain,
         plc_commands.clear_sw_estop
     )
     recovery_cleanup_actions = (
-        plc_commands.brake_enable,
+        plc_commands.close_brake,
         environment.kill_recovery_env,
         plc_commands.set_automatic_mode,
         plc_commands.wire_endstroke_to_emergency_chain,

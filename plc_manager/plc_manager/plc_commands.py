@@ -52,10 +52,10 @@ class PlcCommandPublisher:
     def set_manual_mode(self) -> None:
         self._publish_command('PLC_node/manual_mode', 1)
 
-    def brake_enable(self) -> None:
+    def close_brake(self) -> None:
         self._publish_command('PLC_node/brake_disable', 0)
 
-    def brake_disable(self) -> None:
+    def open_brake(self) -> None:
         self._publish_command('PLC_node/brake_disable', 1)
 
     def wire_endstroke_to_emergency_chain(self) -> None:
