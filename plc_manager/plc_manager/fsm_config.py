@@ -82,15 +82,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
             plc_commands.clear_sw_estop
         ),
     )
-    fsm.add_transition(
-        Event.SWITCH_MODE,
-        State.ESTOP_RECOVERY,
-        State.ESTOP,
-        actions=(
-            plc_commands.wire_endstroke_to_emergency_chain,
-            plc_commands.clear_sw_estop
-        ),
-    )
+
     fsm.add_transition(
         Event.START,
         State.IDLE,
@@ -236,7 +228,29 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         max_steps=50000,
         failure_destination=State.ERROR_RECOVERY,
     )
+        # fsm_config.py
+    fsm.add_transition(
+        Event.START,
+        State.ESTOP,
+        State.IDLE,
+        actions=idle_stop_actions,
+        success_checks=(environment.check_env_running_stopped,),
+        timeout_actions=platform_cleanup_actions,
+        max_steps=50000,
+        failure_destination=State.ERROR,
+    )
 
+    fsm.add_transition(
+        Event.START,
+        State.ESTOP_RECOVERY,
+        State.RUNNING_RECOVERY,
+        guards=startup_guards,
+        actions=recovery_bringup_actions,
+        success_checks=(environment.check_env_running_recovery,),
+        timeout_actions=recovery_cleanup_actions,
+        max_steps=50000,
+        failure_destination=State.ERROR_RECOVERY,
+    )
 
 
     return fsm
