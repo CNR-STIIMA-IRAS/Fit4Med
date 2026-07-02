@@ -266,7 +266,7 @@ class PLCControllerInterface(Node):
             "Shutdown requested: opening PLC safety chain."
         )
         self.plc_commands.raise_sw_estop()
-        self.plc_commands.brake_enable()
+        self.plc_commands.close_brake()
         self.plc_commands.set_automatic_mode()
         self.plc_commands.wire_endstroke_to_emergency_chain()
 
@@ -383,7 +383,7 @@ class PLCControllerInterface(Node):
                     )
                     self.plc_commands.set_automatic_mode()
                     self.plc_commands.clear_sw_estop()
-                    self.plc_commands.brake_enable()
+                    self.plc_commands.close_brake()
 
                 elif self.fsm.state == State.ESTOP:
                     self.get_logger().info( #type: ignore
@@ -392,7 +392,7 @@ class PLCControllerInterface(Node):
                     )
                     self.plc_commands.set_automatic_mode()
                     self.plc_commands.clear_sw_estop()
-                    self.plc_commands.brake_enable()
+                    self.plc_commands.close_brake()
 
                 elif self.fsm.state == State.IDLE_RECOVERY:
                     self.get_logger().info( #type: ignore
@@ -401,7 +401,7 @@ class PLCControllerInterface(Node):
                     )
                     self.plc_commands.set_automatic_mode()
                     self.plc_commands.clear_sw_estop()
-                    self.plc_commands.brake_enable()
+                    self.plc_commands.close_brake()
 
                 elif self.fsm.state == State.ESTOP_RECOVERY:
                     self.get_logger().info( #type: ignore
@@ -410,7 +410,7 @@ class PLCControllerInterface(Node):
                     )
                     self.plc_commands.set_automatic_mode()
                     self.plc_commands.clear_sw_estop()
-                    self.plc_commands.brake_enable()
+                    self.plc_commands.close_brake()
 
                 if self.fsm.state in (State.RUNNING, State.RUNNING_RECOVERY)\
                 and self._ros_gui_connection_failed():
