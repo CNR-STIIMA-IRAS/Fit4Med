@@ -33,10 +33,11 @@ class PlcCommandPublisher:
             idx = self.plc_outputs.interface_names.index(name)  # type: ignore
             self.plc_outputs.values[idx] = value  # type: ignore
             self.command_publisher.publish(self.plc_outputs)
-            self.logger.info(f"Published PLC command: {self.plc_outputs.values}")  # type: ignore
+            self.logger.info(f"Published PLC command: {self.plc_outputs.values}", throttle_duration_sec=5.0)  # type: ignore
         else:
             self.logger.warn(  # type: ignore
-                f"Interface name '{name}' not found in command message."
+                f"Interface name '{name}' not found in command message.",
+                throttle_duration_sec=5.0
             )
 
     def set_automatic_mode(self) -> None:
