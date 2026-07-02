@@ -228,11 +228,11 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         max_steps=50000,
         failure_destination=State.ERROR_RECOVERY,
     )
-        # fsm_config.py
+
     fsm.add_transition(
         Event.START,
         State.ESTOP,
-        State.IDLE,
+        State.RUNNING,
         actions=idle_stop_actions,
         success_checks=(environment.check_env_running_stopped,),
         timeout_actions=platform_cleanup_actions,
