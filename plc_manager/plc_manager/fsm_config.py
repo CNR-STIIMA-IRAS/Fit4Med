@@ -31,22 +31,21 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         plc_commands.clear_sw_estop
     )
     platform_cleanup_actions = (
+        plc_commands.brake_enable,
         environment.kill_env,
         plc_commands.set_automatic_mode,
-        plc_commands.brake_enable,
         plc_commands.wire_endstroke_to_emergency_chain,
         plc_commands.clear_sw_estop
     )
     recovery_cleanup_actions = (
+        plc_commands.brake_enable,
         environment.kill_recovery_env,
         plc_commands.set_automatic_mode,
-        plc_commands.brake_enable,
         plc_commands.wire_endstroke_to_emergency_chain,
         plc_commands.clear_sw_estop
     )
     idle_stop_actions = (
         environment.handle_idle_stop,
-        plc_commands.raise_sw_estop,
         plc_commands.set_automatic_mode,
         plc_commands.clear_sw_estop
     )

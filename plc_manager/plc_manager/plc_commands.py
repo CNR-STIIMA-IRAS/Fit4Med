@@ -27,12 +27,18 @@ class PlcCommandPublisher:
         self.plc_outputs = PlcController()
         self.plc_outputs.values = [0] * 10
         self.plc_outputs.interface_names = list(PLC_COMMAND_INTERFACE_NAMES)
+        self._last_published_values: list[int] | None = None
 
     def _publish_command(self, name: str, value: int) -> None:
         if name in self.plc_outputs.interface_names:  # type: ignore
             idx = self.plc_outputs.interface_names.index(name)  # type: ignore
             self.plc_outputs.values[idx] = value  # type: ignore
+            current_values = list(self.plc_outputs.values)  # type: ignore
+            if self._last_published_values == current_values:
+                return
+
             self.command_publisher.publish(self.plc_outputs)
+            self._last_published_values = current_values
             self.logger.info(f"Published PLC command: {self.plc_outputs.values}", throttle_duration_sec=5.0)  # type: ignore
         else:
             self.logger.warn(  # type: ignore
