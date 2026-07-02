@@ -141,9 +141,9 @@ class EnvironmentManager:
             return self.check_env_running(False)
         if state == State.RUNNING_RECOVERY:
             return self.check_env_running_recovery(False)
-        if state == State.IDLE:
+        if state in (State.IDLE, State.ESTOP):
             return self.check_env_running_stopped()
-        if state in (State.IDLE_RECOVERY, State.RECOVERED):
+        if state in (State.IDLE_RECOVERY, State.ESTOP_RECOVERY, State.RECOVERED):
             return self.check_env_running_recovery_stopped()
 
         return False

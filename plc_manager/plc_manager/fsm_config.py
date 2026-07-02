@@ -12,6 +12,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
     environment = controller.environment
     plc_commands = controller.plc_commands
     startup_guards = (
+        controller._estop_rearm_delay_elapsed,
         controller._ros_gui_disconnected,
         controller._ethercat_slaves_status_ok,
     )
@@ -66,8 +67,26 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
     )
     fsm.add_transition(
         Event.SWITCH_MODE,
+        State.ESTOP,
+        State.ESTOP_RECOVERY,
+        actions=(
+            plc_commands.detach_endstroke_from_emergency_chain,
+            plc_commands.clear_sw_estop
+        ),
+    )
+    fsm.add_transition(
+        Event.SWITCH_MODE,
         State.RECOVERED,
         State.IDLE,
+        actions=(
+            plc_commands.wire_endstroke_to_emergency_chain,
+            plc_commands.clear_sw_estop
+        ),
+    )
+    fsm.add_transition(
+        Event.SWITCH_MODE,
+        State.ESTOP_RECOVERY,
+        State.ESTOP,
         actions=(
             plc_commands.wire_endstroke_to_emergency_chain,
             plc_commands.clear_sw_estop
@@ -95,7 +114,6 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         max_steps=50000,
         failure_destination=State.ERROR_RECOVERY,
     )
-
     fsm.add_transition(
         Event.STOP,
         State.RUNNING_RECOVERY,
@@ -110,7 +128,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
     fsm.add_transition(
         Event.STOP,
         State.RUNNING,
-        State.IDLE,
+        State.ESTOP,
         actions=platform_cleanup_actions,
         success_checks=(environment.check_env_running_stopped,),
         timeout_actions=platform_cleanup_actions,
@@ -143,7 +161,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
     fsm.add_transition(
         Event.STOP,
         State.IDLE,
-        State.IDLE,
+        State.ESTOP,
         actions=idle_stop_actions,
         success_checks=(environment.check_env_running_stopped,),
         timeout_actions=platform_cleanup_actions,
@@ -154,7 +172,28 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
     fsm.add_transition(
         Event.STOP,
         State.IDLE_RECOVERY,
-        State.IDLE_RECOVERY,
+        State.ESTOP_RECOVERY,
+        actions=idle_stop_actions,
+        success_checks=(environment.check_env_running_recovery_stopped,),
+        timeout_actions=recovery_cleanup_actions,
+        max_steps=50000,
+        failure_destination=State.ERROR_RECOVERY,
+    )
+    fsm.add_transition(
+        Event.STOP,
+        State.ESTOP,
+        State.ESTOP,
+        actions=idle_stop_actions,
+        success_checks=(environment.check_env_running_stopped,),
+        timeout_actions=platform_cleanup_actions,
+        max_steps=50000,
+        failure_destination=State.ERROR,
+    )
+
+    fsm.add_transition(
+        Event.STOP,
+        State.ESTOP_RECOVERY,
+        State.ESTOP_RECOVERY,
         actions=idle_stop_actions,
         success_checks=(environment.check_env_running_recovery_stopped,),
         timeout_actions=recovery_cleanup_actions,

@@ -241,22 +241,28 @@ class MotorsWindow(QtWidgets.QWidget):
                 self.ui.label_SystemState.setStyleSheet("background-color: red; color: white")
             elif state_key == 'disconnected':
                 if plc_pending is None:
-                    if plc_state in ("IDLE",):
+                    if plc_state == "IDLE":
                         self.ui.label_SystemState.setText('Clear the Emergencies and \n Turn the Key to Reset and Start')
                         self.ui.label_SystemState.setStyleSheet("background-color: rgb(0,128,0); color: white")
-                    elif plc_state in ("IDLE_RECOVERY",):
+                    elif plc_state == "ESTOP":
+                        self.ui.label_SystemState.setText('Emergency latch active\nReboot all the system')
+                        self.ui.label_SystemState.setStyleSheet("background-color: red; color: white")
+                    elif plc_state == "IDLE_RECOVERY":
                         self.ui.label_SystemState.setText('Turn the Key to Start Recovery  \n !!!SMALL MOVEMENT EXPECTED!!!')
                         self.ui.label_SystemState.setStyleSheet("background-color: rgb(255,150,00); color: white")
+                    elif plc_state == "ESTOP_RECOVERY":
+                        self.ui.label_SystemState.setText('Recovery emergency latch active\nReboot all the system')
+                        self.ui.label_SystemState.setStyleSheet("background-color: red; color: white")
                 else:
-                    if plc_pending.get("source") == "IDLE":
+                    if plc_pending.get("source") in ("IDLE", "ESTOP"):
                         self.ui.label_SystemState.setText('CoE Drivers and Controllers Bringing-up')
                         self.ui.label_SystemState.setStyleSheet("background-color: rgb(255,215,00); color: white")
-                    elif plc_pending.get("source") == "IDLE_RECOVERY":
+                    elif plc_pending.get("source") in ("IDLE_RECOVERY", "ESTOP_RECOVERY"):
                         self.ui.label_SystemState.setText('Recovery Bringing-up \n !!!SMALL MOVEMENT EXPECTED!!!')
                         self.ui.label_SystemState.setStyleSheet("background-color: rgb(255,140,00); color: white")
             elif state_key == 'emergency':
                 if plc_pending is not None\
-                    and plc_pending.get("source") in ("IDLE", "IDLE_RECOVERY"):
+                    and plc_pending.get("source") in ("IDLE", "IDLE_RECOVERY", "ESTOP", "ESTOP_RECOVERY"):
                     pass
                 self.ui.label_SystemState.setText('!!! Emergency !!!')
                 self.ui.label_SystemState.setStyleSheet("background-color: red; color: white")

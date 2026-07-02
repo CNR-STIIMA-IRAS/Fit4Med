@@ -20,6 +20,7 @@ class State(Enum):
     IDLE = auto()
     IDLE_RECOVERY = auto()
     ESTOP = auto()
+    ESTOP_RECOVERY = auto()
     RUNNING = auto()
     RUNNING_RECOVERY = auto()
     RECOVERED = auto()
