@@ -3,6 +3,7 @@
 
 import rclpy
 import numpy as np
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from geometry_msgs.msg import WrenchStamped
 from rcl_interfaces.srv import SetParameters
@@ -43,6 +44,8 @@ class FTOffsetUpdater(Node):
 
         # Flag to check if the node is shutting down
         self.shutting_down = False
+        self.shutdown_requested = False
+        self.parameter_update_started = False
 
     def create_parameter(self, name, value):
         return Parameter(
@@ -67,13 +70,23 @@ class FTOffsetUpdater(Node):
     def update_parameters(self):
         if not self.shutting_down:
             return
+
+        if self.parameter_update_started:
+            return
+
+        self.parameter_update_started = True
+
+        if not self.off_x:
+            self.get_logger().error('No wrench samples collected. Skipping FT offset update.')
+            self.request_shutdown()
+            return
         
-        offset_x = np.mean(self.off_x).astype(np.double)
-        offset_y = np.mean(self.off_y).astype(np.double)
-        offset_z = np.mean(self.off_z).astype(np.double)
-        offset_tx = np.mean(self.off_tx).astype(np.double)
-        offset_ty = np.mean(self.off_ty).astype(np.double)
-        offset_tz = np.mean(self.off_tz).astype(np.double)
+        offset_x = float(np.mean(self.off_x))
+        offset_y = float(np.mean(self.off_y))
+        offset_z = float(np.mean(self.off_z))
+        offset_tx = float(np.mean(self.off_tx))
+        offset_ty = float(np.mean(self.off_ty))
+        offset_tz = float(np.mean(self.off_tz))
 
         if self.verbose_mode:
             print('Updating offset parameters...\n')
@@ -105,33 +118,55 @@ class FTOffsetUpdater(Node):
             response = future.result()
             if all(result.successful for result in response.results):
                 self.get_logger().info('Parameters updated successfully.')
-                self.shutdown_node()
             else:
                 self.get_logger().warn("Error updating one or more parameters.")
         except Exception as e:
             if not self.shutting_down:
                 self.get_logger().error(f'Error when calling the service: {e}')
+        finally:
+            self.request_shutdown()
 
     def shutdown_sub(self):
+        if self.shutting_down:
+            return
+
         self.shutting_down = True
-        if self.destroy_subscription(self.subscription):
-            self.get_logger().info('Biasing completed. Unsubscribing from wrench topic.')
-            self.update_parameters()
-
-    def shutdown_node(self):
-        self.get_logger().info('Shutting down FTOffsetUpdater...')
         self.timer.cancel()
-        self.destroy_client(self.param_client)
-        self.destroy_node()
+        self.get_logger().info('Biasing completed. Updating wrench offsets.')
+        self.update_parameters()
 
-        if rclpy.ok():
-            rclpy.shutdown()
+    def request_shutdown(self):
+        self.shutdown_requested = True
+
+    def cleanup(self):
+        self.timer.cancel()
+        self.destroy_timer(self.timer)
+        self.destroy_subscription(self.subscription)
+        self.destroy_client(self.param_client)
 
 
 def main(args=None):
     rclpy.init(args=args)
-    node = FTOffsetUpdater()
-    rclpy.spin(node)
+    node = None
+
+    try:
+        node = FTOffsetUpdater()
+        while rclpy.ok() and not node.shutdown_requested:
+            rclpy.spin_once(node, timeout_sec=0.1)
+    except (KeyboardInterrupt, SystemExit, ExternalShutdownException):
+        pass
+    finally:
+        if node is not None:
+            try:
+                node.cleanup()
+                node.destroy_node()
+            except Exception:
+                pass
+
+        try:
+            rclpy.try_shutdown()
+        except (KeyboardInterrupt, SystemExit):
+            pass
 
 if __name__ == '__main__':
     main()

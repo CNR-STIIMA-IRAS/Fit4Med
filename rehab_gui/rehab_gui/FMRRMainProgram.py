@@ -95,6 +95,7 @@ class MainProgram(QMainWindow):
         self.robotWindow = RobotWindow(self)
         self.rehabMovementWindow = RehabilitationMovementWindow(self)
         self.trainingProtocolWindow = TrainingProtocolWindow(self)
+        self._ros_runtime_loss_dialog_shown = False
 
         self.ui.verticalLayout_MotorsManagement.addWidget(self.motorWindow)
         self.ui.verticalLayout_RobotMovement.addWidget(self.robotWindow)
@@ -137,6 +138,7 @@ class MainProgram(QMainWindow):
         self.ros_manager.stop_ros_communication_signal.connect(self.udp.onResetRosCommunication)
         self.ros_manager.ros_communication_established_signal.connect(self.udp.onRosCommunicationEstablished)
         self.ros_manager.ros_communication_failed_signal.connect(self.udp.onRosCommunicationFailed)
+        self.ros_manager.ros_runtime_connection_lost_signal.connect(self.onRuntimeRosCommunicationLost)
 
         self.update_window_timer.timeout.connect(self.updateWindow)
         self.update_window_timer.start(self._update_window_period)
@@ -159,6 +161,28 @@ class MainProgram(QMainWindow):
 
     def checkPlcUdpWatchdog(self):
         self.motorWindow.updateUdpWatchdog(self._plc_udp_watchdog_timeout_s)
+
+    def onRuntimeRosCommunicationLost(self, message: str) -> None:
+        if self._ros_runtime_loss_dialog_shown:
+            return
+
+        self._ros_runtime_loss_dialog_shown = True
+        dialog = QMessageBox(
+            QMessageBox.Critical,
+            "Restart GUI Required",
+            (
+                "ROS communication was lost after the GUI was connected.\n\n"
+                "Restart the GUI before using the system again."
+            ),
+            QMessageBox.Ok,
+            self,
+        )
+        dialog.setInformativeText("The current GUI state may no longer be reliable.")
+        if message:
+            dialog.setDetailedText(message)
+        dialog.setWindowModality(Qt.ApplicationModal)
+        dialog.setWindowFlags(dialog.windowFlags() | Qt.WindowStaysOnTopHint)
+        dialog.exec_()
 
     def _shutdown_communications(self):
         self.ros_manager.turnOffMotors()

@@ -41,6 +41,7 @@ class RosCommunicationManager(QObject):
     stop_ros_communication_signal : pyqtSignal = pyqtSignal()
     ros_communication_established_signal : pyqtSignal = pyqtSignal()
     ros_communication_failed_signal : pyqtSignal = pyqtSignal()
+    ros_runtime_connection_lost_signal : pyqtSignal = pyqtSignal(str)
     worker_thread : Worker = None #type: ignore
     
     def __init__(self, joint_names: List[str], number_of_ec_slaves: int, remote_ip: str, remote_port: int, widget: QWidget): #port=9090
@@ -128,6 +129,7 @@ class RosCommunicationManager(QObject):
         self.ROS = None  # type: ignore
         self._close_ros_client()
         self.ros_communication_failed_signal.emit()
+        self.ros_runtime_connection_lost_signal.emit(message)
 
     def _stop_update_worker(self) -> bool:
         if not self.worker_thread.isRunning():
