@@ -58,6 +58,7 @@ class RosCommunicationManager(QObject):
         self.roslib_first_time_connection = True
         self.manual_mode_activated = False
         self._exercise_in_suspension: bool = False
+        self._exercise_type: int = 0
         self._plc_status_provider: Any = None
         self._stop_signal_emitted = False
         self._ros_stop_requested = False
@@ -258,7 +259,9 @@ class RosCommunicationManager(QObject):
     def setExerciseType(self, mode: int) -> bool:
         if not self.rOk():
             return False
-        print(f"Setting exercise type to {mode} [2 proximity, 1 proximity, 0 no sensor]...")
+        if self._exercise_type != mode:
+            print(f"Setting exercise type to {mode} [2 proximity, 1 proximity, 0 no sensor]...")
+        self._exercise_type = mode
         self.ROS.publish_plc_command(['PLC_node/mode_of_operation'], [mode])
         return True
         
