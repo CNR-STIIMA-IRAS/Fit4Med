@@ -42,6 +42,7 @@ class RosCommunicationManager(QObject):
     ros_communication_established_signal : pyqtSignal = pyqtSignal()
     ros_communication_failed_signal : pyqtSignal = pyqtSignal()
     ros_runtime_connection_lost_signal : pyqtSignal = pyqtSignal(str)
+    controller_behaviour_ready_signal : pyqtSignal = pyqtSignal(str, bool, str)
     worker_thread : Worker = None #type: ignore
     
     def __init__(self, joint_names: List[str], number_of_ec_slaves: int, remote_ip: str, remote_port: int, widget: QWidget): #port=9090
@@ -64,6 +65,11 @@ class RosCommunicationManager(QObject):
         self._ros_stop_requested = False
         self._worker_stop_timeout_msec = 5000
         self._worker_force_stop_timeout_msec = 3000
+        self._controller_behaviour_timeout_s = 5.0
+        self._pending_controller_behaviour = None
+        self._pending_controller_mode = None
+        self._pending_controller_name = None
+        self._pending_controller_deadline = 0.0
 
         self.worker_thread = Worker(self.updateState, loop_period_s=0.2)
         self.worker_thread.finished.connect(self.onUpdateWorkerThreadFinished)
@@ -80,6 +86,91 @@ class RosCommunicationManager(QObject):
         except Exception as exc:
             print(f"Failed to read manual switch state from UDP status provider: {exc}")
             return False
+
+    def _controller_behaviour_target(self, behaviour: str):
+        if not self.rOk():
+            return None
+        if behaviour == "Homing":
+            return 6, None
+        if behaviour == "Jogging":
+            return 9, self.ROS.forward_command_controller_name
+        if behaviour == "ManualGuidance":
+            return 9, self.ROS.admittance_controller_name
+        if behaviour == "GoToStart":
+            return 8, self.ROS.go_to_start_controller_name
+        return 8, self.ROS.trajectory_controller_name
+
+    def _clear_pending_controller_behaviour(self) -> None:
+        self._pending_controller_behaviour = None
+        self._pending_controller_mode = None
+        self._pending_controller_name = None
+        self._pending_controller_deadline = 0.0
+
+    def _start_pending_controller_behaviour(
+        self,
+        behaviour: str,
+        target_mode: int,
+        target_controller: Any,
+    ) -> None:
+        self._pending_controller_behaviour = behaviour
+        self._pending_controller_mode = target_mode
+        self._pending_controller_name = target_controller
+        self._pending_controller_deadline = (
+            time.monotonic() + self._controller_behaviour_timeout_s
+        )
+
+    def _finish_pending_controller_behaviour(self, success: bool, reason: str = "") -> None:
+        behaviour = self._pending_controller_behaviour
+        if behaviour is None:
+            return
+        self._clear_pending_controller_behaviour()
+        self.controller_behaviour_ready_signal.emit(behaviour, success, reason)
+
+    def _drives_are_in_mode(self, mode_value: int) -> bool:
+        if not self.rOk():
+            return False
+        modes = self.ROS.coe_drive_states.modes_of_operation
+        if len(modes) < len(self.joint_names):
+            return False
+        return all(
+            self.ROS.get_op_mode_number(modes[idx]) == mode_value
+            for idx in range(len(self.joint_names))
+        )
+
+    def _pending_controller_behaviour_ready(self) -> bool:
+        if (
+            self._pending_controller_behaviour is None
+            or self._pending_controller_mode is None
+            or not self.rOk()
+        ):
+            return False
+        controller_ready = (
+            self._pending_controller_name is None
+            or self.ROS.current_controller_name == self._pending_controller_name
+        )
+        return controller_ready and self._drives_are_in_mode(self._pending_controller_mode)
+
+    def _pending_controller_behaviour_timeout_reason(self) -> str:
+        behaviour = self._pending_controller_behaviour
+        controller = self.getCurrentControllerName()
+        modes = self.getDriversModeOfOperations()
+        return (
+            f"Timed out waiting for {behaviour} controller behaviour.\n"
+            f"Active controller: {controller}\n"
+            f"Drive modes: {modes}"
+        )
+
+    def _check_pending_controller_behaviour(self) -> None:
+        if self._pending_controller_behaviour is None:
+            return
+        if self._pending_controller_behaviour_ready():
+            self._finish_pending_controller_behaviour(True)
+            return
+        if time.monotonic() >= self._pending_controller_deadline:
+            self._finish_pending_controller_behaviour(
+                False,
+                self._pending_controller_behaviour_timeout_reason(),
+            )
     
     def onUpdateWorkerThreadFinished(self):
         self._emit_stop_ros_communication_once()
@@ -117,6 +208,7 @@ class RosCommunicationManager(QObject):
 
     def _handle_ros_connection_failed(self, message: str) -> None:
         print(message)
+        self._finish_pending_controller_behaviour(False, message)
         self._close_ros_client()
         self.ros_communication_failed_signal.emit()
 
@@ -125,6 +217,7 @@ class RosCommunicationManager(QObject):
             return
 
         print(message)
+        self._finish_pending_controller_behaviour(False, message)
         self._ros_stop_requested = True
         self.worker_thread.stop_thread()
         self.ROS = None  # type: ignore
@@ -207,6 +300,7 @@ class RosCommunicationManager(QObject):
 
         self.ROS = SyncRosManager(self.number_of_ec_slaves, self.joint_names, self.ros_client)
 
+        self._clear_pending_controller_behaviour()
         self._stop_signal_emitted = False
         self._ros_stop_requested = False
         self.worker_thread.start_thread()
@@ -216,6 +310,10 @@ class RosCommunicationManager(QObject):
         print("Stopping ROS processes...")
 
         self._request_ros_stop()
+        self._finish_pending_controller_behaviour(
+            False,
+            "ROS communication stopped before the controller behaviour became ready.",
+        )
         worker_stopped = self._stop_update_worker()
 
         self.ROS_active = False
@@ -296,6 +394,24 @@ class RosCommunicationManager(QObject):
             return self.ROS.controller_and_op_mode_switch(8, self.ROS.go_to_start_controller_name)
         else:
             return self.ROS.controller_and_op_mode_switch(8, self.ROS.trajectory_controller_name)
+
+    def requestControllerBehaviour(self, behaviour: str) -> bool:
+        if not self.rOk():
+            return False
+        target = self._controller_behaviour_target(behaviour)
+        if target is None:
+            return False
+        target_mode, target_controller = target
+        self._clear_pending_controller_behaviour()
+        self.turnOffMotors()
+        ok = self.ROS.request_controller_and_op_mode_switch(target_mode, target_controller)
+        if ok:
+            self._start_pending_controller_behaviour(
+                behaviour,
+                target_mode,
+                target_controller,
+            )
+        return ok
         
     def toogleJoggingBehaviour(self, axis : int, direction: int):
         return self.ROS.jog_command(direction=direction, joint_to_move=axis) if self.rOk() else None
@@ -410,6 +526,7 @@ class RosCommunicationManager(QObject):
 
         try:
             ros_manager.update_controller_and_driver_states()
+            self._check_pending_controller_behaviour()
         except Exception as exc:
             if not ros_client.is_connected:
                 self._handle_ros_connection_lost(

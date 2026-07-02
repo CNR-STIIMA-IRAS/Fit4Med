@@ -52,15 +52,15 @@ def open_file(title="Select a file", path=""):
     return dlg.selectedFiles()[0] if dlg.exec_() else None
 
 class RehabilitationMovementWindow(QtWidgets.QDialog):
-    
     def __init__(self,main_app) -> None:
         super().__init__()
         self.ui = Ui_RehabilitationMovementWindow()
         self.ui.setupUi(self)
         self.main_app = main_app
-        self.SideOfMovement = 0 
+        self.SideOfMovement = 0
         self.TypeOfMovement : ExerciseType = ExerciseType.NONE
         self.vel_profile = 2
+        self._go_to_start_request_pending = False
 
         self.main_app.movement_loaded = 0
         
@@ -100,9 +100,10 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
     def connect(self, ROS: RosCommunicationManager, parent_timer: QTimer):
         self.ROS = ROS
         self.parent_timer = parent_timer
+        self.ROS.controller_behaviour_ready_signal.connect(self._onControllerBehaviourReady)
 
     def updateWindow(self):
-        if self.ROS.isRosCommunicationActive():
+        if self.ROS.isRosCommunicationActive() and not self._go_to_start_request_pending:
             self.ui.pushButton_GoToZERO.setEnabled(True)
         else:
             self.ui.pushButton_GoToZERO.setEnabled(False)
@@ -655,37 +656,54 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
         self.ui.pushButton_CREATEMovement.setEnabled(True)
 
     def clbk_BtnGoToStartPosition(self):
+        if self._go_to_start_request_pending:
+            return False
+
+        self._go_to_start_request_pending = True
+        self.ui.pushButton_GoToZERO.setEnabled(False)
         self.ROS.setManualMode(False)
-        if not self.ROS.enableControllerBehaviour("GoToStart"):
-            moos = self.ROS.getDriversModeOfOperations()
-            ctrl = self.ROS.getCurrentControllerName()
+        if not self.ROS.requestControllerBehaviour("GoToStart"):
+            self._go_to_start_request_pending = False
+            self.ui.pushButton_GoToZERO.setEnabled(self.ROS.isRosCommunicationActive())
             QMessageBox.warning(
                 self, "Warning",
-                f"Could not switch to Cyclic Synchronous Position mode (mode 8).\n"
-                f"Active controller: {ctrl}\nDrive modes: {moos}\n"
-                "Please verify that all drives are operational before starting training."
+                f"Could not request GoToStart controller behaviour "
+                f"(active: {self.ROS.getCurrentControllerName()}).\n"
+                f"Drive modes: {self.ROS.getDriversModeOfOperations()}"
             )
             return False
+        return True
+
+    def _onControllerBehaviourReady(self, behaviour: str, success: bool, reason: str):
+        if behaviour != "GoToStart" or not self._go_to_start_request_pending:
+            return
+
+        self._go_to_start_request_pending = False
+        self.ui.pushButton_GoToZERO.setEnabled(self.ROS.isRosCommunicationActive())
+        if not success:
+            QMessageBox.warning(
+                self,
+                "Warning",
+                reason or "GoToStart controller behaviour did not become ready.",
+            )
+            return
+
+        self.Training_ON = True
+        self.executeGoToStartOnSystemReady()
+
+    def _restoreTrajectoryController(self):
+        self.ROS.enableControllerBehaviour("PTP")
+
+    def executeGoToStartOnSystemReady(self):
         if self.ROS.getCurrentControllerName() != self.ROS.getGoToStartControllerName():
             QMessageBox.warning(
                 self, "Warning",
                 f"Go to start controller is not active "
                 f"(active: {self.ROS.getCurrentControllerName()}).\n"
-                "Cannot start training."
+                "Cannot move to start position."
             )
-            return False
-        self.Training_ON = True
-        QTimer.singleShot(500, self._goToStartPosition_afterDelay)
+            return
 
-    def _restoreTrajectoryController(self):
-        self.ROS.enableControllerBehaviour("PTP")
-
-    def _goToStartPosition_afterDelay(self):
-        if self.ROS.getCurrentControllerName() != self.ROS.getGoToStartControllerName():
-            if not self.ROS.enableControllerBehaviour("GoToStart"):
-                QMessageBox.warning(self, "Warning", "Failed in setting the go to startcontroller")
-                return
-            
         if self.ROS.turnOnMotors():
             self.ROS.sendGoToStartPTPTrajectory([0.0, 0.0, 0.0], 3.0)
         else:

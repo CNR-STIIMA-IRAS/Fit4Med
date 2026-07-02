@@ -500,6 +500,38 @@ class SyncRosManager:
         print(f"{GREEN}<<<<{NC} Switch  MOO and controller [{GREEN+'OK'+NC if ok else RED+'FAILED'+NC}]")
         return ok
 
+    def request_controller_and_op_mode_switch(self, new_mode: int, new_controller: str) -> bool:
+        moo = [self.get_op_mode_number(mode) for mode in self.coe_drive_states.modes_of_operation]
+        print(
+            f'{GREEN}>>>>{NC} Request MOO and controller'
+            f'({YELLOW}{moo}, {self.current_controller_name}{NC}) => '
+            f'({YELLOW}{new_mode}, {new_controller}{NC})'
+        )
+
+        mode_ok = len(moo) == len(self._joint_names) and all(
+            new_mode == moo[idx] for idx in range(len(self._joint_names))
+        )
+        controller_ok = new_controller == self.current_controller_name
+
+        if controller_ok and mode_ok:
+            print(f"{GREEN}<<<<{NC} Request MOO and controller [{GREEN}OK{NC}]")
+            return True
+
+        if not controller_ok:
+            print(f'{GREEN}....{NC} >>>> Request Switch Controller')
+            response = self.switch_controller(new_controller, self.current_controller_name)
+            ok = isinstance(response, dict) and response.get('ok', False)
+            print(f"{GREEN}....{NC} <<<< Request Switch Controller [{GREEN+'OK'+NC if ok else RED+'FAILED'+NC}]")
+            if not ok:
+                return False
+
+        if not mode_ok and not self.request_mode_of_operation(new_mode):
+            print(f"{GREEN}<<<<{NC} Request MOO and controller [{RED}FAILED{NC}]")
+            return False
+
+        print(f"{GREEN}<<<<{NC} Request MOO and controller [{GREEN}OK{NC}]")
+        return True
+
     def set_mode_of_operation(self, mode_value: int) -> bool:
         for idx,dof in enumerate(self._joint_names):
             if self.get_op_mode_number(self.coe_drive_states.modes_of_operation[idx]) == mode_value:
@@ -508,6 +540,27 @@ class SyncRosManager:
             _ = self.mode_of_op_client.call(req)
 
         return True
+
+    def request_mode_of_operation(self, mode_value: int) -> bool:
+        ok = True
+        current_modes = self.coe_drive_states.modes_of_operation
+        for idx, dof in enumerate(self._joint_names):
+            if (
+                idx < len(current_modes)
+                and self.get_op_mode_number(current_modes[idx]) == mode_value
+            ):
+                continue
+
+            req = {'dof_name': dof, 'mode_of_operation': mode_value}
+            response = self.mode_of_op_client.call(req)
+            if response is None:
+                print(f"{RED}No response while requesting MOO {mode_value} for {dof}{NC}")
+                ok = False
+            elif isinstance(response, dict) and response.get('success') is False:
+                print(f"{RED}Failed requesting MOO {mode_value} for {dof}: {response}{NC}")
+                ok = False
+
+        return ok
 
         # op_response = []
         # for mode in self.coe_drive_states.modes_of_operation:
