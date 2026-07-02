@@ -182,7 +182,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
     fsm.add_transition(
         Event.STOP,
         State.ESTOP,
-        State.ESTOP,
+        State.IDLE,
         actions=idle_stop_actions,
         success_checks=(environment.check_env_running_stopped,),
         timeout_actions=platform_cleanup_actions,
@@ -193,7 +193,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
     fsm.add_transition(
         Event.STOP,
         State.ESTOP_RECOVERY,
-        State.ESTOP_RECOVERY,
+        State.IDLE_RECOVERY,
         actions=idle_stop_actions,
         success_checks=(environment.check_env_running_recovery_stopped,),
         timeout_actions=recovery_cleanup_actions,
@@ -204,7 +204,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
     fsm.add_transition(
         Event.STOP,
         State.ERROR,
-        State.ERROR,
+        State.IDLE,
         actions=idle_stop_actions,
         max_steps=50000,
         failure_destination=State.ERROR,
@@ -214,7 +214,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
     fsm.add_transition(
         Event.STOP,
         State.ERROR_RECOVERY,
-        State.ERROR_RECOVERY,
+        State.IDLE_RECOVERY,
         actions=idle_stop_actions,
         max_steps=50000,
         failure_destination=State.ERROR_RECOVERY,
