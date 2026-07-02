@@ -178,8 +178,8 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
     fsm.add_transition(
         Event.START,
         State.ERROR_RECOVERY,
-        State.IDLE,
-        actions=platform_cleanup_actions,
+        State.IDLE_RECOVERY,
+        actions=recovery_cleanup_actions,
         max_steps=50000,
         failure_destination=State.ERROR_RECOVERY,
     )

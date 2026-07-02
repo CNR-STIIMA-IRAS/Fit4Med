@@ -209,6 +209,8 @@ class PLCControllerInterface(Node):
                     self.plc_commands.set_automatic_mode()
                     self.estop_cached = ESTOP
                     self.sw_estop_cached = SW_ESTOP
+            except TransitionTimeout as e:
+                self.get_logger().error(f"Timeout transition: {e}") #type: ignore
             
         else:
             pending = self.fsm.pending
@@ -265,6 +267,51 @@ class PLCControllerInterface(Node):
             "Shutdown complete: closing PLC safety chain before exit."
         )
         self.plc_commands.clear_sw_estop()
+
+    def _uses_recovery_cleanup_context(self) -> bool:
+        recovery_states = (
+            State.IDLE_RECOVERY,
+            State.RUNNING_RECOVERY,
+            State.RECOVERED,
+            State.ERROR_RECOVERY,
+        )
+        pending = self.fsm.pending
+        if pending is not None:
+            return (
+                pending.source in recovery_states
+                or pending.transition.destination in recovery_states
+                or pending.transition.failure_destination in recovery_states
+            )
+
+        return self.fsm.state in recovery_states
+
+    def force_environment_cleanup(self) -> None:
+        recovery_context = self._uses_recovery_cleanup_context()
+        pending = self.fsm.pending
+
+        if pending is not None:
+            failure_destination = pending.transition.failure_destination
+            self.fsm.cancel_pending()
+            if failure_destination is not None:
+                self.fsm.state = failure_destination
+        elif self.fsm.state == State.RUNNING:
+            self.fsm.state = State.ERROR
+        elif self.fsm.state == State.RUNNING_RECOVERY:
+            self.fsm.state = State.ERROR_RECOVERY
+
+        cleanup_action = self.environment.startup_cleanup_action
+        if cleanup_action is not None:
+            cleanup_action()
+        elif recovery_context:
+            self.environment.kill_recovery_env()
+        else:
+            self.environment.kill_env()
+
+    def forced_environment_cleanup_complete(self) -> bool:
+        return (
+            self.environment.check_env_running_stopped()
+            and self.environment.check_env_running_recovery_stopped()
+        )
 
     def state_callback(self, msg: PlcStates) -> None:
         # ========== Acquire lock to prevent concurrent execution ==========
@@ -349,7 +396,7 @@ class PLCControllerInterface(Node):
                 estop_value = EStopState.OK if self.state_values[estop_index] == 1 else EStopState.EMERGENCY
                 self._state_callback_estop(
                     estop_value,
-                    z_limit_active, 
+                    z_limit_active,
                     sw_estop
                 )
             else:
@@ -357,18 +404,8 @@ class PLCControllerInterface(Node):
                     bc.FAIL + 'No estop signal in the PLC state message! Escalate the shutdown' + bc.ENDC,
                     throttle_duration_sec=5.0
                 )
-                if self.fsm.state == State.RUNNING or \
-                    (self.fsm.state == State.IDLE and \
-                     self.fsm.pending is not None and self.fsm.pending.event == Event.START):
-                    if self.fsm.pending is not None:
-                        self.fsm.cancel_pending()
-                    self.environment.kill_env()
-                elif self.fsm.state == State.RUNNING_RECOVERY or \
-                    (self.fsm.state == State.IDLE_RECOVERY and \
-                     self.fsm.pending is not None and self.fsm.pending.event == Event.START):
-                    if self.fsm.pending is not None:
-                        self.fsm.cancel_pending()
-                    self.environment.kill_recovery_env()
+                self.force_shutdown_stop()
+                self.force_environment_cleanup()
                 self.signal_handler(sig=signal.SIGTERM, frame=sys._getframe()) #type: ignore
 
         except InvalidTransition as e:
@@ -496,11 +533,25 @@ def main(args=None): #type: ignore
         watchdog = time.monotonic() + 5.0  # 5 seconds timeout for cleanup
         while not node.shutdown_safe_to_exit() and time.monotonic() < watchdog:
             mt_executor.spin_once(timeout_sec=0.1)
-            if node.fsm.state in \
-                (State.IDLE, State.IDLE_RECOVERY, State.RECOVERED, 
-                 State.ERROR, State.ERROR_RECOVERY):
-                break
-        node.plc_commands.clear_sw_estop()
+        if not node.shutdown_safe_to_exit():
+            node.get_logger().error(  # type: ignore
+                "Shutdown watchdog expired before a safe FSM state. "
+                "Forcing launch-environment cleanup."
+            )
+            node.force_environment_cleanup()
+            cleanup_watchdog = time.monotonic() + 5.0
+            while (
+                not node.forced_environment_cleanup_complete()
+                and time.monotonic() < cleanup_watchdog
+            ):
+                mt_executor.spin_once(timeout_sec=0.1)
+
+        if node.shutdown_safe_to_exit():
+            node.close_shutdown_safety_chain()
+        else:
+            node.get_logger().error(  # type: ignore
+                "Shutdown not verified safe; leaving PLC SW ESTOP open."
+            )
     # ========== Graceful cleanup ==========
     try:
         node.cleanup()

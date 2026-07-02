@@ -19,6 +19,10 @@ class TransitionTimeout(Exception):
     pass
 
 
+class TransitionFailed(TransitionTimeout):
+    pass
+
+
 StateT = TypeVar("StateT", bound=Enum)
 EventT = TypeVar("EventT", bound=Enum)
 CallbackT = TypeVar("CallbackT")
@@ -131,12 +135,49 @@ class StateMachine(Generic[StateT, EventT]):
             return ()
         return tuple(callbacks)
 
+    def _log_error(self, msg: str) -> None:
+        if self.logger:
+            self.logger.error(msg)  # type: ignore
+        else:
+            print(msg)
+
+    def _run_timeout_actions(self, transition: Transition[StateT]) -> None:
+        for timeout_action in transition.timeout_actions:
+            try:
+                timeout_action()
+            except Exception as e:
+                self._log_error(
+                    f"{transition.msg} Transition timeout action failed "
+                    f"🚨with error: {e}"
+                )
+
+    def _fail_transition(
+        self,
+        source: StateT,
+        event: EventT,
+        transition: Transition[StateT],
+        reason: str,
+        failure_type: type[TransitionTimeout] = TransitionFailed,
+        exception: Exception | None = None,
+    ) -> None:
+        self.pending = None
+        if transition.failure_destination is not None:
+            self.state = transition.failure_destination
+
+        self._run_timeout_actions(transition)
+
+        failure = failure_type(reason)
+        if exception is not None:
+            raise failure from exception
+        raise failure
+
     def trigger(self, event: EventT, msg: str = "") -> TransitionStatus:
         if self.pending is not None:
             raise InvalidTransition(
                 "Cannot trigger a new event while another transition is pending"
             )
 
+        source = self.state
         key = (self.state, event)
         if key not in self.transitions:
             raise InvalidTransition(
@@ -170,8 +211,20 @@ class StateMachine(Generic[StateT, EventT]):
         if not all(guard() for guard in transition.guards):
             raise GuardFailed(f"{transition.msg} Transition Guard failed 🚨!")
 
-        for action in transition.actions:
-            action()
+        try:
+            for action in transition.actions:
+                action()
+        except Exception as e:
+            self._fail_transition(
+                source,
+                event,
+                transition,
+                (
+                    f"{source.name} --{event.name}--> "
+                    f"{transition.destination.name} action failed: {e}"
+                ),
+                exception=e,
+            )
 
         if not transition.success_checks:
             self._complete(event, transition)
@@ -191,9 +244,18 @@ class StateMachine(Generic[StateT, EventT]):
         pending = self.pending
         transition = pending.transition
 
-        if transition.success_checks and all(
-            success_check() for success_check in transition.success_checks
-        ):
+        success = False
+        try:
+            success = bool(
+                transition.success_checks
+                and all(success_check() for success_check in transition.success_checks)
+            )
+        except Exception as e:
+            self._log_error(
+                f"{transition.msg} Transition success check failed with error: {e}"
+            )
+
+        if success:
             self._complete(pending.event, transition)
             self.pending = None
 
@@ -230,20 +292,13 @@ class StateMachine(Generic[StateT, EventT]):
             f"{transition.destination.name} failed after "
             f"{transition.max_steps} steps"
         )
-        for timeout_action in transition.timeout_actions:
-            try:
-                timeout_action()
-            except Exception as e:
-                _msg = (
-                    f"{transition.msg} Transition timeout action failed "
-                    f"🚨with error: {e}"
-                )
-                if self.logger:
-                    self.logger.error(_msg)  # type: ignore
-                else:
-                    print(_msg)
-
-        raise timeout_error
+        self._fail_transition(
+            pending.source,
+            pending.event,
+            transition,
+            str(timeout_error),
+            failure_type=TransitionTimeout,
+        )
 
     def cancel_pending(self) -> None:
         self.pending = None
