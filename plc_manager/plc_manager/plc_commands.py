@@ -39,7 +39,11 @@ class PlcCommandPublisher:
 
             self.command_publisher.publish(self.plc_outputs)
             self._last_published_values = current_values
-            self.logger.info(f"Published PLC command: {self.plc_outputs.values}", throttle_duration_sec=5.0)  # type: ignore
+            command_values = [
+                f"{interface_name}: {command_value}"
+                for interface_name, command_value in zip(self.plc_outputs.interface_names, current_values)  # type: ignore
+            ]
+            self.logger.info(f"PLC command: {command_values}")  # type: ignore
         else:
             self.logger.warn(  # type: ignore
                 f"Interface name '{name}' not found in command message.",
