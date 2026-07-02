@@ -397,7 +397,7 @@ class PLCControllerInterface(Node):
             if self.fsm.pending is None:
                 if CALLBACK_STATUS_MESSAGE[self.fsm.state]:
                     self.get_logger().info( #type: ignore
-                        bc.WARNING + f'[{self.fsm.state}]' + bc.ENDC + ' '
+                        bc.WARNING + f'[{self.fsm.state}]' + bc.ENDC + ' ' +
                         bc.MAGENTA + CALLBACK_STATUS_MESSAGE[self.fsm.state] + bc.ENDC,
                         throttle_duration_sec=5.0
                     )
