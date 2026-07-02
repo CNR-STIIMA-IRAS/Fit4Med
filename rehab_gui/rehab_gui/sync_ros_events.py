@@ -425,16 +425,62 @@ class SyncRosManager:
             self.enable_zeroing = is_hmg_mode
             self.enable_ptp = self.current_controller_name == self.trajectory_controller_name and is_csp_mode
             
+    def _controller_request_list(self, controllers) -> list:
+        if controllers is None:
+            return []
+        if isinstance(controllers, (list, tuple, set)):
+            return list(controllers)
+        return [controllers]
+
     def switch_controller(self, controller_to_activate, controller_to_deactivate) -> dict:
         switch_req = {
-            'activate_controllers': [] if controller_to_activate is None else [controller_to_activate],
-            'deactivate_controllers': [] if controller_to_deactivate is None else [controller_to_deactivate],
+            'activate_controllers': self._controller_request_list(controller_to_activate),
+            'deactivate_controllers': self._controller_request_list(controller_to_deactivate),
             'strictness': 2,  # BEST_EFFORT = 1, STRICT = 2
             'activate_asap': True,
         }
         if not hasattr(self, 'switch_controller_client'):
             self.init_service_clients()
         return self.switch_controller_client.call(switch_req)  # type: ignore
+
+    def _managed_motion_controller_names(self) -> list:
+        return [
+            self.forward_command_controller_name,
+            self.trajectory_controller_name,
+            self.go_to_start_controller_name,
+            self.admittance_controller_name,
+        ]
+
+    def _controller_states(self, list_controllers_response: dict) -> dict:
+        controllers = list_controllers_response.get('controller', []) \
+            if isinstance(list_controllers_response, dict) else []
+        return {
+            ctrl.get('name'): ctrl.get('state')
+            for ctrl in controllers
+            if isinstance(ctrl, dict) and ctrl.get('name') is not None
+        }
+
+    def _active_conflicting_controllers(self, controller_states: dict, target_controller: str) -> list:
+        return [
+            name
+            for name in self._managed_motion_controller_names()
+            if name != target_controller and controller_states.get(name) == 'active'
+        ]
+
+    def _controller_switch_failure_message(
+        self,
+        target_controller: str,
+        controllers_to_deactivate: list,
+        response,
+        controller_states: dict,
+    ) -> str:
+        return (
+            "Failed to request controller switch.\n"
+            f"Activate: {[target_controller]}\n"
+            f"Deactivate: {controllers_to_deactivate}\n"
+            f"Switch response: {response}\n"
+            f"Controller states: {controller_states}"
+        )
 
     def activate_controller_after_homing(self) -> None:
         res : dict = self.switch_controller(self.current_controller_name, None)
@@ -501,6 +547,21 @@ class SyncRosManager:
         return ok
 
     def request_controller_and_op_mode_switch(self, new_mode: int, new_controller: str) -> Tuple[bool, str]:
+        list_controllers_response = self.get_list_controllers()
+        if not isinstance(list_controllers_response, dict) or 'controller' not in list_controllers_response:
+            return False, (
+                "Failed to read controller-manager state before requesting controller switch.\n"
+                f"Response: {list_controllers_response}"
+            )
+
+        controller_states = self._controller_states(list_controllers_response)
+        if new_controller is not None and new_controller not in controller_states:
+            return False, (
+                "Target controller is not listed by controller-manager.\n"
+                f"Target: {new_controller}\n"
+                f"Controller states: {controller_states}"
+            )
+
         moo = [self.get_op_mode_number(mode) for mode in self.coe_drive_states.modes_of_operation]
         print(
             f'{GREEN}>>>>{NC} Request MOO and controller'
@@ -511,7 +572,7 @@ class SyncRosManager:
         mode_ok = len(moo) == len(self._joint_names) and all(
             new_mode == moo[idx] for idx in range(len(self._joint_names))
         )
-        controller_ok = new_controller == self.current_controller_name
+        controller_ok = new_controller is None or controller_states.get(new_controller) == 'active'
 
         if controller_ok and mode_ok:
             print(f"{GREEN}<<<<{NC} Request MOO and controller [{GREEN}OK{NC}]")
@@ -519,11 +580,20 @@ class SyncRosManager:
 
         if not controller_ok:
             print(f'{GREEN}....{NC} >>>> Request Switch Controller')
-            response = self.switch_controller(new_controller, self.current_controller_name)
+            controllers_to_deactivate = self._active_conflicting_controllers(
+                controller_states,
+                new_controller,
+            )
+            response = self.switch_controller(new_controller, controllers_to_deactivate)
             ok = isinstance(response, dict) and response.get('ok', False)
             print(f"{GREEN}....{NC} <<<< Request Switch Controller [{GREEN+'OK'+NC if ok else RED+'FAILED'+NC}]")
             if not ok:
-                return False, "Failed to request controller switch."
+                return False, self._controller_switch_failure_message(
+                    new_controller,
+                    controllers_to_deactivate,
+                    response,
+                    controller_states,
+                )
 
         if not mode_ok and not self.request_mode_of_operation(new_mode):
             print(f"{GREEN}<<<<{NC} Request MOO and controller [{RED}FAILED{NC}]")
