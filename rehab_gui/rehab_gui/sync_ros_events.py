@@ -391,7 +391,8 @@ class SyncRosManager:
                 return 
             
             list_controllers_response : dict = self.get_list_controllers()
-            if list_controllers_response is None or 'controller' not in list_controllers_response:
+            controller_entries = self._controller_entries(list_controllers_response)
+            if len(controller_entries) == 0:
                 return
             
             ##########################
@@ -404,18 +405,18 @@ class SyncRosManager:
 
             ###################
             active_controller : str = None #type: ignore
-            for ctrl in list_controllers_response['controller']:
-                if ctrl['state'] == 'active':
-                    if ctrl['name'] == self.forward_command_controller_name:
+            for ctrl in controller_entries:
+                if ctrl.get('state') == 'active':
+                    if ctrl.get('name') == self.forward_command_controller_name:
                         active_controller = self.forward_command_controller_name
                         break
-                    elif ctrl['name'] == self.trajectory_controller_name:
+                    elif ctrl.get('name') == self.trajectory_controller_name:
                         active_controller = self.trajectory_controller_name
                         break
-                    elif ctrl['name'] == self.go_to_start_controller_name:
+                    elif ctrl.get('name') == self.go_to_start_controller_name:
                         active_controller = self.go_to_start_controller_name
                         break
-                    elif ctrl['name'] == self.admittance_controller_name:
+                    elif ctrl.get('name') == self.admittance_controller_name:
                         active_controller = self.admittance_controller_name
                         break
             self.current_controller_name = active_controller
@@ -462,14 +463,72 @@ class SyncRosManager:
             self.admittance_controller_name,
         ]
 
-    def _controller_states(self, list_controllers_response: dict) -> dict:
-        controllers = list_controllers_response.get('controller', []) \
-            if isinstance(list_controllers_response, dict) else []
+    def _controller_entries(self, list_controllers_response) -> list:
+        if isinstance(list_controllers_response, list):
+            return [
+                ctrl for ctrl in list_controllers_response
+                if self._is_controller_state_entry(ctrl)
+            ]
+
+        if not isinstance(list_controllers_response, dict):
+            return []
+
+        for key in ('controller', 'controllers'):
+            controllers = list_controllers_response.get(key)
+            if isinstance(controllers, list):
+                entries = [
+                    ctrl for ctrl in controllers
+                    if self._is_controller_state_entry(ctrl)
+                ]
+                if len(entries) > 0:
+                    return entries
+
+        for value in list_controllers_response.values():
+            entries = self._controller_entries(value)
+            if len(entries) > 0:
+                return entries
+
+        return []
+
+    def _is_controller_state_entry(self, value) -> bool:
+        return (
+            isinstance(value, dict)
+            and isinstance(value.get('name'), str)
+            and isinstance(value.get('state'), str)
+        )
+
+    def _controller_response_summary(self, list_controllers_response) -> str:
+        if list_controllers_response is None:
+            return 'None'
+        if isinstance(list_controllers_response, dict):
+            return f"dict keys: {list(list_controllers_response.keys())}"
+        if isinstance(list_controllers_response, list):
+            return f"list length: {len(list_controllers_response)}"
+        return type(list_controllers_response).__name__
+
+    def _controller_states(self, list_controllers_response) -> dict:
+        controllers = self._controller_entries(list_controllers_response)
         return {
             ctrl.get('name'): ctrl.get('state')
             for ctrl in controllers
-            if isinstance(ctrl, dict) and ctrl.get('name') is not None
         }
+
+    def _controller_states_summary(self, controller_states: dict) -> str:
+        if len(controller_states) == 0:
+            return 'none'
+        active = [
+            name for name, state in controller_states.items()
+            if state == 'active'
+        ]
+        inactive = [
+            name for name, state in controller_states.items()
+            if state != 'active'
+        ]
+        return (
+            f"active={active}; "
+            f"inactive_count={len(inactive)}; "
+            f"total={len(controller_states)}"
+        )
 
     def _active_conflicting_controllers(self, controller_states: dict, target_controller: str) -> list:
         return [
@@ -490,7 +549,7 @@ class SyncRosManager:
             f"Activate: {[target_controller]}\n"
             f"Deactivate: {controllers_to_deactivate}\n"
             f"Switch response: {response}\n"
-            f"Controller states: {controller_states}"
+            f"Controller state summary: {self._controller_states_summary(controller_states)}"
         )
 
     def activate_controller_after_homing(self) -> None:
@@ -559,18 +618,18 @@ class SyncRosManager:
 
     def request_controller_and_op_mode_switch(self, new_mode: int, new_controller: str) -> Tuple[bool, str]:
         list_controllers_response = self.get_list_controllers()
-        if not isinstance(list_controllers_response, dict) or 'controller' not in list_controllers_response:
+        controller_states = self._controller_states(list_controllers_response)
+        if len(controller_states) == 0:
             return False, (
                 "Failed to read controller-manager state before requesting controller switch.\n"
-                f"Response: {list_controllers_response}"
+                f"Response summary: {self._controller_response_summary(list_controllers_response)}"
             )
 
-        controller_states = self._controller_states(list_controllers_response)
         if new_controller is not None and new_controller not in controller_states:
             return False, (
                 "Target controller is not listed by controller-manager.\n"
                 f"Target: {new_controller}\n"
-                f"Controller states: {controller_states}"
+                f"Controller state summary: {self._controller_states_summary(controller_states)}"
             )
 
         moo = [self.get_op_mode_number(mode) for mode in self.coe_drive_states.modes_of_operation]

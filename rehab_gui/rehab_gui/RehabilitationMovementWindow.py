@@ -662,16 +662,15 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
         self._go_to_start_request_pending = True
         self.ui.pushButton_GoToZERO.setEnabled(False)
         self.ROS.setManualMode(False)
-        # ok, msg = self.ROS.requestControllerBehaviour("GoToStart")
-        # if not ok:
-        #     self._go_to_start_request_pending = False
-        #     self.ui.pushButton_GoToZERO.setEnabled(self.ROS.isRosCommunicationActive())
-        #     QMessageBox.warning(
-        #         self, "Warning",
-        #         f"{msg}\n"
-        #     )
-        #     return False
-        self.ROS.enableControllerBehaviour("GoToStart")
+        ok, msg = self.ROS.requestControllerBehaviour("GoToStart")
+        if not ok:
+            self._go_to_start_request_pending = False
+            self.ui.pushButton_GoToZERO.setEnabled(self.ROS.isRosCommunicationActive())
+            QMessageBox.warning(
+                self, "Warning",
+                f"{msg}\n"
+            )
+            return False
         return True
 
     def _onControllerBehaviourReady(self, behaviour: str, success: bool, reason: str):
