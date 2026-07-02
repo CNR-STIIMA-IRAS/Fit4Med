@@ -364,7 +364,7 @@ class PLCControllerInterface(Node):
             if self.fsm.pending is None:
                 if self.fsm.state in (State.IDLE, State.ESTOP) and z_limit_active:
                     self.get_logger().info( #type: ignore
-                        bc.MAGENTA + 'Z-LIMIT Reached! Set IDLE_RECOVERY state' + bc.ENDC,
+                        bc.MAGENTA + f'Z-LIMIT Reached! Set {"IDLE_RECOVERY" if self.fsm.state==State.IDLE else "ESTOP_RECOVERY"} state' + bc.ENDC,
                         throttle_duration_sec=5.0
                     )
                     self.fsm.trigger(Event.SWITCH_MODE, "Z-LIMIT Reached - Entering Recovery Mode")
