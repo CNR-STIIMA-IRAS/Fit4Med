@@ -20,29 +20,34 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         plc_commands.brake_enable,
         plc_commands.set_automatic_mode,
         plc_commands.wire_endstroke_to_emergency_chain,
+        plc_commands.clear_sw_estop
     )
     recovery_bringup_actions = (
         environment.bringup_recovery_env,
         plc_commands.brake_enable,
         plc_commands.set_automatic_mode,
         plc_commands.detach_endstroke_from_emergency_chain,
+        plc_commands.clear_sw_estop
     )
     platform_cleanup_actions = (
         environment.kill_env,
         plc_commands.set_automatic_mode,
         plc_commands.brake_enable,
         plc_commands.wire_endstroke_to_emergency_chain,
+        plc_commands.clear_sw_estop
     )
     recovery_cleanup_actions = (
         environment.kill_recovery_env,
         plc_commands.set_automatic_mode,
         plc_commands.brake_enable,
         plc_commands.wire_endstroke_to_emergency_chain,
+        plc_commands.clear_sw_estop
     )
     idle_stop_actions = (
         environment.handle_idle_stop,
         plc_commands.raise_sw_estop,
         plc_commands.set_automatic_mode,
+        plc_commands.clear_sw_estop
     )
 
     fsm: StateMachine[State, Event] = StateMachine[State, Event](
@@ -54,13 +59,19 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         Event.SWITCH_MODE,
         State.IDLE,
         State.IDLE_RECOVERY,
-        actions=(plc_commands.detach_endstroke_from_emergency_chain,),
+        actions=(
+            plc_commands.detach_endstroke_from_emergency_chain,
+            plc_commands.clear_sw_estop
+        ),
     )
     fsm.add_transition(
         Event.SWITCH_MODE,
         State.RECOVERED,
         State.IDLE,
-        actions=(plc_commands.wire_endstroke_to_emergency_chain,),
+        actions=(
+            plc_commands.wire_endstroke_to_emergency_chain,
+            plc_commands.clear_sw_estop
+        ),
     )
     fsm.add_transition(
         Event.START,
