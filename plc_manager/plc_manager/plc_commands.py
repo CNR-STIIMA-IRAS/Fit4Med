@@ -34,13 +34,16 @@ class PlcCommandPublisher:
             idx = self.plc_outputs.interface_names.index(name)  # type: ignore
             self.plc_outputs.values[idx] = value  # type: ignore
             current_values = list(self.plc_outputs.values)  # type: ignore
-            if self._last_published_values == current_values:
-                return
 
             self.command_publisher.publish(self.plc_outputs)
+
+            if self._last_published_values == current_values:
+                return
+            
             self._last_published_values = current_values
+
             command_values = [
-                f"{interface_name}: {command_value}"
+                f"{interface_name.removeprefix('PLC_node/')}: {command_value}"
                 for interface_name, command_value in zip(self.plc_outputs.interface_names, current_values)  # type: ignore
             ]
             self.logger.info(f"PLC command: {command_values}")  # type: ignore
