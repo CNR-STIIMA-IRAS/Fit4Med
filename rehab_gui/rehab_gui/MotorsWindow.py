@@ -242,16 +242,16 @@ class MotorsWindow(QtWidgets.QWidget):
             elif state_key == 'disconnected':
                 if plc_pending is None:
                     if plc_state == "IDLE":
-                        self.ui.label_SystemState.setText('Clear the Emergencies and \n Turn the Key to Reset and Start')
+                        self.ui.label_SystemState.setText('Clear the ESTOP and \n Turn the Key to Reset and Start')
                         self.ui.label_SystemState.setStyleSheet("background-color: rgb(0,128,0); color: white")
                     elif plc_state == "ESTOP":
-                        self.ui.label_SystemState.setText('Emergency latch active\nReboot all the system')
+                        self.ui.label_SystemState.setText('Emergency latch active\n Press the ESTOP and then turn the Key to Start')
                         self.ui.label_SystemState.setStyleSheet("background-color: red; color: white")
                     elif plc_state == "IDLE_RECOVERY":
                         self.ui.label_SystemState.setText('Turn the Key to Start Recovery  \n !!!SMALL MOVEMENT EXPECTED!!!')
                         self.ui.label_SystemState.setStyleSheet("background-color: rgb(255,150,00); color: white")
                     elif plc_state == "ESTOP_RECOVERY":
-                        self.ui.label_SystemState.setText('Recovery emergency latch active\nReboot all the system')
+                        self.ui.label_SystemState.setText('Recovery emergency latch active\n Press the ESTOP and then turn the Key to Start Recovery')
                         self.ui.label_SystemState.setStyleSheet("background-color: red; color: white")
                 else:
                     if plc_pending.get("source") in ("IDLE", "ESTOP"):
