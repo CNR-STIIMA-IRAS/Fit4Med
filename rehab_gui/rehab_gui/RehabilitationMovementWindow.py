@@ -3,11 +3,6 @@
 
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file '.\MovementWindow.ui'
-#
-# Created by: PyQt5 UI code generator 5.10.1
-#
-# WARNING! All changes made in this file will be lost!
 
 from enum import Enum
 import sys
@@ -61,6 +56,7 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
         self.SideOfMovement = 0 
         self.TypeOfMovement : ExerciseType = ExerciseType.NONE
         self.vel_profile = 2
+        self._go_to_start_retry_armed = False
 
         self.main_app.movement_loaded = 0
         
@@ -106,6 +102,7 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
             self.ui.pushButton_GoToZERO.setEnabled(True)
         else:
             self.ui.pushButton_GoToZERO.setEnabled(False)
+            self._go_to_start_retry_armed = False
 
         if self.main_app.ui.tabWidget.currentIndex() == 1 and\
             self.ROS.areMotorsOn() and self.ROS.getTrajectoryCompleted():
@@ -656,24 +653,41 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
 
     def clbk_BtnGoToStartPosition(self):
         self.ROS.setManualMode(False)
-        if not self.ROS.enableControllerBehaviour("GoToStart"):
+        switch_ok = self.ROS.enableControllerBehaviour("GoToStart")
+        ctrl = self.ROS.getCurrentControllerName()
+        target_ctrl = self.ROS.getGoToStartControllerName()
+        ctrl_ready = ctrl == target_ctrl
+
+        if not (switch_ok and ctrl_ready):
+            if not self._go_to_start_retry_armed:
+                self._go_to_start_retry_armed = True
+                QMessageBox.information(
+                    self,
+                    "Info",
+                    "Setting mode of operation 8 and Go to start controller.\n"
+                    "Press the button again to start the movement."
+                )
+                return False
+
             moos = self.ROS.getDriversModeOfOperations()
-            ctrl = self.ROS.getCurrentControllerName()
-            QMessageBox.warning(
-                self, "Warning",
-                f"Could not switch to Cyclic Synchronous Position mode (mode 8).\n"
-                f"Active controller: {ctrl}\nDrive modes: {moos}\n"
-                "Please verify that all drives are operational before starting training."
-            )
-            return False
-        if self.ROS.getCurrentControllerName() != self.ROS.getGoToStartControllerName():
+            if not switch_ok:
+                QMessageBox.warning(
+                    self, "Warning",
+                    f"Could not switch to Cyclic Synchronous Position mode (mode 8).\n"
+                    f"Active controller: {ctrl}\nDrive modes: {moos}\n"
+                    "Please verify that all drives are operational before starting training."
+                )
+                return False
+
             QMessageBox.warning(
                 self, "Warning",
                 f"Go to start controller is not active "
-                f"(active: {self.ROS.getCurrentControllerName()}).\n"
+                f"(active: {ctrl}).\n"
                 "Cannot start training."
             )
             return False
+
+        self._go_to_start_retry_armed = False
         self.Training_ON = True
         QTimer.singleShot(500, self._goToStartPosition_afterDelay)
 

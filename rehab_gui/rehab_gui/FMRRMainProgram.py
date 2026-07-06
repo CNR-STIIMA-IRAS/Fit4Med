@@ -96,6 +96,7 @@ class MainProgram(QMainWindow):
         self.rehabMovementWindow = RehabilitationMovementWindow(self)
         self.trainingProtocolWindow = TrainingProtocolWindow(self)
         self._ros_runtime_loss_dialog_shown = False
+        self._last_allowed_tab_index = 0
 
         self.ui.verticalLayout_MotorsManagement.addWidget(self.motorWindow)
         self.ui.verticalLayout_RobotMovement.addWidget(self.robotWindow)
@@ -211,6 +212,14 @@ class MainProgram(QMainWindow):
     def onTabChange(self, value: int):
         # This method is called whenever the current tab is changed
         # value is the index of the newly selected tab
+        if self.trainingProtocolWindow.Training_ON and value != self._last_allowed_tab_index:
+            self.ui.tabWidget.blockSignals(True)
+            self.ui.tabWidget.setCurrentIndex(self._last_allowed_tab_index)
+            self.ui.tabWidget.blockSignals(False)
+            QMessageBox.warning(self, "Training Active", "Stop training before changing tab.")
+            return
+
+        self._last_allowed_tab_index = value
         print(f"Tab changed to index: {value}")
         if value == 0:  # Assuming the second tab is the Motors tab
             if not self.ros_manager.isRosCommunicationActive():

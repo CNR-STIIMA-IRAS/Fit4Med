@@ -57,6 +57,11 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
                                  self.ui.spinBoxPercPhase09, self.ui.spinBoxPercPhase10, self.ui.spinBoxPercPhase11, self.ui.spinBoxPercPhase12,
                                  self.ui.spinBoxPercPhase13, self.ui.spinBoxPercPhase14, self.ui.spinBoxPercPhase15, self.ui.spinBoxPercPhase16,
                                  self.ui.spinBoxPercPhase17, self.ui.spinBoxPercPhase18, self.ui.spinBoxPercPhase19, self.ui.spinBoxPercPhase20]
+        self._min_speed_ovr = 10
+        for speed_spin_box in self.spinBoxSpeedOvr:
+            speed_spin_box.setMinimum(self._min_speed_ovr)
+            if speed_spin_box.value() < self._min_speed_ovr:
+                speed_spin_box.setValue(self._min_speed_ovr)
         self.spinBoxDuration =  [ self.ui.spinBoxDurationPhase01, self.ui.spinBoxDurationPhase02, self.ui.spinBoxDurationPhase03, self.ui.spinBoxDurationPhase04,
                                  self.ui.spinBoxDurationPhase05, self.ui.spinBoxDurationPhase06, self.ui.spinBoxDurationPhase07, self.ui.spinBoxDurationPhase08,
                                  self.ui.spinBoxDurationPhase09, self.ui.spinBoxDurationPhase10, self.ui.spinBoxDurationPhase11, self.ui.spinBoxDurationPhase12,
@@ -140,6 +145,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         self._last_type = None
         self._last_movement_count = None
         self._last_total_time_display = None
+        self._last_movement_name_text = None
 
         self._iPhase_0 = 0
 
@@ -160,7 +166,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
     def _update_total_training_time_display(self, force: bool = False) -> None:
         pending_durations = self._get_pending_phase_durations()
         self.TotalTrainingTime = sum(pending_durations)
-        total_time_display = np.floor(self.TotalTrainingTime)
+        total_time_display = np.floor(self.TotalTrainingTime) / 60  # convert seconds to minutes
         if force or total_time_display != self._last_total_time_display:
             self._last_total_time_display = total_time_display
             self.ui.lcdNumberExerciseTotalTime.display(total_time_display)
@@ -200,6 +206,13 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         self.parent_timer = parent_timer
     
     def updateWindow(self):
+        movement_name_text = ""
+        if self.ui_main.movement_loaded:
+            movement_name_text = self.ui_main.rehabMovementWindow.ui.lineEdit_MovementName.text().strip()
+        if movement_name_text != self._last_movement_name_text:
+            self._last_movement_name_text = movement_name_text
+            self.ui.lineEdit.setText(movement_name_text)
+
         load_enabled = self.ui_main.movement_loaded and not self.Training_ON
         if load_enabled != self._last_load_enabled:
             self._last_load_enabled = load_enabled
@@ -394,7 +407,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
             self.lcdNumberPhases[iPhase].setNumDigits(3) # type: ignore
             iPhaseVel = int( float(self.Percentage[iPhase]) /100 * self.ui_main.Vmax )
             self.lcdNumberPhases[iPhase].display( iPhaseVel ) # type: ignore
-            self.spinBoxSpeedOvr[iPhase].setValue(self.Percentage[iPhase]) # type: ignore
+            self.spinBoxSpeedOvr[iPhase].setValue(max(self._min_speed_ovr, self.Percentage[iPhase])) # type: ignore
             # Load duration if available in YAML
             if self.Durations is not None:
                 self.spinBoxDuration[iPhase].setValue(self.Durations[iPhase]) # type: ignore
