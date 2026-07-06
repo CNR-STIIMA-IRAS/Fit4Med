@@ -611,7 +611,7 @@ class FollowJointTrajectoryActionManager(Node):
             # Set pause duration
             pause_duration = 6.0 + random.uniform(0.1, 3.9)
             self.get_logger().info(f"Pause duration for repetition {trj_idx}: {pause_duration:.2f} seconds")
-            t,p,v,a = self.resample_with_speed_override(P=_P,t=_t, dt=self._dt, total_time=request.repetition_durations[trj_idx], pause_duration=pause_duration)
+            t,p,v,a = self.resample_with_speed_override(P=_P,t=_t, dt=self._dt, total_time=request.repetition_durations[trj_idx], pause_duration=pause_duration, speed_ovr=speed_scaling_pct)
 
             self._total_time_s[trj_idx] = t[-1]
             for i, tau in enumerate(t):

@@ -4,7 +4,7 @@
 #
 # start_bag.sh — Start a ros2 bag recording for rehab data.
 #
-# Saves bags under <repo>/rehab_gui/Data/bag_<timestamp>/.
+# Saves bags under ~/fit4med_ws/bag/bag_<timestamp>/.
 # Writes the recording PID to /tmp/ros2bag_gui_pid so stop_bag.sh can
 # send a clean SIGINT to finalize the bag.
 # This script blocks until the bag process exits (either stopped by
@@ -42,11 +42,20 @@ fi
 # ---------------------------------------------------------------------------
 # 2. Prepare output directory
 # ---------------------------------------------------------------------------
-DATA_DIR="${HOME}/Data"
-mkdir -p "$DATA_DIR"
+BAG_ROOT_DIR="${HOME}/fit4med_ws/bag"
+mkdir -p "$BAG_ROOT_DIR"
 
 TIMESTAMP="$(date +%Y-%m-%d_%H-%M-%S)"
-OUTPUT_DIR="${DATA_DIR}/bag_${TIMESTAMP}"
+OUTPUT_DIR="${BAG_ROOT_DIR}/bag_${TIMESTAMP}"
+
+# Guarantee unique bag directory names if two starts happen within the same second.
+if [ -e "$OUTPUT_DIR" ]; then
+    suffix=1
+    while [ -e "${OUTPUT_DIR}_${suffix}" ]; do
+        suffix=$((suffix + 1))
+    done
+    OUTPUT_DIR="${OUTPUT_DIR}_${suffix}"
+fi
 
 # ---------------------------------------------------------------------------
 # 3. Start recording

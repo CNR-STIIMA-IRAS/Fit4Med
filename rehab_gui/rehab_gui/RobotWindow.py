@@ -127,7 +127,18 @@ class RobotWindow(QtWidgets.QDialog):
         self.ui.pushButton_ApproachAllJoint.toggled.connect(self.goTo)
 
         self.ui.pushButton_SensorBias.setCheckable(False)
-        self.ui.pushButton_SensorBias.clicked.connect(lambda: self.ROS.SonarBias())
+        self.ui.pushButton_SensorBias.clicked.connect(self.confirmSensorBias)
+
+    def confirmSensorBias(self) -> None:
+        decision = QMessageBox.question(
+            self,
+            "Sensor Calibration",
+            "Are you sure you want to start the sensor calibration procedure?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if decision == QMessageBox.Yes:
+            self.ROS.SonarBias()
 
     def onBehaviourOptionChanged(self, index):
         # Handle the change in MOO option here

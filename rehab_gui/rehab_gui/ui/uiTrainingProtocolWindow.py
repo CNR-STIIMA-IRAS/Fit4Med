@@ -172,7 +172,7 @@ class Ui_TrainingProtocolWindow(object):
         self.label_8.setObjectName("label_8")
         self.horizontalLayout_2.addWidget(self.label_8)
         self.lcdNumberExerciseTotalTime = QtWidgets.QLCDNumber(TrainingProtocolWindow)
-        self.lcdNumberExerciseTotalTime.setDigitCount(2)
+        self.lcdNumberExerciseTotalTime.setDigitCount(3)
         self.lcdNumberExerciseTotalTime.setObjectName("lcdNumberExerciseTotalTime")
         self.horizontalLayout_2.addWidget(self.lcdNumberExerciseTotalTime)
         self.label_9 = QtWidgets.QLabel(TrainingProtocolWindow)
@@ -184,7 +184,7 @@ class Ui_TrainingProtocolWindow(object):
         self.horizontalLayout_2.addWidget(self.lcdNumber_MovementCOUNT)
         self.verticalLayout.addLayout(self.horizontalLayout_2)
 
-        # Row 4: Control buttons
+        # Row 4: Control buttons  
         self.gridLayout_2 = QtWidgets.QGridLayout()
         self.gridLayout_2.setObjectName("gridLayout_2")
         self.pushButton_LoadCreateProtocol = QtWidgets.QPushButton(TrainingProtocolWindow)
@@ -260,7 +260,7 @@ class Ui_TrainingProtocolWindow(object):
         self.radioButton_EEGMode.setText(_translate("TrainingProtocolWindow", "eeg"))
         self.label_6.setText(_translate("TrainingProtocolWindow", "Vmax (cm/s)"))
         self.label_7.setText(_translate("TrainingProtocolWindow", "Mov T(s)"))
-        self.label_8.setText(_translate("TrainingProtocolWindow", "Exercise T(s)"))
+        self.label_8.setText(_translate("TrainingProtocolWindow", "Exercise T(min)"))
         self.label_9.setText(_translate("TrainingProtocolWindow", "Mov CNT"))
         self.label_2.setText(_translate("TrainingProtocolWindow", "  Perc                                 Duration   Ovr  cm/s"))
         self.label.setText(_translate("TrainingProtocolWindow", "  Perc                                 Duration   Ovr  cm/s"))
