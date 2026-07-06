@@ -591,7 +591,7 @@ class FollowJointTrajectoryActionManager(Node):
             )
             response.success = False
             return response
-
+       
         self.number_of_repetition = len(request.repetition_ovrs)
         self.clear(self.number_of_repetition)
 
@@ -600,6 +600,7 @@ class FollowJointTrajectoryActionManager(Node):
         _t = [r.time_from_start - request.cartesian_positions[0].time_from_start for r in request.cartesian_positions] #type: ignore
 
         for trj_idx in range(self.number_of_repetition):
+
             goal = FollowJointTrajectory.Goal()
             goal.trajectory.joint_names = self._joint_names
             goal.trajectory.points = []

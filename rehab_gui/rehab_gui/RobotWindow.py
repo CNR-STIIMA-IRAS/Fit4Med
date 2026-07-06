@@ -283,6 +283,7 @@ class RobotWindow(QtWidgets.QDialog):
         self.enableManualGuidanceButton(self.ROS.isManualGuidanceBehaviourEnabled() and self.ui.comboBox_MOO.currentIndex() == 3)
         self.enablePTPFrame(self.ROS.isPTPEnabled() and self.ui.comboBox_MOO.currentIndex() == 4)
 
+        self.ROS.setExerciseType(0)
         _result = self.ROS.consumeTrajectoryResult("ptp")
         if _result is not None:
             self.ui.pushButton_ApproachAllJoint.setChecked(False)

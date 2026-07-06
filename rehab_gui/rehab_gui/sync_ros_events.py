@@ -4,7 +4,6 @@
 from typing import List
 import time
 import threading
-from urllib import request
 
 # mathematics
 import numpy as np
