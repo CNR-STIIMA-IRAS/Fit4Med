@@ -4,6 +4,7 @@
 from typing import List
 import time
 import threading
+from urllib import request
 
 # mathematics
 import numpy as np
@@ -144,7 +145,8 @@ class SyncRosManager:
         self.trajectory_result_pending = False
         self.trajectory_result = {}
 
-        self.exercise_completed = False
+        self.exercise_result_pending = False
+        self.exercise_result = {}
         self.movement_stopped = False
         self.exercise_suspended = False
         self.cancel_movement = False
@@ -290,7 +292,7 @@ class SyncRosManager:
         self.on_trajectory_finished_server : roslibpy.Service = roslibpy.Service(self.ros_client, "/rehab_gui/trajectory_finished", "tecnobody_msgs/TrajectoryResult")
         self.on_trajectory_finished_server.advertise(self.on_trajectory_finished)
 
-        self.on_exercise_finished_server : roslibpy.Service = roslibpy.Service(self.ros_client, "/rehab_gui/exercise_finished", "std_srvs/Trigger")
+        self.on_exercise_finished_server : roslibpy.Service = roslibpy.Service(self.ros_client, "/rehab_gui/exercise_finished", "tecnobody_msgs/TrajectoryResult")
         self.on_exercise_finished_server.advertise(self.on_exercise_finished)
         
         self.on_exercise_progress_server : roslibpy.Service = roslibpy.Service(self.ros_client, "/rehab_gui/exercise_progress", "tecnobody_msgs/MovementProgress")
@@ -750,8 +752,9 @@ class SyncRosManager:
     def set_exercise(self, CartesianPositions, TimeFromStart, ovrs: List[float], durations: List[float], eeg_mode: bool) -> bool:
         msg = roslibpy.Message({'factor': int(100)})
         self.repetition_cnt = 0
-        self.exercise_completed = False
         self.exercise_suspended = False
+        self.exercise_result_pending = False
+        self.exercise_result = {}
         response : dict = None #type: ignore
         if len(ovrs) != len(durations):
             print(f"[Set Trajectory] mismatching input dimension!")
@@ -815,6 +818,13 @@ class SyncRosManager:
                 "action_status": int(request.get("action_status", 0)),
                 "movement_kind": request.get("movement_kind", ""),
             }
+        if self.trajectory_result["success"]:
+            print(f"[on_trajectory_finished] Trajectory Execution completed successfully.")
+        else:
+            print(f"[on_trajectory_finished] Trajectory Execution failed with error code {self.trajectory_result['error_code']}: {self.trajectory_result['message']}")
+            print(f'{GREEN}>>>>{NC} Send Motor Off Request')
+            ok = self.turn_off_motors()
+            print(f"{GREEN}<<<<{NC} Motor Off Request [{GREEN+'OK'+NC if ok else RED+'FAILED'+NC}]")
         self.trajectory_result_pending = True
         response["accepted"] = True
         return True
@@ -834,8 +844,24 @@ class SyncRosManager:
     
     def on_exercise_finished(self, request, response):
         self.repetition_cnt = self.repetition_cnt +1
-        self.exercise_completed = True
-        response['success'] = True
+        print(f"[on_exercise_finished] The Trajectory Execution's just finished {request}")
+        #self.trajectory_completed = True
+        self.exercise_result = {
+                "success": bool(request.get("success", False)),
+                "message": request.get("message", ""),
+                "error_code": int(request.get("error_code", 0)),
+                "action_status": int(request.get("action_status", 0)),
+                "movement_kind": request.get("movement_kind", ""),
+            }
+        if self.exercise_result["success"]:
+            print(f"[on_exercise_finished] Exercise Execution completed successfully.")
+        else:
+            print(f"[on_exercise_finished] Exercise Execution failed with error code {self.exercise_result['error_code']}: {self.exercise_result['message']}")
+            print(f'{GREEN}>>>>{NC} Send Motor Off Request')
+            ok = self.turn_off_motors()
+            print(f"{GREEN}<<<<{NC} Motor Off Request [{GREEN+'OK'+NC if ok else RED+'FAILED'+NC}]")
+        self.exercise_result_pending = True
+        response["accepted"] = True
         return True       
 
     def on_exercise_progress(self, request, response):

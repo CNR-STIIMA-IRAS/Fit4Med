@@ -848,10 +848,11 @@ class FollowJointTrajectoryActionManager(Node):
         if not self._goal_handle.accepted:
             self.get_logger().info('Trajectory Goal rejected!!')
             if self.cancel_from_gui:
+                self._goal_handle = None
                 self._notify_movement_stopped()
                 self.clear(0)
-                self._goal_handle = None
             else:
+                self._goal_handle = None
                 self._notify_trajectory_result(
                     success=False,
                     status=GoalStatus.STATUS_UNKNOWN,
@@ -859,7 +860,6 @@ class FollowJointTrajectoryActionManager(Node):
                     message='Trajectory goal rejected by controller',
                     movement_kind=self.movement_kind
                 )
-                self._goal_handle = None
             return
         self.get_logger().info('Trajectory Goal accepted!!')
         if self.cancel_from_gui:
@@ -894,16 +894,22 @@ class FollowJointTrajectoryActionManager(Node):
             - Service unavailable logged as info (GUI may not be running)
             - Continues gracefully without state corruption
         """
+        status = GoalStatus.STATUS_UNKNOWN
+        error_code = 999
+        error_string = "NULL GOAL HANDLE"
         try:
             if self._goal_handle is not None:
-                status = future.result().status
-                error_code = future.result().result.error_code
-                error_string = future.result().result.error_string
-            else:
-                status = GoalStatus.STATUS_UNKNOWN
-                error_code = 999
-                error_string = "NULL GOAL HANDLE"
+                result = future.result()
+                status = result.status
+                error_code = result.result.error_code
+                error_string = result.result.error_string
+        except Exception as e:
+            error_string = f'Exception in on_trajectory_goal_done: {e}'
+            self.get_logger().info(error_string)
+        finally:
+            self._goal_handle = None
 
+        try:
             self._notify_trajectory_result(
                 success=(
                     status == GoalStatus.STATUS_SUCCEEDED and
@@ -914,9 +920,8 @@ class FollowJointTrajectoryActionManager(Node):
                 message=error_string,
                 movement_kind=self.movement_kind
             )
-            self._goal_handle = None
         except Exception as e:
-            self.get_logger().info(f'Exception in on_trajectory_goal_done: {e}')
+            self.get_logger().info(f'Exception while notifying trajectory result: {e}')
 
     def on_exercise_goal_accepted(self, future) -> None:  # type: ignore
         """Callback for exercise goal acceptance/rejection (EXERCISE mode).
@@ -946,9 +951,13 @@ class FollowJointTrajectoryActionManager(Node):
         if not self._goal_handle.accepted:
             self.get_logger().info('Exercise Goal rejected!!')
             if self.cancel_from_gui:
+                self._goal_handle = None
                 self._notify_movement_stopped()
                 self.clear(0)
+            else:
                 self._goal_handle = None
+                self.exercise_suspended_client.call_async(Trigger.Request())
+            self._cancel_exercise_status_timer()
             return
         self.get_logger().info(f'Exercise Goal accepted!!')
         if self.cancel_from_gui:
@@ -968,7 +977,7 @@ class FollowJointTrajectoryActionManager(Node):
     def _cancel_exercise_status_timer(self) -> None:
         if self.exercise_status_timer is not None:
             self.exercise_status_timer.cancel()
-            self.exercise_status_timer = None
+            self.exercise_status_timer = None #type: ignore
 
     def _advance_exercise(self) -> None:
         """Advance to the next repetition or signal exercise completion."""
@@ -976,9 +985,18 @@ class FollowJointTrajectoryActionManager(Node):
             return
 
         # Notify GUI
-        client = self.create_client(Trigger, '/rehab_gui/exercise_finished')
-        if client.wait_for_service(timeout_sec=0.5):
-            client.call_async(Trigger.Request())
+        client = self.create_client(TrajectoryResult, '/rehab_gui/exercise_finished')
+        if not client.wait_for_service(timeout_sec=5.0):
+            self.get_logger().info('Trajectory Finished server is not available.')
+            return
+        
+        req = TrajectoryResult.Request()
+        req.success = True
+        req.action_status = int(GoalStatus.STATUS_SUCCEEDED)
+        req.error_code = int(FollowJointTrajectory.Result.SUCCESSFUL)
+        req.message = f"Exercise repetition {self.exercise_cnt} completed"
+        req.movement_kind = ""
+        client.call_async(req)
 
         # Cancel old timer
         self._cancel_exercise_status_timer()
@@ -996,20 +1014,35 @@ class FollowJointTrajectoryActionManager(Node):
             self.get_logger().info('All repetitions completed!')
 
     def on_exercise_goal_done(self, future):
-        if self._goal_handle is not None:
+        if self._goal_handle is None:
+            return
+
+        try:
             result = future.result()
             status = result.status
+        except Exception as e:
+            self.get_logger().info(f'Exception in on_exercise_goal_done: {e}')
+            self._cancel_exercise_status_timer()
+            self._goal_handle = None
+            self.exercise_suspended_client.call_async(Trigger.Request())
+            return
 
-            if status == GoalStatus.STATUS_SUCCEEDED:
-                self.get_logger().info(f'Repetition {self.exercise_cnt} completed successfully.')
-                self._advance_exercise()
-            elif status == GoalStatus.STATUS_CANCELED:
-                self.get_logger().info(f'Repetition {self.exercise_cnt} was cancelled.')
-            elif status == GoalStatus.STATUS_ABORTED:
-                self.get_logger().info(f'Repetition {self.exercise_cnt} was aborted.')
-                self.exercise_suspended_client.call_async(Trigger.Request())
-            else:
-                self.get_logger().info(f'Repetition {self.exercise_cnt} ended with status: {status}')
+        if status == GoalStatus.STATUS_SUCCEEDED:
+            self.get_logger().info(f'Repetition {self.exercise_cnt} completed successfully.')
+            self._advance_exercise()
+            return
+
+        self._cancel_exercise_status_timer()
+        self._goal_handle = None
+
+        if status == GoalStatus.STATUS_CANCELED:
+            self.get_logger().info(f'Repetition {self.exercise_cnt} was cancelled.')
+        elif status == GoalStatus.STATUS_ABORTED:
+            self.get_logger().info(f'Repetition {self.exercise_cnt} was aborted.')
+            self.exercise_suspended_client.call_async(Trigger.Request())
+        else:
+            self.get_logger().info(f'Repetition {self.exercise_cnt} ended with status: {status}')
+            self.exercise_suspended_client.call_async(Trigger.Request())
 
 
     def check_exercise_status(self) -> None:
@@ -1131,14 +1164,15 @@ class FollowJointTrajectoryActionManager(Node):
             None. Performs cleanup and signals GUI.
         """
         self.get_logger().warn('The Goal has been succesfully cancelled. Notify to the remote GUI')
-        self._notify_movement_stopped()
-        if future.result() is not None:
-            self.get_logger().info(f'Goal cancelled: {future.result()}')
-        else:
-            self.get_logger().info('Goal cancelled without result')
-        
-        self.clear(0)
-        self._goal_handle = None
+        try:
+            self._notify_movement_stopped()
+            if future.result() is not None:
+                self.get_logger().info(f'Goal cancelled: {future.result()}')
+            else:
+                self.get_logger().info('Goal cancelled without result')
+        finally:
+            self.clear(0)
+            self._goal_handle = None
 
     def stop(self, request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:  # type: ignore
         """Stop current exercise and cancel running goal (emergency stop).

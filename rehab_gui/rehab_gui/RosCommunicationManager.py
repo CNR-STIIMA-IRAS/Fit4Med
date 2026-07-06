@@ -452,12 +452,12 @@ class RosCommunicationManager(QObject):
     def getExecutionTimePercentage(self) -> int:
         return self.ROS.execution_time_percentage if self.rOk() else 0
     
-    def setExerciseCompleted(self, value : bool) -> None:
-        if self.rOk(): 
-            self.ROS.exercise_completed = value
+    # def setExerciseCompleted(self, value : bool) -> None:
+    #     if self.rOk(): 
+    #         self.ROS.exercise_completed = value
 
-    def getExerciseCompleted(self) -> bool:
-        return self.ROS.exercise_completed if self.rOk() else False
+    # def getExerciseCompleted(self) -> bool:
+    #     return self.ROS.exercise_completed if self.rOk() else False
     
     def getExerciseRepetitionCounter(self) -> int:
         return self.ROS.repetition_cnt if self.rOk() else 0
@@ -531,4 +531,13 @@ class RosCommunicationManager(QObject):
             return None
 
         self.ROS.trajectory_result_pending = False
+        return result
+
+    def consumeExerciseResult(self):
+        if not self.rOk() or not self.ROS.exercise_result_pending:
+            return None
+
+        result = dict(self.ROS.exercise_result)
+        
+        self.ROS.exercise_result_pending = False
         return result

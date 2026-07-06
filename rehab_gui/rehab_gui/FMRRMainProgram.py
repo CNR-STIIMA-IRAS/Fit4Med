@@ -152,6 +152,7 @@ class MainProgram(QMainWindow):
         current_tab = self.ui.tabWidget.currentIndex()
         # Always update motors window (visible across all tabs)
         self.motorWindow.updateWindow()
+        self._handleTrajectoryResult()
         # Only update the sub-window for the currently visible tab
         if current_tab == 0:
             self.robotWindow.updateWindow()
@@ -159,6 +160,43 @@ class MainProgram(QMainWindow):
             self.rehabMovementWindow.updateWindow()
         elif current_tab == 2:
             self.trainingProtocolWindow.updateWindow()
+
+    def _handleTrajectoryResult(self):
+        result = self.ros_manager.consumeTrajectoryResult()
+        if result is None:
+            return
+
+        movement_kind = result.get("movement_kind", "")
+        if movement_kind == "ptp":
+            self._setCheckedWithoutSignals(self.robotWindow.ui.pushButton_ApproachAllJoint, False)
+        elif movement_kind == "go_to_start":
+            self._setCheckedWithoutSignals(self.rehabMovementWindow.ui.pushButton_GoToZERO, False)
+
+        if self.ros_manager.areMotorsOn():
+            self.ros_manager.turnOffMotors()
+
+        if (
+            movement_kind == "go_to_start" and
+            self.ros_manager.getCurrentControllerName() == self.ros_manager.getGoToStartControllerName()
+        ):
+            QTimer.singleShot(200, self.rehabMovementWindow._restoreTrajectoryController)
+
+        if not result.get("success", False):
+            message = result.get("message") or "Trajectory execution failed."
+            error_code = result.get("error_code", "n/a")
+            action_status = result.get("action_status", "n/a")
+            QMessageBox.warning(
+                self,
+                "Trajectory failed",
+                f"{message}\nError code: {error_code}\nAction status: {action_status}"
+            )
+
+    def _setCheckedWithoutSignals(self, widget, checked: bool) -> None:
+        old_state = widget.blockSignals(True)
+        try:
+            widget.setChecked(checked)
+        finally:
+            widget.blockSignals(old_state)
 
     def checkPlcUdpWatchdog(self):
         self.motorWindow.updateUdpWatchdog(self._plc_udp_watchdog_timeout_s)

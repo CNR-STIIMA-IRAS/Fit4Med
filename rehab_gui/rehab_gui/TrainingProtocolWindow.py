@@ -318,8 +318,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
                 self.progressBarPhases[_iPhase].setValue(_pct)
                 if self.ROS.getExerciseRepetitionCounter() > 0:
                     self.progressBarPhases[_iPhase - 1].setValue(100) # type: ignore
-                if self.ROS.getExerciseCompleted():
-                    self.ROS.setExerciseCompleted(False)
+                if self.ROS.consumeExerciseResult():
                     self.ModalityActualValue = self.Modalities[_iPhase] # change here the modality
                     self._exec_pct_stall_count = 0  # reset stall counter on phase completion
                 # set movemnt count lcd number
