@@ -107,13 +107,22 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
         else:
             self.ui.pushButton_GoToZERO.setEnabled(False)
 
-        if self.main_app.ui.tabWidget.currentIndex() == 1 and\
-            self.ROS.areMotorsOn() and self.ROS.getTrajectoryCompleted():
+        _result = self.ROS.consumeTrajectoryResult("go_to_start")
+        if _result is not None:
             self.ui.pushButton_GoToZERO.setChecked(False)
-            self.ROS.setTrajectoryCompleted(False)
-            self.ROS.turnOffMotors()
+
+            if self.ROS.areMotorsOn():
+                self.ROS.turnOffMotors()
+
             if self.ROS.getCurrentControllerName() == self.ROS.getGoToStartControllerName():
                 QTimer.singleShot(200, self._restoreTrajectoryController)
+
+            if not _result["success"]:
+                QMessageBox.warning(
+                    self,
+                    "Trajectory failed",
+                    f"{_result['message']}\nError code: {_result['error_code']}"
+                )
 
 ##############################################################################################################
 #####                                                                                                    #####  

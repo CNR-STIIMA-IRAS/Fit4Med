@@ -272,11 +272,19 @@ class RobotWindow(QtWidgets.QDialog):
         self.enableManualGuidanceButton(self.ROS.isManualGuidanceBehaviourEnabled() and self.ui.comboBox_MOO.currentIndex() == 3)
         self.enablePTPFrame(self.ROS.isPTPEnabled() and self.ui.comboBox_MOO.currentIndex() == 4)
 
-        if self.main_app.ui.tabWidget.currentIndex() == 0 and\
-            self.ROS.areMotorsOn() and self.ROS.getTrajectoryCompleted():
+        _result = self.ROS.consumeTrajectoryResult("ptp")
+        if _result is not None:
             self.ui.pushButton_ApproachAllJoint.setChecked(False)
-            self.ROS.setTrajectoryCompleted(False)
-            self.ROS.turnOffMotors()
+
+            if self.ROS.areMotorsOn():
+                self.ROS.turnOffMotors()
+
+            if not _result["success"]:
+                QMessageBox.warning(
+                    self,
+                    "Trajectory failed",
+                    f"{_result['message']}\nError code: {_result['error_code']}"
+                )
 
     def enableRelativeHomingButton(self, activate: bool):
         if activate == self._last_homing_state:

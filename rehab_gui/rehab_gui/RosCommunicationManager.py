@@ -462,12 +462,12 @@ class RosCommunicationManager(QObject):
     def getExerciseRepetitionCounter(self) -> int:
         return self.ROS.repetition_cnt if self.rOk() else 0
     
-    def setTrajectoryCompleted(self, value : bool) -> None:
-        if self.rOk(): 
-            self.ROS.trajectory_completed = value
+    # def setTrajectoryCompleted(self, value : bool) -> None:
+    #     if self.rOk(): 
+    #         self.ROS.trajectory_completed = value
 
-    def getTrajectoryCompleted(self) -> bool:
-        return self.ROS.trajectory_completed if self.rOk() else False
+    # def getTrajectoryCompleted(self) -> bool:
+    #     return self.ROS.trajectory_completed if self.rOk() else False
     
     def getMovementStopped(self) -> bool:
         return self.ROS.movement_stopped if self.rOk() else False
@@ -521,3 +521,14 @@ class RosCommunicationManager(QObject):
 
     def getMovementStatus(self) -> str:
         return self.ROS.get_movement_status() if self.rOk() else 'n/a'
+    
+    def consumeTrajectoryResult(self, movement_kind=None):
+        if not self.rOk() or not self.ROS.trajectory_result_pending:
+            return None
+
+        result = dict(self.ROS.trajectory_result)
+        if movement_kind is not None and result.get("movement_kind") != movement_kind:
+            return None
+
+        self.ROS.trajectory_result_pending = False
+        return result

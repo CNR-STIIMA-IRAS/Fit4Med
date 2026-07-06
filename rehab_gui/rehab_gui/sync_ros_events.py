@@ -141,7 +141,9 @@ class SyncRosManager:
         self.current_controller_name : str = None # type: ignore
         self.jog_cmd_pos = []
 
-        self.trajectory_completed = False
+        self.trajectory_result_pending = False
+        self.trajectory_result = {}
+
         self.exercise_completed = False
         self.movement_stopped = False
         self.exercise_suspended = False
@@ -285,7 +287,7 @@ class SyncRosManager:
         self.bag_recorder_stop_client : ConstRequestServiceHandler = ConstRequestServiceHandler(self.ros_client, '/bag_recorder/stop',
                                                                                                  'std_srvs/srv/Trigger', roslibpy.ServiceRequest())
 
-        self.on_trajectory_finished_server : roslibpy.Service = roslibpy.Service(self.ros_client, "/rehab_gui/trajectory_finished", "std_srvs/Trigger")
+        self.on_trajectory_finished_server : roslibpy.Service = roslibpy.Service(self.ros_client, "/rehab_gui/trajectory_finished", "tecnobody_msgs/TrajectoryResult")
         self.on_trajectory_finished_server.advertise(self.on_trajectory_finished)
 
         self.on_exercise_finished_server : roslibpy.Service = roslibpy.Service(self.ros_client, "/rehab_gui/exercise_finished", "std_srvs/Trigger")
@@ -805,9 +807,18 @@ class SyncRosManager:
 
     def on_trajectory_finished(self, request, response):
         print(f"[on_trajectory_finished] The Trajectory Execution's just finished {request}")
-        self.trajectory_completed = True
-        response['success'] = True
-        return True       
+        #self.trajectory_completed = True
+        self.trajectory_result = {
+                "success": bool(request.get("success", False)),
+                "message": request.get("message", ""),
+                "error_code": int(request.get("error_code", 0)),
+                "action_status": int(request.get("action_status", 0)),
+                "movement_kind": request.get("movement_kind", ""),
+            }
+        self.trajectory_result_pending = True
+        response["accepted"] = True
+        return True
+        
     
     def on_movement_stopped(self, request, response):
         print(f"[on_movement_stopped] Service Call: {request}")
