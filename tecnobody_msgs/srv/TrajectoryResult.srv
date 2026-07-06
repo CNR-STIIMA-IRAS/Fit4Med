@@ -1,0 +1,7 @@
+bool success
+int8 action_status
+int32 error_code
+string message
+string movement_kind
+---
+bool accepted
