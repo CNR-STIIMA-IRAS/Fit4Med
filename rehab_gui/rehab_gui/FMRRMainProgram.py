@@ -182,6 +182,7 @@ class MainProgram(QMainWindow):
             QTimer.singleShot(200, self.rehabMovementWindow._restoreTrajectoryController)
 
         if not result.get("success", False):
+            print(f"!!!!! Trajectory execution failed: {result}")
             message = result.get("message") or "Trajectory execution failed."
             error_code = result.get("error_code", "n/a")
             action_status = result.get("action_status", "n/a")
