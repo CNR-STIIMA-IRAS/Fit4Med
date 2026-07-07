@@ -48,6 +48,10 @@ CALLBACK_STATUS_MESSAGE : dict[State,str] = {
     State.ERROR_RECOVERY : 'Z-LIMIT Recovered! Set IDLE state' ,
     State.ERROR: ''
 }
+
+PLC_INPUT_LOG_STYLE = '\033[44m\033[97m'
+
+
 class FailedSafeShutdown(Exception):
     pass
 
@@ -194,7 +198,7 @@ class PLCControllerInterface(Node):
         interface_index = self.interface_names.index(interface_name)
         return bool(self.state_values[interface_index])
 
-    def _plc_input_str(self, str_len: int = 100) -> str | None:
+    def _plc_input_str(self, str_len: int = 100, restore_style: str = "") -> str | None:
         current_values = tuple(
             (interface_name, int(value))
             for interface_name, value in zip(self.interface_names, self.state_values)
@@ -214,7 +218,7 @@ class PLCControllerInterface(Node):
         entries = [
             (
                 f"{interface_name[:name_width]:<{name_width}}: "
-                f"{bc.BOLD}{bc.WARNING}{value}{bc.ENDC}"
+                f"{bc.BOLD}{bc.WARNING}{value}{bc.ENDC}{restore_style}"
                 if previous_by_name.get(interface_name) != value
                 else f"{interface_name[:name_width]:<{name_width}}: {value}"
             )
@@ -422,9 +426,11 @@ class PLCControllerInterface(Node):
             
             # ========== FSM Evolution ========== 
             _event, _msg = Event.NONE, ""
-            _plc_input_str = self._plc_input_str(10)
+            _plc_input_str = self._plc_input_str(10, restore_style=PLC_INPUT_LOG_STYLE)
             if _plc_input_str:
-                self.get_logger().info(f'PLC Inputs: {_plc_input_str}') #type: ignore
+                self.get_logger().info(
+                    f'{PLC_INPUT_LOG_STYLE}PLC Inputs: {_plc_input_str}{bc.ENDC}'
+                ) #type: ignore
             if self.fsm.pending is None:
                 if CALLBACK_STATUS_MESSAGE[self.fsm.state] is not None:
                     self.get_logger().info( #type: ignore
