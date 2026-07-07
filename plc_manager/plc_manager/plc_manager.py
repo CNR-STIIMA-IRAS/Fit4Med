@@ -44,7 +44,7 @@ CALLBACK_STATUS_MESSAGE : dict[State,str] = {
     State.ESTOP_RECOVERY : 'RECOVERY MODE - Emergency latch active - supervised restart required!' ,
     State.RUNNING : '',
     State.RUNNING_RECOVERY : '',
-    State.RECOVERED : 'Z-LIMIT Recovered! Set IDLE state' ,
+    State.RECOVERED : 'Z-LIMIT Recovered! waiting for z_limit_switch release before IDLE' ,
     State.ERROR_RECOVERY : 'Z-LIMIT Recovered! Set IDLE state' ,
     State.ERROR: ''
 }
