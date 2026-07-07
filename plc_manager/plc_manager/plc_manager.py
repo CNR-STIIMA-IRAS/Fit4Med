@@ -193,9 +193,13 @@ class PLCControllerInterface(Node):
         interface_index = self.interface_names.index(interface_name)
         return bool(self.state_values[interface_index])
 
-    def _plc_input_str(self) -> str:
+    def _plc_input_str(self, str_len: int = 100) -> str:
+        name_width = min(
+            max((len(interface_name) for interface_name in self.interface_names), default=0),
+            max(str_len, 0),
+        )
         entries = [
-            f"{interface_name}: {int(value)}"
+            f"{interface_name[:name_width]:<{name_width}}: {int(value)}"
             for interface_name, value in zip(self.interface_names, self.state_values)
         ]
         return "[" + ", ".join(entries) + "]"
@@ -405,10 +409,10 @@ class PLCControllerInterface(Node):
                 if CALLBACK_STATUS_MESSAGE[self.fsm.state]:
                     self.get_logger().info( #type: ignore
                         bc.WARNING + f'[{self.fsm.state}]' + bc.ENDC + ' ' +
-                        bc.MAGENTA + CALLBACK_STATUS_MESSAGE[self.fsm.state] + bc.ENDC,
+                        bc.MAGENTA + CALLBACK_STATUS_MESSAGE[self.fsm.state] + bc.ENDC + " | " +
+                        self._plc_input_str(8),
                         throttle_duration_sec=5.0
                     )
-                    self.get_logger().info(f'PLC Inputs: {self._plc_input_str()}') #type: ignore
                 _event, _msg = self._state_callback_state_check(z_limit_active)
                 if (
                     _event == Event.SWITCH_MODE
