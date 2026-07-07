@@ -426,7 +426,7 @@ class PLCControllerInterface(Node):
                 if CALLBACK_STATUS_MESSAGE[self.fsm.state] is not None:
                     self.get_logger().info( #type: ignore
                         bc.WARNING + f'[{self.fsm.state}]' + bc.ENDC + ' ' +
-                        bc.MAGENTA + CALLBACK_STATUS_MESSAGE[self.fsm.state] + bc.ENDC
+                        bc.MAGENTA + CALLBACK_STATUS_MESSAGE[self.fsm.state] + bc.ENDC,
                         throttle_duration_sec=5.0
                     )
                 _event, _msg = self._state_callback_state_check(z_limit_active)
