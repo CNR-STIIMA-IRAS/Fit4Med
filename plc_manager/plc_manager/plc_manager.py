@@ -220,7 +220,7 @@ class PLCControllerInterface(Node):
             )
             for interface_name, value in current_values
         ]
-        return "[" + ", ".join(entries) + "]" +         f'{current_values}'
+        return "[" + ", ".join(entries) + "]"
 
     def _get_z_limit_switch_state(self) -> bool:
         return self._get_plc_input_bool("z_limit_switch")
@@ -424,7 +424,7 @@ class PLCControllerInterface(Node):
             _event, _msg = Event.NONE, ""
             _plc_input_str = self._plc_input_str()
             if _plc_input_str:
-                self.get_logger().info( f'PLC Inputs: {self._plc_input_str()}' ) #type: ignore,
+                self.get_logger().info(f'PLC Inputs: {_plc_input_str}') #type: ignore
             if self.fsm.pending is None:
                 if CALLBACK_STATUS_MESSAGE[self.fsm.state] is not None:
                     self.get_logger().info( #type: ignore
