@@ -421,7 +421,9 @@ class PLCControllerInterface(Node):
             
             # ========== FSM Evolution ========== 
             _event, _msg = Event.NONE, ""
-            self.get_logger().info( f'PLC Inputs: {self._plc_input_str()}' ) #type: ignore,
+            _plc_input_str = self._plc_input_str()
+            if _plc_input_str:
+                self.get_logger().info( f'PLC Inputs: {self._plc_input_str()}' ) #type: ignore,
             if self.fsm.pending is None:
                 if CALLBACK_STATUS_MESSAGE[self.fsm.state] is not None:
                     self.get_logger().info( #type: ignore
