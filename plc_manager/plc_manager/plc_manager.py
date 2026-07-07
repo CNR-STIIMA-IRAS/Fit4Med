@@ -410,7 +410,7 @@ class PLCControllerInterface(Node):
                     self.get_logger().info( #type: ignore
                         bc.WARNING + f'[{self.fsm.state}]' + bc.ENDC + ' ' +
                         bc.MAGENTA + CALLBACK_STATUS_MESSAGE[self.fsm.state] + bc.ENDC + " | " +
-                        self._plc_input_str(8),
+                        self._plc_input_str(6),
                         throttle_duration_sec=5.0
                     )
                 _event, _msg = self._state_callback_state_check(z_limit_active)
