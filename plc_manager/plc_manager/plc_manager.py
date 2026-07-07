@@ -193,6 +193,13 @@ class PLCControllerInterface(Node):
         interface_index = self.interface_names.index(interface_name)
         return bool(self.state_values[interface_index])
 
+    def _plc_input_str(self) -> str:
+        ret : str = "["
+        for interface_name in self.interface_names:
+            interface_index = self.interface_names.index(interface_name)
+            ret += str(interface_name) +":" +str(self.state_values[interface_index])
+        return ret +"]"
+
     def _get_z_limit_switch_state(self) -> bool:
         return self._get_plc_input_bool("z_limit_switch")
     
@@ -401,6 +408,7 @@ class PLCControllerInterface(Node):
                         bc.MAGENTA + CALLBACK_STATUS_MESSAGE[self.fsm.state] + bc.ENDC,
                         throttle_duration_sec=5.0
                     )
+                    self.get_logger().info(f'PLC Inputs: {self._plc_input_str()}') #type: ignore
                 _event, _msg = self._state_callback_state_check(z_limit_active)
                 if (
                     _event == Event.SWITCH_MODE
