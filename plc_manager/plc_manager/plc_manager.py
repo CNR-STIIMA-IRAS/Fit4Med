@@ -421,14 +421,12 @@ class PLCControllerInterface(Node):
             
             # ========== FSM Evolution ========== 
             _event, _msg = Event.NONE, ""
-            
+            self.get_logger().info( f'PLC Inputs: {self._plc_input_str()}' ) #type: ignore,
             if self.fsm.pending is None:
-                plc_input_str = self._plc_input_str()
-                if CALLBACK_STATUS_MESSAGE[self.fsm.state] and plc_input_str is not None:
+                if CALLBACK_STATUS_MESSAGE[self.fsm.state] is not None:
                     self.get_logger().info( #type: ignore
                         bc.WARNING + f'[{self.fsm.state}]' + bc.ENDC + ' ' +
-                        bc.MAGENTA + CALLBACK_STATUS_MESSAGE[self.fsm.state] + bc.ENDC + " | " +
-                        plc_input_str,
+                        bc.MAGENTA + CALLBACK_STATUS_MESSAGE[self.fsm.state] + bc.ENDC
                         throttle_duration_sec=5.0
                     )
                 _event, _msg = self._state_callback_state_check(z_limit_active)
