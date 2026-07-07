@@ -422,7 +422,7 @@ class PLCControllerInterface(Node):
             
             # ========== FSM Evolution ========== 
             _event, _msg = Event.NONE, ""
-            _plc_input_str = self._plc_input_str()
+            _plc_input_str = self._plc_input_str(10)
             if _plc_input_str:
                 self.get_logger().info(f'PLC Inputs: {_plc_input_str}') #type: ignore
             if self.fsm.pending is None:
