@@ -623,7 +623,7 @@ class FollowJointTrajectoryActionManager(Node):
         self.initProgressData(0)
 
         # ========== Submit first repetition goal ==========
-        self.get_logger().info('Set Exercise -> sending the first FJT Goal')
+        self.get_logger().info('Set EEG Exercise -> sending the first FJT Goal')
         response.success = self.sendFollowJointTrajectoryGoal(self.on_exercise_goal_accepted)
         self.get_logger().info(f"Trajectory sento to FCT with result: {response.success}")
         response.success = True

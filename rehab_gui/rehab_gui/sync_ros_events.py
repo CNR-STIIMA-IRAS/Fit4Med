@@ -27,7 +27,7 @@ class RosilibpyServiceHandler(object):
         self.service_client : roslibpy.Service = roslibpy.Service(self.ros_client, namespace, msg_type)
         self.response : dict = None #type: ignore
         self.error : dict = None #type: ignore
-        self.on_done_collback = None #type: ignore
+        self.on_done_callback = None #type: ignore
         self.on_error_callback = None #type: ignore
 
     def __del__(self):
@@ -36,8 +36,8 @@ class RosilibpyServiceHandler(object):
 
     def response_callback(self, response):
         self.response = response
-        if self.on_done_collback:
-            self.on_done_collback(response) #type: ignore
+        if self.on_done_callback:
+            self.on_done_callback(response) #type: ignore
 
     def error_callback(self, response):
         self.response = response
@@ -47,7 +47,7 @@ class RosilibpyServiceHandler(object):
     def call_async(self, req: dict = None, on_done_callback = None, on_error_callback = None) -> None: #type: ignore
         try:
             _req : roslibpy.ServiceRequest = roslibpy.ServiceRequest(req) if req is not None else roslibpy.ServiceRequest()
-            self.on_done_collback = on_done_callback
+            self.on_done_callback = on_done_callback
             self.on_error_callback = on_error_callback
             _ = self.service_client.call(_req, self.response_callback, self.error_callback) # type: ignore
         except Exception as e:
@@ -60,7 +60,7 @@ class RosilibpyServiceHandler(object):
             _req : roslibpy.ServiceRequest = roslibpy.ServiceRequest(req)\
                 if req is not None\
                     else roslibpy.ServiceRequest()
-            self.on_done_collback = None #type: ignore
+            self.on_done_callback = None #type: ignore
             self.on_error_callback = on_error_callback
             self.response = self.service_client.call(_req, errback = self.error_callback, timeout=3) # type: ignore
         except Exception as e:

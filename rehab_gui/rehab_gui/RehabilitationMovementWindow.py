@@ -104,7 +104,7 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
             self.ui.pushButton_GoToZERO.setEnabled(False)
             self._go_to_start_retry_armed = False
 
-        movement_type: ExerciseType = self.ui.TypeOfMovement
+        movement_type: ExerciseType = self.TypeOfMovement
         if movement_type == ExerciseType.REACHING:
             self.ROS.setExerciseType(2) # 2: switch sensor
         elif movement_type == ExerciseType.HAND_TO_MOUTH:
