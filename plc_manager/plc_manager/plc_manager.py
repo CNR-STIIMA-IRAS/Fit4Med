@@ -194,11 +194,11 @@ class PLCControllerInterface(Node):
         return bool(self.state_values[interface_index])
 
     def _plc_input_str(self) -> str:
-        ret : str = "["
-        for interface_name in self.interface_names:
-            interface_index = self.interface_names.index(interface_name)
-            ret += str(interface_name) +":" +str(self.state_values[interface_index])
-        return ret +"]"
+        entries = [
+            f"{interface_name}: {int(value)}"
+            for interface_name, value in zip(self.interface_names, self.state_values)
+        ]
+        return "[" + ", ".join(entries) + "]"
 
     def _get_z_limit_switch_state(self) -> bool:
         return self._get_plc_input_bool("z_limit_switch")
