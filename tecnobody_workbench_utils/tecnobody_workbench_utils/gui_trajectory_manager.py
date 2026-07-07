@@ -816,8 +816,21 @@ class FollowJointTrajectoryActionManager(Node):
         req.message = message
         req.movement_kind = movement_kind
         future =client.call_async(req)
-        future.add_done_callback(lambda req,res: self.get_logger().info(f'Acknowledge received from GUI for trajectory_finished service call: {res}.'))
+        future.add_done_callback(self._on_trajectory_finished_ack)
         self.get_logger().info('Trajectory Finished sent to GUI')
+
+    def _on_trajectory_finished_ack(self, future):
+        try:
+            response = future.result()
+        except Exception as exc:
+            self.get_logger().error(
+                f"trajectory_finished service call failed: {exc!r}"
+            )
+            return
+
+        self.get_logger().info(
+            f"Acknowledge received from GUI for trajectory_finished service call: {response}."
+        )
 
     def on_trajectory_goal_accepted(self, future) -> None:  # type: ignore
         """Callback for trajectory goal acceptance/rejection (TRAJECTORY mode).
