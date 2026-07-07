@@ -92,6 +92,7 @@ class PLCControllerInterface(Node):
         # ========== PLC State Variables ==========
         self.interface_names : list[str] = []
         self.state_values : list[int] = []
+        self._plc_input_values_cached: tuple[tuple[str, int], ...] | None = None
         self.command_values : list[int] = []
         self.launch_status : list[bool] = []
         self.sw_estop_cached : EStopState = EStopState.OK   # Cached E-stop value for transition detection
@@ -193,14 +194,30 @@ class PLCControllerInterface(Node):
         interface_index = self.interface_names.index(interface_name)
         return bool(self.state_values[interface_index])
 
-    def _plc_input_str(self, str_len: int = 100) -> str:
+    def _plc_input_str(self, str_len: int = 100) -> str | None:
+        current_values = tuple(
+            (interface_name, int(value))
+            for interface_name, value in zip(self.interface_names, self.state_values)
+        )
+        previous_values = self._plc_input_values_cached
+        if previous_values == current_values:
+            return None
+
+        previous_by_name = dict(previous_values or ())
+        self._plc_input_values_cached = current_values
+
         name_width = min(
             max((len(interface_name) for interface_name in self.interface_names), default=0),
             max(str_len, 0),
         )
         entries = [
-            f"{interface_name[:name_width]:<{name_width}}: {int(value)}"
-            for interface_name, value in zip(self.interface_names, self.state_values)
+            (
+                f"{interface_name[:name_width]:<{name_width}}: "
+                f"{bc.BOLD}{bc.WARNING}{value}{bc.ENDC}"
+                if previous_by_name.get(interface_name) != value
+                else f"{interface_name[:name_width]:<{name_width}}: {value}"
+            )
+            for interface_name, value in current_values
         ]
         return "[" + ", ".join(entries) + "]"
 
@@ -406,11 +423,12 @@ class PLCControllerInterface(Node):
             _event, _msg = Event.NONE, ""
             
             if self.fsm.pending is None:
-                if CALLBACK_STATUS_MESSAGE[self.fsm.state]:
+                plc_input_str = self._plc_input_str()
+                if CALLBACK_STATUS_MESSAGE[self.fsm.state] and plc_input_str is not None:
                     self.get_logger().info( #type: ignore
                         bc.WARNING + f'[{self.fsm.state}]' + bc.ENDC + ' ' +
                         bc.MAGENTA + CALLBACK_STATUS_MESSAGE[self.fsm.state] + bc.ENDC + " | " +
-                        self._plc_input_str(6),
+                        plc_input_str,
                         throttle_duration_sec=5.0
                     )
                 _event, _msg = self._state_callback_state_check(z_limit_active)
