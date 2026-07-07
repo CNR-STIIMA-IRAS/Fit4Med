@@ -199,7 +199,7 @@ class PLCControllerInterface(Node):
             (interface_name, int(value))
             for interface_name, value in zip(self.interface_names, self.state_values)
         )
-        print(zip(self.interface_names, self.state_values))
+        print(f'{current_values}')
         previous_values = self._plc_input_values_cached
         if previous_values == current_values:
             return None
