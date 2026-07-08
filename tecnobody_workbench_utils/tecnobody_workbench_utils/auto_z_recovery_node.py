@@ -278,6 +278,7 @@ class AutoZRecoveryNode(Node):
             self.get_logger().info(
                 'Publishing PLC_node/z_recovery=0 — bypassing z_limit safety interlock.')
             self._publish_plc('PLC_node/z_recovery', 0)
+            self._publish_plc('PLC_node/estop_bypass', 1)
             self.get_logger().info(
                 'Waiting for operator to turn the recovery key to clear the emergency...')
             self._active_future = self._get_states_cli.call_async(GetDriveStates.Request())
@@ -471,6 +472,7 @@ class AutoZRecoveryNode(Node):
                 self.get_logger().info(
                     f'Moved {distance*100:.1f} cm — stopping.')
                 self._begin_stop(f'target distance reached ({distance*100:.1f} cm)')
+                self._publish_plc('PLC_node/estop_bypass', 0)
                 return
 
             if self._seconds_since(self._jog_started_at) >= JOG_TIMEOUT_S:

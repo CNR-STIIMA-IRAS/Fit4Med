@@ -16,7 +16,7 @@ PLC_controller:
           - mode_of_operation
           - power_cutoff
           - sonar_teach
-          - s_output.4
+          - estop_bypass
           - estop
           - manual_mode
           - force_sensors_pwr
