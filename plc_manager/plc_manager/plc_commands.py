@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from typing import Any
+import threading
 
 from tecnobody_msgs.msg import PlcController
 
@@ -24,34 +25,76 @@ class PlcCommandPublisher:
     def __init__(self, command_publisher: Any, logger: Any) -> None:
         self.command_publisher = command_publisher
         self.logger = logger
+        self._lock = threading.RLock()
         self.plc_outputs = PlcController()
-        self.plc_outputs.values = [0] * 10
-        self.plc_outputs.interface_names = list(PLC_COMMAND_INTERFACE_NAMES)
+        # Unknown until the GUI supplies a value; never invent a startup reset.
+        self.plc_outputs.interface_names = [
+            name for name in PLC_COMMAND_INTERFACE_NAMES
+            if name != 'PLC_node/eeg_sync'
+        ]
+        self.plc_outputs.values = [0] * len(self.plc_outputs.interface_names)
         self._last_published_values: list[int] | None = None
 
+    def _copy_outputs(self) -> PlcController:
+        message = PlcController()
+        message.interface_names = list(self.plc_outputs.interface_names)
+        message.values = list(self.plc_outputs.values)
+        return message
+
+    def receive_gui_eeg_sync(self, message: PlcController) -> None:
+        """Remember and forward only the GUI's EEG byte, including identical retries."""
+        if list(message.interface_names) != ['PLC_node/eeg_sync'] or len(message.values) != 1:
+            self.logger.warning('Ignoring malformed GUI EEG command.')
+            return
+        value = int(message.values[0])
+        if not 0 <= value <= 255:
+            self.logger.warning('Ignoring GUI EEG command outside uint8 range.')
+            return
+        with self._lock:
+            outputs = self._copy_outputs()
+            names = list(outputs.interface_names)
+            values = list(outputs.values)
+            if 'PLC_node/eeg_sync' not in names:
+                index = PLC_COMMAND_INTERFACE_NAMES.index('PLC_node/eeg_sync')
+                names.insert(index, 'PLC_node/eeg_sync')
+                values.insert(index, value)
+            else:
+                values[names.index('PLC_node/eeg_sync')] = value
+            outputs.interface_names = names
+            outputs.values = values
+            # Replace the message so status readers also see a consistent snapshot.
+            self.plc_outputs = outputs
+            command = PlcController()
+            command.interface_names = ['PLC_node/eeg_sync']
+            command.values = [value]
+            # Use the same publisher and lock as snapshots: no older snapshot
+            # can be published after this GUI update.
+            self.command_publisher.publish(command)
+
     def _publish_command(self, name: str, value: int, force_print: bool = False) -> None:
-        if name in self.plc_outputs.interface_names:  # type: ignore
-            idx = self.plc_outputs.interface_names.index(name)  # type: ignore
-            self.plc_outputs.values[idx] = value  # type: ignore
-            current_values = list(self.plc_outputs.values)  # type: ignore
-
-            self.command_publisher.publish(self.plc_outputs)
-
+        if name == 'PLC_node/eeg_sync':
+            raise ValueError('EEG sync may only be changed through the GUI input.')
+        with self._lock:
+            if name not in self.plc_outputs.interface_names:
+                self.logger.warn(
+                    f"Interface name '{name}' not found in command message.",
+                    throttle_duration_sec=5.0,
+                )
+                return
+            outputs = self._copy_outputs()
+            idx = outputs.interface_names.index(name)
+            outputs.values[idx] = value
+            self.plc_outputs = outputs
+            current_values = list(outputs.values)
+            self.command_publisher.publish(outputs)
             if not force_print and self._last_published_values == current_values:
                 return
-            
             self._last_published_values = current_values
-
             command_values = [
                 f"{interface_name.removeprefix('PLC_node/')}: {command_value}"
-                for interface_name, command_value in zip(self.plc_outputs.interface_names, current_values)  # type: ignore
+                for interface_name, command_value in zip(outputs.interface_names, current_values)
             ]
-            self.logger.info(f"PLC command: {command_values}")  # type: ignore
-        else:
-            self.logger.warn(  # type: ignore
-                f"Interface name '{name}' not found in command message.",
-                throttle_duration_sec=5.0
-            )
+            self.logger.info(f"PLC command: {command_values}")
 
     def set_automatic_mode(self) -> None:
         self._publish_command('PLC_node/manual_mode', 0)
@@ -102,9 +145,3 @@ class PlcCommandPublisher:
         self.clear_sw_estop()
         self.wire_endstroke_to_emergency_chain()
         self.power_force_sensors()
-
-    def disable_eeg_sync(self) -> None:
-        self._publish_command('PLC_node/eeg_sync', 0)
-
-    def enable_eeg_sync(self) -> None:
-        self._publish_command('PLC_node/eeg_sync', 1)

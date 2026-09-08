@@ -114,7 +114,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         # Two independent toggle buttons: "Save" and "EEG".
         # Neither selected  → default Rehab mode
         # Save selected     → ros2 bag recording on start/stop
-        # EEG selected      → EEG sync pulse at movement start
+        # EEG selected      → EEG movement identifier at movement start
         # Clicking an already-selected button deselects it (non-exclusive group).
         self.modeButtonGroup = QButtonGroup()
         self.modeButtonGroup.setExclusive(False)  # allow deselection by re-click
@@ -182,6 +182,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         self.ui.pushButton_ResumeTraining.setEnabled(False)
 
     def _handle_exercise_suspension(self, i_phase: int) -> None:
+        self.ROS.cancelEegSync()
         # NOTE: do NOT call stopAnyMovement() here — it blocks the Qt main
         # thread waiting for a ROS service response, which freezes the whole GUI.
         # The ROS side already stopped the motion when it emitted the suspension
@@ -330,7 +331,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
                     print(f'Number of movements: {self.NumberExecMovements} - Ovr: {self.spinBoxSpeedOvr[_iPhase].value()}')
                 elif not _is_near_zero:
                     if self._near_zero_triggered and self.EEGModeEnabled:
-                        self.ROS.eegSync()
+                        self.ROS.eegSync(self.NumberExecMovements)
                     self._near_zero_triggered = False
             else:
                 self.progressBarPhases[19].setValue(100)
@@ -354,7 +355,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
 
         Both buttons are independent and can be active simultaneously:
         - Save: ros2 bag recording starts/stops with training
-        - EEG:  EEG sync pulse sent at each movement start
+        - EEG:  EEG movement identifier sent at each movement start
         Clicking an already-selected button deselects it.
         """
         sender = self.sender()
@@ -363,6 +364,8 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
             print("Save Mode " + ("selected" if self.SaveModeEnabled else "deselected"))
         elif sender == self.ui.radioButton_EEGMode:
             self.EEGModeEnabled = self.ui.radioButton_EEGMode.isChecked()
+            if not self.EEGModeEnabled and self.ROS is not None:
+                self.ROS.cancelEegSync()
             print("EEG Mode " + ("selected" if self.EEGModeEnabled else "deselected"))
 
     def clbk_DurationChanged(self, _value: int):
@@ -471,6 +474,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
             self.ui.pushButton_ResumeTraining.setEnabled(False)
 
     def startTrainig(self) -> bool:
+        self.ROS.cancelEegSync()
         if not self.ROS.isRosCommunicationActive() or self.ROS.isInFaultState():
             QMessageBox.warning(self, "Warning", "No communication is active or the robot is in FAULT state.")
             return False
@@ -506,6 +510,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         return True
         
     def clbk_PauseTrainig(self):
+        self.ROS.cancelEegSync()
         self._training_paused = True
         self._exec_pct_stall_count = 0  # don't accumulate stall ticks while paused
         self.ROS.triggerSoftMovementStart(amplitude=0.0, time_constant=0.2, target='speed_ovr')
@@ -519,6 +524,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         self.ui.pushButton_PauseTrainig.setEnabled(True)
 
     def stopTrainig(self):
+        self.ROS.cancelEegSync()
         self._stop_bag_recording()
         self.Training_ON = False
         self._near_zero_triggered = False

@@ -216,6 +216,11 @@ class SyncRosManager:
             '/PLC_controller/plc_commands',
             'tecnobody_msgs/msg/PlcController'
         )
+        self.eeg_sync_publisher = roslibpy.Topic(
+            self.ros_client,
+            '/plc_manager/eeg_sync',
+            'tecnobody_msgs/msg/PlcController'
+        )
 
         
 
@@ -224,6 +229,7 @@ class SyncRosManager:
         self.movement_status_subscriber.unsubscribe()
         
         self.plc_command_publisher.unadvertise()
+        self.eeg_sync_publisher.unadvertise()
         
         print('All publisher/subscribers are correctly detached')
 
@@ -878,12 +884,11 @@ class SyncRosManager:
         print("Setting sonar bias...")
         self.sonar_bias_client.call()
 
-    def send_eeg_sync(self):
-        """Send a 100 ms HIGH pulse on PLC_node/eeg_sync (non-blocking).
-        Sends HIGH immediately, then schedules LOW after 100 ms via a
-        daemon background thread — no Qt dependency, no blocking.
-        """
-        self.publish_plc_command(['PLC_node/eeg_sync'], [1])
-        t = threading.Timer(0.2, lambda: self.publish_plc_command(['PLC_node/eeg_sync'], [0]))
-        t.daemon = True
-        t.start()
+    def send_eeg_sync(self, movement_count: int) -> None:
+        """Send the wrapped movement identifier through the PLC manager."""
+        # The counter records completed returns; the next movement starts now.
+        new_obtained_value = (movement_count + 1) % 256
+        self.eeg_sync_publisher.publish(roslibpy.Message({
+            'interface_names': ['PLC_node/eeg_sync'],
+            'values': [new_obtained_value],
+        }))

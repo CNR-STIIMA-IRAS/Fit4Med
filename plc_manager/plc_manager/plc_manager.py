@@ -59,8 +59,9 @@ class PLCControllerInterface(Node):
         super().__init__('plc_manager')
 
         # ========== Callback Groups ==========
-        # Three separate groups prevent callback blocking:
+        # Separate groups prevent callback blocking:
         self.plc_group = MutuallyExclusiveCallbackGroup()       # PLC state updates
+        self.eeg_group = MutuallyExclusiveCallbackGroup()       # GUI EEG updates
         self.timer_group = MutuallyExclusiveCallbackGroup()     # Low-rate status timers
         self.service_group = MutuallyExclusiveCallbackGroup()   # EtherCAT service clients
 
@@ -78,7 +79,7 @@ class PLCControllerInterface(Node):
         )
         
         # ========== PLC Command Publisher ==========
-        # RELIABLE QoS: guarantees all commands reach PLC even if temporarily unavailable
+        # Reliable publication; the controller currently subscribes best-effort.
         qos = QoSProfile(
             depth=10,
             reliability=ReliabilityPolicy.RELIABLE
@@ -102,6 +103,15 @@ class PLCControllerInterface(Node):
         self.plc_commands = PlcCommandPublisher(
             self.command_publisher,
             self.get_logger(),
+        )
+        # GUI EEG updates enter here, so only this publisher writes the byte
+        # to the controller and all later snapshots carry the latest value.
+        self.eeg_sync_subscriber = self.create_subscription(
+            PlcController,
+            '/plc_manager/eeg_sync',
+            self.plc_commands.receive_gui_eeg_sync,
+            QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT),
+            callback_group=self.eeg_group,
         )
 
         # ========== Launcher Health Monitoring ==========
