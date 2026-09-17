@@ -5,7 +5,7 @@ import gc
 import time
 from typing import Any, List
 from PyQt5.QtWidgets import QMessageBox, QPushButton, QWidget
-from PyQt5.QtCore import QThread, QObject, QTimer, pyqtSignal
+from PyQt5.QtCore import QThread, QObject, pyqtSignal
 import roslibpy
 from sync_ros_events import SyncRosManager
 
@@ -64,16 +64,6 @@ class RosCommunicationManager(QObject):
         self._ros_stop_requested = False
         self._worker_stop_timeout_msec = 5000
         self._worker_force_stop_timeout_msec = 3000
-
-        self._eeg_sync_timer = QTimer(self)
-        self._eeg_sync_timer.setInterval(20)
-        self._eeg_sync_timer.timeout.connect(self._retryEegSync)
-        self._eeg_sync_retries = 0
-        self._eeg_sync_movement_count = None
-        self._eeg_sync_target = None
-        self._eeg_sync_deadline = 0.0
-        self.stop_ros_communication_signal.connect(self.cancelEegSync)
-        self.ros_communication_failed_signal.connect(self.cancelEegSync)
 
         self.worker_thread = Worker(self.updateState, loop_period_s=0.2)
         self.worker_thread.finished.connect(self.onUpdateWorkerThreadFinished)
@@ -504,38 +494,10 @@ class RosCommunicationManager(QObject):
         return self._exercise_in_suspension
 
     def eegSync(self, movement_count: int) -> None:
-        """Publish once, then retry the same identifier after about 20 and 40 ms."""
-        self.cancelEegSync()
+        """Send the current movement identifier to the EEG system via the PLC."""
         if not self.rOk():
             return
-        self._eeg_sync_movement_count = movement_count
-        self._eeg_sync_target = self.ROS
-        self._eeg_sync_deadline = time.monotonic() + 0.1
-        self._eeg_sync_target.send_eeg_sync(movement_count)
-        self._eeg_sync_retries = 2
-        self._eeg_sync_timer.start()
-
-    def cancelEegSync(self) -> None:
-        """Cancel unsent copies without changing the PLC's stored byte."""
-        self._eeg_sync_timer.stop()
-        self._eeg_sync_retries = 0
-        self._eeg_sync_movement_count = None
-        self._eeg_sync_target = None
-
-    def _retryEegSync(self) -> None:
-        if (
-            not self._eeg_sync_retries
-            or not self.rOk()
-            or self.ROS is not self._eeg_sync_target
-            or time.monotonic() >= self._eeg_sync_deadline
-        ):
-            self.cancelEegSync()
-            return
-        # Use the captured count, even if the GUI counter has since changed.
-        self._eeg_sync_target.send_eeg_sync(self._eeg_sync_movement_count)
-        self._eeg_sync_retries -= 1
-        if not self._eeg_sync_retries:
-            self.cancelEegSync()
+        self.ROS.send_eeg_sync(movement_count)
 
     def startBagRecording(self) -> None:
         """Ask the bag_recorder_node on the Linux PC to start recording."""
