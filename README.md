@@ -82,6 +82,123 @@ kill_ros_apps.sh<br>
  - SetTrajectory.srv - Tajectory execution request
 
 
+## Setting up a GUI PC from scratch (Windows)
+
+The GUI is a plain Python/PyQt5 application: it never uses `rclpy`, it talks to
+the platform over **rosbridge (TCP 9090)** and receives status over **UDP 5005**.
+No ROS 2 installation is required on the Windows PC.
+
+Two addresses matter and only one of them ever changes:
+
+| Setting | Value | Where |
+|---|---|---|
+| `--remote-ip` | `192.168.1.1` (ROS 2 PC) — never changes | `ps_scripts/fmrr_gui.ps1` |
+| `gui_ip` | the static IP of *this* Windows PC | `-GuiIp` argument of `ps_scripts/fmrr_bringup.ps1` |
+
+### 1. Network
+
+Give the PC a **static** address on the platform subnet `192.168.1.0/24`.
+`192.168.1.1` is the ROS 2 PC and `192.168.1.2` is the platform's own GUI PC, so
+a second machine needs a free address (e.g. `192.168.1.57`). That address is the
+`gui_ip`: `plc_manager` sends the UDP status stream to it, and nothing else
+tells it where the GUI lives.
+
+Allow the status stream in, from an **Administrator** PowerShell:
+
+```powershell
+New-NetFirewallRule -DisplayName "FMRREHAB GUI status" -Direction Inbound -Protocol UDP -LocalPort 5005 -Action Allow
+```
+
+The bringup/cleanup scripts use the Windows OpenSSH client (included in Windows
+10/11) to log into `fit4med@192.168.1.1`, so make sure `ssh 192.168.1.1` works
+before going further.
+
+### 2. Install uv
+
+```powershell
+winget install --id=astral-sh.uv -e
+```
+
+or, without winget:
+
+```powershell
+irm https://astral.sh/uv/install.ps1 | iex
+```
+
+Close and reopen PowerShell, then check `uv --version`. Python itself does not
+need to be installed: uv downloads the interpreter this project asks for
+(CPython >= 3.10, < 3.13).
+
+### 3. Clone the repository
+
+```powershell
+git clone https://github.com/CNR-STIIMA-IRAS/Fit4Med.git
+cd Fit4Med
+```
+
+Any folder works — the PowerShell scripts resolve their paths relative to their
+own location, so the repository no longer has to sit in `C:\Fit4Med`.
+
+### 4. Create the environment
+
+```powershell
+uv sync
+```
+
+This creates `.venv` in the repository root with PyQt5, roslibpy, NumPy, SciPy,
+Matplotlib, psutil, PyYAML and rich, as pinned by `pyproject.toml` / `uv.lock`.
+Movements and protocols are read from `rehab_gui/Movements` and
+`rehab_gui/Protocols` inside the clone.
+
+### 5. Allow the scripts to run (once per machine)
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+Alternatively, launch each script as
+`powershell -ExecutionPolicy Bypass -File ps_scripts\fmrr_gui.ps1`.
+
+### 6. Start the platform, passing this PC's address
+
+```powershell
+.\ps_scripts\fmrr_bringup.ps1 -GuiIp 192.168.1.57
+```
+
+This SSHes into the ROS 2 PC and runs
+`ros2 launch tecnobody_workbench run_sickPLC.launch.py gui_ip:=192.168.1.57`.
+Without `-GuiIp` it falls back to the platform PC (`192.168.1.2`), which is the
+behaviour on the machine in the lab. Leave the window open: it holds the ROS 2
+session.
+
+### 7. Start the GUI
+
+```powershell
+.\ps_scripts\fmrr_gui.ps1
+```
+
+The script uses `.venv\Scripts\python.exe` when the repository has an
+environment and the system `python` otherwise, and always connects to
+`--remote-ip 192.168.1.1`. The equivalent manual command is:
+
+```powershell
+uv run python rehab_gui\rehab_gui\FMRRMainProgram.py --remote-ip 192.168.1.1 --maximise-window
+```
+
+### 8. Shut down
+
+```powershell
+.\ps_scripts\fmrr_cleanup.ps1
+```
+
+### If the GUI opens but shows no status
+
+The window and the rosbridge connection work over TCP 9090, while the status
+fields are fed by the UDP stream. An empty status panel therefore almost always
+means the `gui_ip` given at step 6 is not this PC's address, or the firewall
+rule of step 1 is missing.
+
+
 ## Troubleshooting
 
 Common Issues

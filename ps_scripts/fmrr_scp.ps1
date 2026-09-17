@@ -5,7 +5,10 @@
 $remoteUser = "fit4med"
 $remoteHost = "192.168.1.1"
 $scpPathFiles = "/home/fit4med/fit4med_ws/src/Fit4Med/*"
-$localDestination = "C:\Fit4Med"
+# Repository root, resolved from this script's location (C:\Fit4Med on the
+# platform PC).
+$ScriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
+$localDestination = Split-Path -Parent $ScriptDir
 
 # Ensure local destination exists
 if (!(Test-Path $localDestination)) {

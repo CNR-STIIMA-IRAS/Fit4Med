@@ -1,0 +1,71 @@
+# Copyright 2026 CNR-STIIMA
+# SPDX-License-Identifier: Apache-2.0
+#
+# Python environment for the FMRREHAB rehabilitation GUI (rehab_gui).
+#
+# The GUI talks to the ROS 2 machine only over rosbridge (roslibpy, TCP 9090)
+# and a UDP status socket (port 5005), so no ROS 2 installation is required
+# on the client PC.
+#
+# Usage on a fresh clone:
+#     uv sync
+#     uv run python rehab_gui/rehab_gui/FMRRMainProgram.py --remote-ip 192.168.1.1 --maximise-window
+#
+# --remote-ip is always the ROS 2 PC (192.168.1.1). The only per-laptop setting
+# is gui_ip in ps_scripts/fmrr_bringup.ps1 (ros2 launch ... gui_ip:=<this_pc_ip>),
+# which tells plc_manager where to send the UDP status stream (port 5005).
+
+[project]
+name = "fit4med-rehab-gui"
+version = "0.1.0"
+description = "Client-side Python environment for the FMRREHAB (Fit4Med) rehabilitation GUI"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10,<3.13"
+authors = [
+    { name = "Adriano Scibilia", email = "adriano.scibilia@cnr.it" },
+    { name = "Nicola Pedrocchi", email = "nicola.pedrocchi@cnr.it" },
+]
+
+dependencies = [
+    # Qt widgets + the pyuic5-generated ui/*.py modules
+    "PyQt5>=5.15.11,<6",
+    # Riverbank stopped publishing Windows wheels of the bundled Qt runtime:
+    # PyQt5-Qt5 releases after 5.15.2 are Linux/macOS only, so on Windows pin the
+    # last one that still ships a win_amd64 wheel (this is the combination every
+    # Windows PyQt5 install uses).
+    "PyQt5-Qt5==5.15.2; sys_platform == 'win32'",
+    # rosbridge client: topics, services and params towards the ROS 2 machine
+    # (RosCommunicationManager.py, sync_ros_events.py)
+    "roslibpy>=1.7,<2",
+    # movement / protocol files (Movements/*.yaml, Protocols/*.yaml)
+    "pyyaml>=6.0",
+    # trajectory math (FMRRMainProgram, RehabilitationMovementWindow,
+    # TrainingProtocolWindow, sync_ros_events)
+    "numpy>=1.26,<3",
+    # cubic re-interpolation of cartesian trajectories
+    # (RehabilitationMovementWindow.interpolate.interp1d)
+    "scipy>=1.11",
+    # optional debug plots of loaded/transformed trajectories
+    "matplotlib>=3.8",
+    # frees the UDP status port before binding (UdpCommunicationManager)
+    "psutil>=5.9",
+    # coloured tracebacks (FMRRMainProgram, TrainingProtocolWindow)
+    "rich>=13.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.uv]
+# This repository is a ROS 2 workspace, not an installable Python distribution:
+# uv only has to create the .venv and resolve the dependencies above.
+package = false
+# The GUI runs on Windows: make uv fail at lock time, not at install time, if a
+# resolved version has no win_amd64 wheel.
+required-environments = ["sys_platform == 'win32' and platform_machine == 'AMD64'"]
+
+[tool.pytest.ini_options]
+testpaths = ["rehab_gui/test"]
