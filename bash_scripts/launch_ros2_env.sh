@@ -6,9 +6,10 @@
 source /home/fit4med/fit4med_ws/install/setup.bash
 
 perform_homing=false
+eeg_delay_ms="${EEG_DELAY_MS:-6000}"
 while :; do
     case $1 in
-        -h|--perform-homing)
+        -z|--perform-homing)
             perform_homing=true
             ;;
         -h|--help)
@@ -28,6 +29,11 @@ while :; do
     esac
     shift
 done
+
+if ! [[ "$eeg_delay_ms" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: EEG_DELAY_MS must be an integer number of milliseconds." >&2
+    exit 1
+fi
 
 RESET_BINARY="/home/fit4med/fit4med_ws/build/reset_coe_faults/reset_coe_faults"
 RESET_TIMEOUT=30
@@ -69,5 +75,5 @@ else
     fi
 fi
 
-echo "************************************************** Launching ROS2 environment with perform_homing set to: $perform_homing **************************************************"
-ros2 launch tecnobody_workbench run_platform_control.launch.py perform_homing:=$perform_homing
+echo "************************************************** Launching ROS2 environment with perform_homing set to: $perform_homing, eeg_delay_ms set to: $eeg_delay_ms **************************************************"
+ros2 launch tecnobody_workbench run_platform_control.launch.py perform_homing:=$perform_homing eeg_delay_ms:=$eeg_delay_ms

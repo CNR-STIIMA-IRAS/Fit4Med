@@ -49,6 +49,12 @@ def generate_launch_description():
             description='IP of the GUI'
     )
 
+    declare_eeg_delay_ms = DeclareLaunchArgument(
+            'eeg_delay_ms',
+            default_value='6000',
+            description='Base EEG pause duration in milliseconds'
+    )
+
     declare_debug_delta = DeclareLaunchArgument(
             'debug_delta',
             default_value='false',
@@ -100,7 +106,10 @@ def generate_launch_description():
         package='plc_manager',
         executable='plc_manager_node',
         output = 'screen',
-        arguments=[LaunchConfiguration('gui_ip', default='127.0.0.0')],
+        arguments=[
+            LaunchConfiguration('gui_ip', default='127.0.0.0'),
+            LaunchConfiguration('eeg_delay_ms', default='6000'),
+        ],
         condition=UnlessCondition(debug_delta),
     )
 
@@ -146,6 +155,7 @@ def generate_launch_description():
 
     # launch arguments
     ld.add_action(declare_gui_ip)
+    ld.add_action(declare_eeg_delay_ms)
     ld.add_action(declare_debug_delta)
 
     # nodes_to_start
@@ -156,6 +166,5 @@ def generate_launch_description():
     ld.add_action(sonar_teach_node)
     ld.add_action(nodes_killer)
     return ld
-
 
 

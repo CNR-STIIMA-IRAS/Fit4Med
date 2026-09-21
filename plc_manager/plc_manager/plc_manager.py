@@ -37,6 +37,8 @@ from plc_manager.plc_types import EStopState, Event, State
 from plc_manager.udp_client import UdpClient
 
 
+DEFAULT_EEG_DELAY_MS = 6000
+
 CALLBACK_STATUS_MESSAGE : dict[State,str] = {
     State.IDLE : 'Waiting for ros controllers to start - TURN THE KEY to START!' ,
     State.IDLE_RECOVERY : 'RECOVERY MODE - Waiting for ros controllers to start - TURN THE KEY to START!' ,
@@ -54,7 +56,7 @@ class FailedSafeShutdown(Exception):
 
 class PLCControllerInterface(Node):
 
-    def __init__(self, target_ip: str):
+    def __init__(self, target_ip: str, eeg_delay_ms: int = DEFAULT_EEG_DELAY_MS):
 
         super().__init__('plc_manager')
 
@@ -110,6 +112,7 @@ class PLCControllerInterface(Node):
             self,
             service_group=self.service_group,
             timer_group=self.timer_group,
+            eeg_delay_ms=eeg_delay_ms,
         )
 
 
@@ -493,16 +496,32 @@ class PLCControllerInterface(Node):
         self.shutdown_requested = True
 
 
+def _parse_eeg_delay_ms(value: str | None) -> int:
+    if value is None:
+        return DEFAULT_EEG_DELAY_MS
+
+    try:
+        eeg_delay_ms = int(value)
+    except ValueError:
+        raise SystemExit("EEG_DELAY_MS must be an integer number of milliseconds.")
+
+    if eeg_delay_ms < 0:
+        raise SystemExit("EEG_DELAY_MS must be greater than or equal to 0.")
+
+    return eeg_delay_ms
+
+
 def main(args=None): #type: ignore
+
+    # ========== Parse arguments ==========
+    target_ip = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.0"
+    eeg_delay_ms = _parse_eeg_delay_ms(sys.argv[2] if len(sys.argv) > 2 else None)
 
     # Initialize ROS 2 without automatic signal handling
     rclpy.init(args=args, signal_handler_options=SignalHandlerOptions.NO) #type: ignore
-    
-    # ========== Parse arguments ==========
-    target_ip = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.0"
 
     # ========== Create node instance ==========
-    node = PLCControllerInterface(target_ip)
+    node = PLCControllerInterface(target_ip, eeg_delay_ms)
     
     # ========== Create multi-threaded executor ==========
     # Thread 1: PLC state subscription callback (state_callback)

@@ -99,6 +99,9 @@ from rich.traceback import install
 install(show_locals=True)
 
 
+DEFAULT_EEG_DELAY_MS = 6000
+
+
 class FollowJointTrajectoryActionManager(Node):
     """ROS 2 node managing multi-repetition rehabilitation exercises with dynamic speed control.
     
@@ -178,6 +181,9 @@ class FollowJointTrajectoryActionManager(Node):
         super().__init__("fct_manager_node")
         
         self.controller_name = controller_name
+        self.declare_parameter('eeg_delay_ms', DEFAULT_EEG_DELAY_MS)
+        self.eeg_delay_ms = self._get_eeg_delay_ms()
+        self.eeg_delay_s = self.eeg_delay_ms / 1000.0
         self.number_of_repetition : int = 0
         self.cancel_from_gui : bool = False
         self.additional_speed_override : float = 1.0
@@ -232,6 +238,24 @@ class FollowJointTrajectoryActionManager(Node):
         )
         self.movement_kind = ''
         self.clear(0)
+
+    def _get_eeg_delay_ms(self) -> int:
+        raw_delay_ms = self.get_parameter('eeg_delay_ms').value
+        try:
+            eeg_delay_ms = int(raw_delay_ms) #type: ignore[arg-type]
+        except (TypeError, ValueError):
+            self.get_logger().warning(
+                f"Invalid eeg_delay_ms parameter {raw_delay_ms!r}; using {DEFAULT_EEG_DELAY_MS} ms."
+            )
+            return DEFAULT_EEG_DELAY_MS
+
+        if eeg_delay_ms < 0:
+            self.get_logger().warning(
+                f"Invalid negative eeg_delay_ms parameter {eeg_delay_ms}; using {DEFAULT_EEG_DELAY_MS} ms."
+            )
+            return DEFAULT_EEG_DELAY_MS
+
+        return eeg_delay_ms
 
     def _init_sevices(self) -> None:
         """Initialize service servers for trajectory and exercise commands.
@@ -612,7 +636,7 @@ class FollowJointTrajectoryActionManager(Node):
 
             # ========== Interpolate single rep, scale and repeat N times ==========
             # Set pause duration
-            pause_duration = 6.0 + random.uniform(0.1, 3.9)
+            pause_duration = self.eeg_delay_s + random.uniform(0.1, 3.9)
             self.get_logger().info(f"Pause duration for repetition {trj_idx}: {pause_duration:.2f} seconds")
             t,p,v,a = self.resample_with_speed_override(P=_P,t=_t, dt=self._dt, total_time=request.repetition_durations[trj_idx], pause_duration=pause_duration, speed_ovr=speed_scaling_pct)
 
