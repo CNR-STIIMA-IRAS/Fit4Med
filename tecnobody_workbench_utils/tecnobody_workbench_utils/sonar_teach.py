@@ -71,7 +71,7 @@ Attributes:
 import os
 
 # Must be BEFORE importing rclpy (sets logging format globally)
-os.environ['RCUTILS_CONSOLE_OUTPUT_FORMAT'] = '[{severity}] [{name}]: {message}'
+os.environ['RCUTILS_CONSOLE_OUTPUT_FORMAT'] = '[{severity}] [{time}] [{name}]: {message}'
 
 import rclpy
 from rclpy.signals import SignalHandlerOptions
