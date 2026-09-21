@@ -104,14 +104,6 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
             self.ui.pushButton_GoToZERO.setEnabled(False)
             self._go_to_start_retry_armed = False
 
-        movement_type: ExerciseType = self.TypeOfMovement
-        if movement_type == ExerciseType.REACHING:
-            self.ROS.setExerciseType(2) # 2: switch sensor
-        elif movement_type == ExerciseType.HAND_TO_MOUTH:
-            self.ROS.setExerciseType(1) # 1: proximity sensor
-        else:
-            self.ROS.setExerciseType(0) # 0: no sensor
-
         _result = self.ROS.consumeTrajectoryResult("go_to_start")
         if _result is not None:
             self.ui.pushButton_GoToZERO.setChecked(False)
@@ -497,6 +489,7 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
             print('This is the filename of the loaded movement:')
             print(NewFilename[0])
             self.SaveNewFile(self.TrjYamlData, NewFilename[0])
+            self.main_app.movement_loaded = True
 
     def SaveNewFile(self, Data, NewFilename):
         print('This is the new file.yaml:')
@@ -668,8 +661,16 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
         self.ui.lcdNumber_EndPos_Z.display( int( HandlePosition[2] ) )
         self.ui.pushButton_CREATEMovement.setEnabled(True)
 
-    def clbk_BtnGoToStartPosition(self):
+    def clbk_BtnGoToStartPosition(self) -> None:
+        if not self.main_app.syncExerciseTypeToPLC(force=True):
+            QMessageBox.warning(
+                self, "Warning",
+                "Failed to synchronize exercise type with PLC.\n"
+                "Please check the PLC connection and try again."
+            )
+            return
         self.ROS.setManualMode(False)
+
         switch_ok = self.ROS.enableControllerBehaviour("GoToStart")
         ctrl = self.ROS.getCurrentControllerName()
         target_ctrl = self.ROS.getGoToStartControllerName()
@@ -684,7 +685,7 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
                     "Setting mode of operation 8 and Go to start controller.\n"
                     "Press the button again to start the movement."
                 )
-                return False
+                return
 
             moos = self.ROS.getDriversModeOfOperations()
             if not switch_ok:
@@ -694,7 +695,7 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
                     f"Active controller: {ctrl}\nDrive modes: {moos}\n"
                     "Please verify that all drives are operational before starting training."
                 )
-                return False
+                return
 
             QMessageBox.warning(
                 self, "Warning",
@@ -702,7 +703,7 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
                 f"(active: {ctrl}).\n"
                 "Cannot start training."
             )
-            return False
+            return
 
         self._go_to_start_retry_armed = False
         self.Training_ON = True

@@ -3,7 +3,7 @@
 
 import gc
 import time
-from typing import Any, List
+from typing import Any, List, Optional
 from PyQt5.QtWidgets import QMessageBox, QPushButton, QWidget
 from PyQt5.QtCore import QThread, QObject, pyqtSignal
 import roslibpy
@@ -58,7 +58,7 @@ class RosCommunicationManager(QObject):
         self.roslib_first_time_connection = True
         self.manual_mode_activated = False
         self._exercise_in_suspension: bool = False
-        self._exercise_type: int = 0
+        self._exercise_type: Optional[int] = None
         self._plc_status_provider: Any = None
         self._stop_signal_emitted = False
         self._ros_stop_requested = False
@@ -206,6 +206,7 @@ class RosCommunicationManager(QObject):
             return
 
         self.ROS = SyncRosManager(self.number_of_ec_slaves, self.joint_names, self.ros_client)
+        self._exercise_type = None
 
         self._stop_signal_emitted = False
         self._ros_stop_requested = False
@@ -256,9 +257,11 @@ class RosCommunicationManager(QObject):
         self.ROS.publish_plc_command(['PLC_node/manual_mode'], [0])
         return self.ROS.turn_off_motors() if self.areMotorsOn() else True
 
-    def setExerciseType(self, mode: int) -> bool:
+    def setExerciseType(self, mode: int, force: bool = False) -> bool:
         if not self.rOk():
             return False
+        if not force and self._exercise_type == mode:
+            return True
         if self._exercise_type != mode:
             print(f"Setting exercise type to {mode} [2 proximity, 1 proximity, 0 no sensor]...")
         self._exercise_type = mode

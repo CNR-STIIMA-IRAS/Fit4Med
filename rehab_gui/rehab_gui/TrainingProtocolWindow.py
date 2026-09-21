@@ -258,12 +258,6 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
                 self.ui.radioButton_SideRight.blockSignals(False)
 
         movement_type: ExerciseType = self.ui_main.rehabMovementWindow.TypeOfMovement
-        if movement_type == ExerciseType.REACHING:
-            self.ROS.setExerciseType(2) # 2: switch sensor
-        elif movement_type == ExerciseType.HAND_TO_MOUTH:
-            self.ROS.setExerciseType(1) # 1: proximity sensor
-        else:
-            self.ROS.setExerciseType(0) # 0: no sensor
         if movement_type != self._last_type:
             self._last_type = movement_type
             if movement_type == ExerciseType.REACHING:
@@ -452,12 +446,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
             
     def startStopTraining(self, start: bool):
         if start:
-            if self.ui_main.rehabMovementWindow.TypeOfMovement == ExerciseType.REACHING:
-                self.ROS.setExerciseType(2) # 2: switch sensor
-            elif self.ui_main.rehabMovementWindow.TypeOfMovement == ExerciseType.HAND_TO_MOUTH:
-                self.ROS.setExerciseType(1) # 1: proximity sensor
-            else:
-                self.ROS.setExerciseType(0) # 0: no sensor
+            self.ui_main.syncExerciseTypeToPLC(force=True)
             self.ui.pushButton_PauseTrainig.setEnabled(True)
             self.ui.pushButton_STARTtrainig.setStyleSheet("background-color: rgb(255, 69, 0); color: black;")
             self.ui.pushButton_STARTtrainig.setText("STOP TRAINING")

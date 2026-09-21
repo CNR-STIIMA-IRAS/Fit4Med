@@ -19,7 +19,7 @@ install(show_locals=True)
 from ui.uiFMRRMainWindow import Ui_FMRRMainWindow # import from file ui the class Ui_ui
 from MotorsWindow import MotorsWindow
 from RobotWindow import RobotWindow
-from RehabilitationMovementWindow import RehabilitationMovementWindow
+from RehabilitationMovementWindow import RehabilitationMovementWindow, ExerciseType
 from TrainingProtocolWindow import TrainingProtocolWindow
 
 #ROS
@@ -160,6 +160,14 @@ class MainProgram(QMainWindow):
             self.rehabMovementWindow.updateWindow()
         elif current_tab == 2:
             self.trainingProtocolWindow.updateWindow()
+
+    def syncExerciseTypeToPLC(self, force: bool = False) -> bool:
+        movement_type = self.rehabMovementWindow.TypeOfMovement
+        if movement_type == ExerciseType.REACHING:
+            return self.ros_manager.setExerciseType(2, force=force) # 2: switch sensor
+        if movement_type == ExerciseType.HAND_TO_MOUTH:
+            return self.ros_manager.setExerciseType(1, force=force) # 1: proximity sensor
+        return self.ros_manager.setExerciseType(0, force=force) # 0: no sensor
 
     def _handleTrajectoryResult(self):
         result = self.ros_manager.consumeTrajectoryResult()

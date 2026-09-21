@@ -13,7 +13,7 @@ Core Responsibilities:
        using cubic splines, and resamples at fixed 10 Hz frequency for controller compatibility
     2. Exercise Execution: Manages multi-repetition exercise loops with individual
        speed override factors for each repetition (e.g., 80%, 100%, 120% of nominal speed)
-    3. Progress Tracking: Monitors exercise progression at 50 Hz and reports completion
+    3. Progress Tracking: Monitors exercise progression at 10 Hz and reports completion
        percentage back to GUI for visual feedback and speed adjustment
     4. Pause/Resume: Detects speed scaling factor drops (< 0.01) as pause signals,
        accounting for pause duration in progress calculations
@@ -28,7 +28,7 @@ Service Interface:
 Callback Interface (to GUI):
     - /rehab_gui/trajectory_finished: Signals end of single-rep trajectory
     - /rehab_gui/exercise_finished: Signals end of current repetition (loops N times)
-    - /rehab_gui/exercise_progress: Periodic status (50 Hz) with progress % for display
+    - /rehab_gui/exercise_progress: Periodic status (10 Hz) with progress % for display
 
 Architecture:
     Two execution modes:
@@ -40,7 +40,7 @@ Architecture:
 
 Performance:
     - Trajectory resampling: ~100 ms (cubic spline interpolation)
-    - Progress reporting: 50 Hz (20 ms timer interval)
+    - Progress reporting: 10 Hz (100 ms timer interval)
     - Pause detection: 2 ms (real-time speed factor subscription)
     - Joint trajectory controller interface: ~10 Hz (100 ms trajectory points)
 
@@ -54,14 +54,14 @@ Attributes:
     _is_paused (bool): Current pause state detected from speed scaling factor
     _paused_duration (float): Accumulated pause time [s]
     repetition_ovrs (List[float]): Speed override factors for each repetition [%]
-    exercise_status_timer (Timer): 50 Hz progress monitoring timer
+    exercise_status_timer (Timer): 10 Hz progress monitoring timer
     follow_joint_trajectory_action_client (ActionClient): Connection to controller
 """
 
 import sys
 import time
 import random
-from typing import List
+from typing import List, Optional
 from copy import deepcopy
 
 # Mathematics libraries
@@ -109,7 +109,7 @@ class FollowJointTrajectoryActionManager(Node):
     1. Trajectory Interpolation: Cubic spline interpolation with fixed resampling frequency
     2. Multi-Repetition Loops: Automatic looping of exercises with per-repetition speed factors
     3. Pause Detection: Real-time pause/resume via SpeedScalingFactor subscription (< 0.01 = paused)
-    4. Progress Tracking: 50 Hz progress reporting with elapsed time percentage
+    4. Progress Tracking: 10 Hz progress reporting with elapsed time percentage
     5. Action Management: Asynchronous action client handling, goal state monitoring
     
     The node operates in two modes:
@@ -129,7 +129,7 @@ class FollowJointTrajectoryActionManager(Node):
         - Use case: rehabilitation workout (e.g., 5 reps @ 80%, 5 reps @ 100%, 5 reps @ 120%)
     
     Progress Monitoring:
-        - 50 Hz timer (20 ms) checks exercise_status via check_exercise_status()
+        - 10 Hz timer (100 ms) checks exercise_status via check_exercise_status()
         - Calculates elapsed time percentage: (elapsed_time / total_time) * 100%
         - Detects and accounts for pauses (speed_factor < 0.01)
         - Calls /rehab_gui/exercise_progress service with progress_percentage
@@ -187,6 +187,8 @@ class FollowJointTrajectoryActionManager(Node):
         self._total_time_s : List[float] = list()
         self.speed_scaling_factor : List[float] = list()
         self._last_time_from_start_percentage : float = 0.0
+        self._progress_report_period_s: float = 0.1
+        self._last_reported_progress_pct: Optional[int] = None
         
         self._dt : float = 0.1
         self._init_time_s : float = 0
@@ -507,7 +509,7 @@ class FollowJointTrajectoryActionManager(Node):
             5. Build FollowJointTrajectory goal from repeated resampled trajectory
             6. Apply speed override for first repetition (repetition_ovrs[0])
             7. Submit goal to action client with on_exercise_goal_accepted callback
-            8. Start 50 Hz progress monitoring timer
+            8. Start 10 Hz progress monitoring timer
             9. Return success immediately (non-blocking)
         
         The node then manages the repetition loop internally:
@@ -531,7 +533,7 @@ class FollowJointTrajectoryActionManager(Node):
             - exercise_cnt: Incremented after each repetition completion
             - repetition_ovrs: Persisted to check for more reps in on_exercise_goal_done()
             - _total_time_s: Duration of single repetition (used for progress %)
-            - exercise_status_timer: 50 Hz timer for progress updates
+            - exercise_status_timer: 10 Hz timer for progress updates
         
         Note:
             - GUI can modify speed_scaling_factor during exercise via pause/resume
@@ -750,6 +752,7 @@ class FollowJointTrajectoryActionManager(Node):
         self._init_time_s = time.time()
         self._paused_duration = 0.0
         self._last_actual_time_pct = 0.0
+        self._last_reported_progress_pct = None
         self._pause_start_time = 0.0
         self.goal_fjt[trajectory_index].trajectory.header.stamp = self.get_clock().now().to_msg()
 
@@ -948,10 +951,10 @@ class FollowJointTrajectoryActionManager(Node):
         Actions:
             1. Check if goal accepted by server
             2. If accepted: request result asynchronously
-            3. Start 50 Hz progress monitoring timer (check_exercise_status)
+            3. Start 10 Hz progress monitoring timer (check_exercise_status)
             4. Set up result callback for completion handling
         
-        The progress timer runs at 50 Hz (20 ms interval) and continuously
+        The progress timer runs at 10 Hz (100 ms interval) and continuously
         computes elapsed time percentage for the current repetition, accounting
         for pause/resume events.
         
@@ -986,8 +989,9 @@ class FollowJointTrajectoryActionManager(Node):
 
         self._jtc_feedback_triggered = False
 
-        # Start progress monitoring
-        self.exercise_status_timer = self.create_timer(0.02, self.check_exercise_status, callback_group=self.timer_group)
+        # Start progress monitoring. The GUI refreshes at 10 Hz, so faster
+        # rosbridge service calls only create redundant load.
+        self.exercise_status_timer = self.create_timer(self._progress_report_period_s, self.check_exercise_status, callback_group=self.timer_group)
 
     def _cancel_exercise_status_timer(self) -> None:
         if self.exercise_status_timer is not None:
@@ -1061,9 +1065,9 @@ class FollowJointTrajectoryActionManager(Node):
 
 
     def check_exercise_status(self) -> None:
-        """Monitor exercise progress and report percentage to GUI (50 Hz timer).
+        """Monitor exercise progress and report percentage to GUI (10 Hz timer).
         
-        This timer callback executes at 50 Hz during exercise execution and
+        This timer callback executes at 10 Hz during exercise execution and
         computes real-time progress for display on the GUI progress bar.
         
         Progress Calculation:
@@ -1093,7 +1097,7 @@ class FollowJointTrajectoryActionManager(Node):
             - Final time in controller: ~8 seconds (5 + 3 = total_time - pause)
         
         Args:
-            None. Triggered by 20 ms timer at 50 Hz.
+            None. Triggered by 100 ms timer at 10 Hz.
         
         Returns:
             None. Makes asynchronous service call to GUI with progress percentage.
@@ -1141,22 +1145,33 @@ class FollowJointTrajectoryActionManager(Node):
             self._last_time_from_start_percentage = actual_time_from_start_percentage
         else:
             self.get_logger().warning(
-                f'The movement is paused at {self._last_time_from_start_percentage:.2f}%'
+                f'The movement is paused at {self._last_time_from_start_percentage:.2f}%',
+                throttle_duration_sec=5.0
             )
 
         # ========== Report progress to GUI ==========
-        if self.exercise_progress_client.wait_for_service(timeout_sec=.5):
+        progress_pct = int(actual_time_from_start_percentage)
+        should_report_progress = progress_pct != self._last_reported_progress_pct
+
+        if should_report_progress and self.exercise_progress_client.wait_for_service(timeout_sec=0.0):
             req = MovementProgress.Request()
             req.progress = actual_time_from_start_percentage
             future = self.exercise_progress_client.call_async(req)
             future.add_done_callback(self.on_progress_response)
+            self._last_reported_progress_pct = progress_pct
         
-        self._last_actual_time_pct = int(actual_time_from_start_percentage)
+        self._last_actual_time_pct = progress_pct
 
     def on_progress_response(self, future) -> None:  # type: ignore
         #if len(self.repetition_ovrs) == len(future.result().repetition_ovrs.tolist()):
             #self.repetition_ovrs = future.result().repetition_ovrs.tolist()
-        self.additional_speed_override = future.result().additional_speed_override
+        try:
+            response = future.result()
+        except Exception as exc:
+            self.get_logger().warning(f'exercise_progress service call failed: {exc!r}')
+            return
+        if response is not None:
+            self.additional_speed_override = response.additional_speed_override
         
     def _notify_movement_stopped(self) -> None:
         client : Client = self.create_client(Trigger, '/rehab_gui/movement_stopped')
