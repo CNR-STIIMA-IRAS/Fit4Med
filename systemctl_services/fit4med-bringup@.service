@@ -16,6 +16,11 @@ Environment=PYTHONUNBUFFERED=1
 Environment=RCUTILS_LOGGING_BUFFERED_STREAM=1
 Environment=RCUTILS_COLORIZED_OUTPUT=0
 Environment="RCUTILS_CONSOLE_OUTPUT_FORMAT=[{severity}] [{time}] [{name}]: {message}"
+# Bringup config (currently just EEG_DELAY_MS) lives outside the repo so a
+# `git pull`/reinstall never touches it. First-time setup: copy
+# bash_scripts/fit4med_bringup_config.template.json to the path below and
+# fill it in.
+Environment="FIT4MED_BRINGUP_CONFIG=%h/.config/fit4med/bringup_config.json"
 
 [Install]
 WantedBy=default.target
