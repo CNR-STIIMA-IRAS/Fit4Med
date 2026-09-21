@@ -44,11 +44,13 @@ def clean_shutdown():
         package='controller_manager',
         executable='unspawner',
         arguments=['joint_state_broadcaster'],
+        output='screen',
     )
     state_controller_unspawner = Node(
         package='controller_manager',
         executable='unspawner',
         arguments=['state_controller'],
+        output='screen',
     )
     force_torque_sensor_broadcaster_unspawner = Node(
         package='controller_manager',
@@ -56,6 +58,7 @@ def clean_shutdown():
         arguments=[
             "ft_sensor_command_broadcaster"
         ],
+        output='screen',
     )
     joint_controller_unspawner = Node(
         package='controller_manager',
@@ -64,6 +67,7 @@ def clean_shutdown():
             "joint_trajectory_controller"
             # 'scaled_joint_trajectory_controller'
         ],
+        output='screen',
     )
     forward_pos_controller_unspawner = Node(
         package='controller_manager',
@@ -71,6 +75,7 @@ def clean_shutdown():
         arguments=[
             "forward_position_controller"
         ],
+        output='screen',
     )
     forward_vel_controller_unspawner = Node(
         package='controller_manager',
@@ -78,6 +83,7 @@ def clean_shutdown():
         arguments=[
             "forward_velocity_controller"
         ],
+        output='screen',
     )
     admittance_controller_unspawner = Node(
         package='controller_manager',
@@ -85,6 +91,7 @@ def clean_shutdown():
         arguments=[
             "admittance_controller"
         ],
+        output='screen',
     )
 
 

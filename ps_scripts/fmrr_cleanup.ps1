@@ -1,11 +1,18 @@
 # Copyright 2026 CNR-STIIMA
 # SPDX-License-Identifier: Apache-2.0
 
-# Define variables
-$remoteUser = "fit4med"            # Replace with your SSH username
-$remoteHost = "192.168.1.1"   # Replace with the remote server's hostname or IP address
-$remoteScript = "/home/fit4med/bash_scripts/kill_fmrr_apps.sh"  # Path to the Python script on the remote server
+param(
+    [ValidateSet("service", "legacy")]
+    [string]$Mode = "service"
+)
 
-# Execute the Python script remotely
-ssh -t "${remoteUser}@${remoteHost}" "bash -l -c '$remoteScript'"
+$remoteUser = "fit4med"
+$remoteHost = "192.168.1.1"
+$remoteScript = "/home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/kill_fmrr_apps.sh"
 
+if($Mode -eq "service") {
+  ssh -T "${remoteUser}@${remoteHost}" "systemctl --user stop 'fit4med-bringup@*.service'; bash -lc 'source /opt/ros/jazzy/setup.bash; $remoteScript; ros2 daemon stop'"
+}
+else {
+  ssh -t "${remoteUser}@${remoteHost}" "bash -l -c '$remoteScript'"
+}

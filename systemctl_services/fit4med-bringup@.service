@@ -1,0 +1,21 @@
+[Unit]
+Description=Fit4Med ROS bringup for GUI %I
+
+[Service]
+Type=simple
+WorkingDirectory=/home/fit4med/fit4med_ws
+ExecStart=/home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/fit4med_bringup_service.sh %I
+KillMode=control-group
+KillSignal=SIGINT
+TimeoutStopSec=15
+SendSIGKILL=yes
+Restart=no
+StandardOutput=journal
+StandardError=journal
+Environment=PYTHONUNBUFFERED=1
+Environment=RCUTILS_LOGGING_BUFFERED_STREAM=1
+Environment=RCUTILS_COLORIZED_OUTPUT=0
+Environment="RCUTILS_CONSOLE_OUTPUT_FORMAT=[{severity}] [{time}] [{name}]: {message}"
+
+[Install]
+WantedBy=default.target

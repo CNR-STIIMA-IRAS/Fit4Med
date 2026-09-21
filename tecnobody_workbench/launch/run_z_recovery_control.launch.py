@@ -160,13 +160,17 @@ def generate_launch_description():
             on_shutdown=[
                 LogInfo(msg=['Z-recovery launch shutting down — unspawning controllers...']),
                 Node(package='controller_manager', executable='unspawner',
-                     arguments=['joint_state_broadcaster']),
+                     arguments=['joint_state_broadcaster'],
+                     output='screen'),
                 Node(package='controller_manager', executable='unspawner',
-                     arguments=['state_controller']),
+                     arguments=['state_controller'],
+                     output='screen'),
                 Node(package='controller_manager', executable='unspawner',
-                     arguments=['ft_sensor_command_broadcaster']),
+                     arguments=['ft_sensor_command_broadcaster'],
+                     output='screen'),
                 Node(package='controller_manager', executable='unspawner',
-                     arguments=['forward_velocity_controller']),
+                     arguments=['forward_velocity_controller'],
+                     output='screen'),
             ]
         )
     )
