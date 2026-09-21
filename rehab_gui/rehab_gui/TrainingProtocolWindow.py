@@ -42,6 +42,9 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         self.Training_ON = False
         self.NumberExecMovements = 0
         self._near_zero_triggered = True
+        # True while an async stopAnyMovement() command is in flight, so
+        # updateWindow() doesn't re-enable START before the robot has confirmed stop.
+        self._stop_in_progress = False
         self.TotalTrainingTime = 0
         self.ActualTrainingTime = 0
         self.execution_time_percentage = 0
@@ -219,10 +222,10 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
             self.ui.pushButton_LoadCreateProtocol.setEnabled(load_enabled)
 
         mode_set = self.ROS.isModeSet()
-        start_state = (bool(self.ui_main.movement_loaded), self.ProtocolData is not None, mode_set)
+        start_state = (bool(self.ui_main.movement_loaded), self.ProtocolData is not None, mode_set, self._stop_in_progress)
         if start_state != self._last_start_state:
             self._last_start_state = start_state
-            if start_state[0] and start_state[1] and start_state[2]:
+            if start_state[0] and start_state[1] and start_state[2] and not start_state[3]:
                 self.ui.pushButton_STARTtrainig.setEnabled(True)
                 self.ui.pushButton_STARTtrainig.setStyleSheet("background-color: rgb(85, 255, 127); color: black;")
             else:
@@ -512,15 +515,39 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         self.Training_ON = False
         self._near_zero_triggered = False
         self.ROS.setExerciseInSuspension(False)  # clear any suspension warning
-        self.ROS.stopAnyMovement()
         self.ROS.triggerSoftMovementStop()
+
+        # stopAnyMovement() blocks for up to 10s waiting for the robot to confirm
+        # it has actually stopped. Keep that wait itself unchanged, just run it off
+        # the Qt thread so the rest of the GUI stays responsive while it waits.
+        self._stop_in_progress = True
+        started = self.ROS.runCommandAsync(
+            self.ROS.stopAnyMovement,
+            on_success=self._onStopMovementDone,
+            on_error=self._onStopMovementFailed,
+        )
+        if not started:
+            # Another robot command is already in flight. A stop request must
+            # never be silently dropped, so fall back to a blocking call.
+            print("[TrainingProtocol] Another ROS command in flight, stopping synchronously.")
+            ok = self.ROS.stopAnyMovement()
+            self._onStopMovementDone(ok)
+        # self.ProtocolData = None
+
+    def _onStopMovementDone(self, ok: bool) -> None:
+        if not ok:
+            print("[TrainingProtocol] stopAnyMovement() reported failure while stopping training.")
+        self._stop_in_progress = False
         for iProgBar in self.progressBarPhases:
-            iProgBar.setValue(0) 
+            iProgBar.setValue(0)
         for speedSpinBox in self.spinBoxSpeedOvr:
             speedSpinBox.setEnabled(True)
         for durationSpinBox in self.spinBoxDuration:
             durationSpinBox.setEnabled(True)
-        # self.ProtocolData = None
+
+    def _onStopMovementFailed(self, msg: str) -> None:
+        print(f"[TrainingProtocol] stopAnyMovement() raised an exception: {msg}")
+        self._onStopMovementDone(False)
 
     def _start_bag_recording(self) -> None:
         """Request the bag_recorder_node on the Linux PC to start recording."""

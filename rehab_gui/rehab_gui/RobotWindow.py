@@ -3,6 +3,7 @@
 
 import os
 import sys
+from typing import Optional
 from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import QMessageBox, QPushButton, QProgressBar, QWidget, QSizePolicy
 from PyQt5.QtCore import QTimer, QObject, Qt, pyqtSignal, QThread
@@ -72,19 +73,10 @@ class RobotWindow(QtWidgets.QDialog):
         self._last_manual_guidance_state = None
         self._last_ptp_state = None
 
-    def handleButtonCallbackFailure(self, pb : QPushButton, callback, error_msg : str) -> None:
-        previous_state = pb.isChecked()  # Save the previous state
-        try:
-            # Call the boolean function
-            success = callback()
-            if not success:
-                QMessageBox.warning(self, "Error", error_msg)
-            # If successful, toggle the button's checked state
-            pb.setChecked(not previous_state)
-        except Exception as e:
-            # Restore previous state if there was an error
-            pb.setChecked(previous_state)
-            QMessageBox.warning(self, "Exception", str(e))
+        # True while an async performHoming() command is in flight, so the periodic
+        # updateWindow() polling doesn't re-enable the button out from under it.
+        self._homing_in_progress = False
+        self._homing_pd: Optional[ProgressBarWorker] = None
 
     def connect(self, ROS: RosCommunicationManager, UDP: UdpCommunicationManager, parent_timer: QTimer):
         self.ROS = ROS
@@ -95,7 +87,7 @@ class RobotWindow(QtWidgets.QDialog):
         self.ui.comboBox_MOO.currentIndexChanged.connect(self.onBehaviourOptionChanged)
         self.ui.comboBox_MOO.activated.connect(self.onBehaviourActivation) # type: ignore
         
-        self.ui.pushButton_RelativeHoming.clicked.connect(lambda :self.handleButtonCallbackFailure(self.ui.pushButton_RelativeHoming, self.relativeHoming, "Homing failed...")) # type: ignore
+        self.ui.pushButton_RelativeHoming.clicked.connect(self.relativeHoming) # type: ignore
         self.ui.pushButton_RelativeHoming.setStyleSheet("")
 
         self.ui.pushButton_MoveRobotManually.setCheckable(True)
@@ -232,44 +224,61 @@ class RobotWindow(QtWidgets.QDialog):
         else:
             self.ROS.turnOffMotors()
 
-    def relativeHoming(self) -> bool:
-        
-        ##########
-        pd = ProgressBarWorker(self.ui.progressBar_RelativeHoming)
-        pd.start()
-        if not os.path.exists(os.path.join("/","tmp")):
-            # Create the directory
-            os.makedirs(os.path.join("/","tmp"))
+    def relativeHoming(self) -> None:
+        pb = self.ui.pushButton_RelativeHoming
+        previous_state = pb.isChecked()
 
-        file_path = os.path.join("/", "tmp", "absolute_homing_performed")
-        if os.path.exists(file_path):
-            try:
-                print("Removing file: ", file_path)
-                os.remove(file_path)
-            except Exception as e:
-                print(f"Failed to remove {file_path}: {e}")
-                pd.stop()
-                return False
-        file_path = os.path.join("/", "tmp", "relative_homing_performed")
-        if os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-            except Exception as e:
-                print(f"Failed to remove {file_path}: {e}")
-                pd.stop()
-                return False
-        print(f"Files removed {not os.path.exists(file_path)}")
-        # Call homing service
-        if not self.ROS.performHoming():
-            pd.stop()
-            return False
-        # Create an empty file under /tmp
-        with open(os.path.join("/", "tmp", "relative_homing_performed"), 'w') as f:
-            f.write("homing performed")
-            f.close()
+        if not os.path.exists(os.path.join("/", "tmp")):
+            os.makedirs(os.path.join("/", "tmp"))
 
-        pd.stop()
-        return True
+        for file_name in ("absolute_homing_performed", "relative_homing_performed"):
+            file_path = os.path.join("/", "tmp", file_name)
+            if os.path.exists(file_path):
+                try:
+                    print("Removing file: ", file_path)
+                    os.remove(file_path)
+                except Exception as e:
+                    print(f"Failed to remove {file_path}: {e}")
+                    pb.setChecked(previous_state)
+                    return
+
+        self._homing_in_progress = True
+        pb.setEnabled(False)
+        self._homing_pd = ProgressBarWorker(self.ui.progressBar_RelativeHoming)
+        self._homing_pd.start()
+
+        # perform_homing() itself stays synchronous (service call + a bounded wait
+        # loop on the drive state); only where it runs moves off the Qt thread.
+        started = self.ROS.runCommandAsync(
+            self.ROS.performHoming,
+            on_success=lambda ok: self._onRelativeHomingDone(ok, previous_state),
+            on_error=lambda msg: self._onRelativeHomingFailed(msg, previous_state),
+        )
+        if not started:
+            self._homing_in_progress = False
+            self._homing_pd.stop()
+            pb.setEnabled(True)
+            pb.setChecked(previous_state)
+            QMessageBox.warning(self, "Busy", "Another robot command is already in progress.")
+
+    def _onRelativeHomingDone(self, ok: bool, previous_state: bool) -> None:
+        self._homing_in_progress = False
+        self._homing_pd.stop()  # type: ignore
+        self.ui.pushButton_RelativeHoming.setEnabled(True)
+        if ok:
+            with open(os.path.join("/", "tmp", "relative_homing_performed"), 'w') as f:
+                f.write("homing performed")
+            self.ui.pushButton_RelativeHoming.setChecked(not previous_state)
+        else:
+            self.ui.pushButton_RelativeHoming.setChecked(previous_state)
+            QMessageBox.warning(self, "Error", "Homing failed...")
+
+    def _onRelativeHomingFailed(self, msg: str, previous_state: bool) -> None:
+        self._homing_in_progress = False
+        self._homing_pd.stop()  # type: ignore
+        self.ui.pushButton_RelativeHoming.setEnabled(True)
+        self.ui.pushButton_RelativeHoming.setChecked(previous_state)
+        QMessageBox.warning(self, "Exception", msg)
 
     ##############################################################################################
     #####                                                                                    #####
@@ -299,7 +308,7 @@ class RobotWindow(QtWidgets.QDialog):
                 )
 
     def enableRelativeHomingButton(self, activate: bool):
-        if activate == self._last_homing_state:
+        if self._homing_in_progress or activate == self._last_homing_state:
             return
         self._last_homing_state = activate
         self.ui.frame_ReativeHoming.setEnabled(activate)

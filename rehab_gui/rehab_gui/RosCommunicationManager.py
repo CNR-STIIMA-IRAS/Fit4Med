@@ -37,6 +37,31 @@ class Worker(QThread):
             
         self.finished.emit()  # Emit signal when done
 
+class CommandWorker(QThread):
+    """Runs a single blocking callable off the Qt main thread.
+
+    roslibpy's blocking .call(timeout=...) only waits on a local event while
+    the rosbridge reactor thread delivers the response, so it is already
+    safe to invoke from a background thread - no change needed to the
+    callables themselves, only to where they run.
+    """
+    succeeded : pyqtSignal = pyqtSignal(object) #type: ignore
+    failed : pyqtSignal = pyqtSignal(str) #type: ignore
+
+    def __init__(self, fn, *args, **kwargs):
+        super().__init__()
+        self._fn = fn
+        self._args = args
+        self._kwargs = kwargs
+
+    def run(self):
+        try:
+            result = self._fn(*self._args, **self._kwargs)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+        else:
+            self.succeeded.emit(result)
+
 class RosCommunicationManager(QObject):
     stop_ros_communication_signal : pyqtSignal = pyqtSignal()
     ros_communication_established_signal : pyqtSignal = pyqtSignal()
@@ -68,8 +93,38 @@ class RosCommunicationManager(QObject):
         self.worker_thread = Worker(self.updateState, loop_period_s=0.2)
         self.worker_thread.finished.connect(self.onUpdateWorkerThreadFinished)
 
+        self._command_in_flight = False
+        self._active_command_workers: set = set()
+
     def setPlcStatusProvider(self, provider: Any) -> None:
         self._plc_status_provider = provider
+
+    def isCommandInFlight(self) -> bool:
+        return self._command_in_flight
+
+    def runCommandAsync(self, fn, on_success=None, on_error=None) -> bool:
+        """Run fn() on a background thread and deliver its result on the Qt thread.
+
+        Returns False without starting anything if another command is already
+        in flight: homing, mode switches and stop-movement all drive the same
+        motor/controller state machine, so only one may run at a time.
+        """
+        if self._command_in_flight:
+            return False
+
+        self._command_in_flight = True
+        worker = CommandWorker(fn)
+        self._active_command_workers.add(worker)
+
+        def _cleanup():
+            self._command_in_flight = False
+            self._active_command_workers.discard(worker)
+
+        worker.succeeded.connect(lambda result: on_success(result) if on_success else None)
+        worker.failed.connect(lambda msg: on_error(msg) if on_error else None)
+        worker.finished.connect(_cleanup)
+        worker.start()
+        return True
 
     def _is_manual_switch_pressed(self) -> bool:
         if self._plc_status_provider is None:
