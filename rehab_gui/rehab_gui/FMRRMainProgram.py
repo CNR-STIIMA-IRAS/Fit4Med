@@ -73,7 +73,7 @@ class MainProgram(QMainWindow):
         self._plc_udp_watchdog_period_ms = 1000
         self._toolPosCovFact = 100 # to display coordinatates in centimeters (are given in meters in the yaml files) (used in MovementWindow to display data)
         self._jointPosConvFact = 180/np.pi # conversion from radiants to degrees (used in MovementWindow to display data)
-        self.trigger_pause = pyqtSignal(bool) # signal to pause the worker thread
+        #self.trigger_pause = pyqtSignal(bool) # signal to pause the worker thread
 
         ###############################################
         self.ui = Ui_FMRRMainWindow()

@@ -724,6 +724,7 @@ class SyncRosManager:
             return response['success'] if response is not None and 'success' in response.keys() else False
 
         except Exception as e:
+            print(f"{CYAN}>>>>{NC} Send PTP TRAJECTORY Exception: {e}")
             self.stop_movement_client.call()
 
         return False
@@ -745,6 +746,7 @@ class SyncRosManager:
             print(f"{CYAN}<<<<{NC} Set Go-To-Start Trajectory Request [{GREEN+'OK'+NC if response is not None and 'success' in response.keys() and response['success'] else RED+'FAILED'+NC}]")
             return response['success'] if response is not None and 'success' in response.keys() else False
         except Exception as e:
+            print(f"{CYAN}>>>>{NC} Send GO TO START PTP TRAJECTORY Exception: {e}")
             self.stop_movement_client.call()
         return False
 
