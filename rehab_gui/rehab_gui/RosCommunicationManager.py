@@ -2,15 +2,18 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import gc
+import logging
+import threading
 import time
-from typing import Any, List
+from collections.abc import Mapping
+from typing import Any, List, Optional
 from PyQt5.QtWidgets import QMessageBox, QPushButton, QWidget
-from PyQt5.QtCore import QThread, QObject, pyqtSignal
+from PyQt5.QtCore import QThread, QObject, pyqtSignal, pyqtSlot, QTimer
 import roslibpy
 from sync_ros_events import SyncRosManager
+from GuiRosTasks import Call, CallThread, GuiTask
 
 class Worker(QThread):
-    finished : pyqtSignal = pyqtSignal() #type: ignore
     thread_running : bool = False
     loop_period_s : float = 0.1
     def __init__(self, callback, loop_period_s: float = 0.05):
@@ -35,9 +38,15 @@ class Worker(QThread):
             if sleep_time > 0:
                 time.sleep(sleep_time)
             
-        self.finished.emit()  # Emit signal when done
+        # Use the built-in QThread.finished signal.
 
 class RosCommunicationManager(QObject):
+    stopCompleted = pyqtSignal(bool)
+    stopFailed = pyqtSignal(str)
+    commandsBusyChanged = pyqtSignal(bool)
+    commandFailed = pyqtSignal(str)
+    shutdownFinished = pyqtSignal(bool)
+
     stop_ros_communication_signal : pyqtSignal = pyqtSignal()
     ros_communication_established_signal : pyqtSignal = pyqtSignal()
     ros_communication_failed_signal : pyqtSignal = pyqtSignal()
@@ -47,6 +56,14 @@ class RosCommunicationManager(QObject):
     def __init__(self, joint_names: List[str], number_of_ec_slaves: int, remote_ip: str, remote_port: int, widget: QWidget): #port=9090
         super().__init__()
         
+        self._gui_task = None
+        self._stop_worker = None
+        self._connection_worker = None
+        self._shutdown_worker = None
+        self._shutdown_pending = False
+        self._stop_before_shutdown = False
+        self._shutting_down = False
+        self._stopping = False
         self.widget = widget
         self.enable_controller_behaviour = None
         self.ROS : SyncRosManager = None #type: ignore
@@ -58,7 +75,7 @@ class RosCommunicationManager(QObject):
         self.roslib_first_time_connection = True
         self.manual_mode_activated = False
         self._exercise_in_suspension: bool = False
-        self._exercise_type: int = 0
+        self._exercise_type: Optional[int] = None
         self._plc_status_provider: Any = None
         self._stop_signal_emitted = False
         self._ros_stop_requested = False
@@ -123,14 +140,11 @@ class RosCommunicationManager(QObject):
     def _handle_ros_connection_lost(self, message: str) -> None:
         if self._ros_stop_requested:
             return
-
-        print(message)
         self._ros_stop_requested = True
         self.worker_thread.stop_thread()
-        self.ROS = None  # type: ignore
-        self._close_ros_client()
         self.ros_communication_failed_signal.emit()
         self.ros_runtime_connection_lost_signal.emit(message)
+
 
     def _stop_update_worker(self) -> bool:
         if not self.worker_thread.isRunning():
@@ -177,59 +191,101 @@ class RosCommunicationManager(QObject):
             print("[MainProgram] ROS manager reference cleared while the worker remains blocked.")
 
     def startRosCommunication(self) -> None:
+        if self._connection_worker is not None or self._shutting_down:
+            return
         if self.rOk():
-            print("ROS_MANAGER already initialized.")
             self.ros_communication_established_signal.emit()
-            return 
-
+            return
         if self.worker_thread.isRunning():
-            print("ROS worker is still stopping. Completing stop cleanup before retry.")
-            self.stopRosCommunication()
             return
+        def connect_ros():
+            client = roslibpy.Ros(host=self.remote_ip, port=self.remote_port)
+            try:
+                client.run(20)
+                if not client.is_connected:
+                    raise RuntimeError("ROS connection not established")
+                manager = SyncRosManager(self.number_of_ec_slaves, self.joint_names, client)
+                return client, manager
+            except Exception:
+                client.close()
+                raise
+        self._connection_worker = CallThread(Call(connect_ros), self)
+        self._connection_worker.finished.connect(self._on_connection_ready)
+        self.commandsBusyChanged.emit(True)
+        self._connection_worker.start()
 
-        print(f"Connecting to rosbridge at ws://{self.remote_ip}:{self.remote_port}")
-        try:
-            self.ros_client = roslibpy.Ros(
-                host=self.remote_ip,
-                port=self.remote_port
-            )
-            self.ros_client.run(20)
-        except Exception as exc:
-            if type(exc).__name__ == 'RosTimeoutError':
-                self._handle_ros_connection_failed("Failed to connect to rosbridge before timeout.")
-            else:
-                self._handle_ros_connection_failed(f"Failed to connect to rosbridge: {exc}")
-            return
+    @pyqtSlot()
+    def _on_connection_ready(self):
+        worker = self._connection_worker
+        self._connection_worker = None
+        value, error = worker.value, worker.error
+        worker.deleteLater()
+        if error is None:
+            self.ros_client, self.ROS = value
+            self._exercise_type = None
+            self._stop_signal_emitted = False
+            if not self._shutting_down:
+                self._ros_stop_requested = False
+                self.worker_thread.start_thread()
+                self.ros_communication_established_signal.emit()
+        elif not self._shutting_down:
+            self.commandFailed.emit(str(error))
+            self.ros_communication_failed_signal.emit()
+        self.commandsBusyChanged.emit(self.isCommandBusy())
+        self._maybe_shutdown()
 
-        if not self.ros_client.is_connected:
-            self._handle_ros_connection_failed("Failed to connect to rosbridge.")
-            return
-
-        self.ROS = SyncRosManager(self.number_of_ec_slaves, self.joint_names, self.ros_client)
-
-        self._stop_signal_emitted = False
-        self._ros_stop_requested = False
-        self.worker_thread.start_thread()
-        self.ros_communication_established_signal.emit()
 
     def stopRosCommunication(self) -> None:
-        print("Stopping ROS processes...")
+        """Non-blocking disconnect, including when a command is in flight."""
+        self.requestShutdown(stop_motion=False)
 
+    def requestShutdown(self, stop_motion=True):
+        self._stop_before_shutdown = self._stop_before_shutdown or stop_motion
+        self._shutdown_pending = True
+        self._shutting_down = True
+        if self._gui_task is not None:
+            self._gui_task.cancel.set()
+        self.commandsBusyChanged.emit(True)
+        self._maybe_shutdown()
+
+    def _maybe_shutdown(self):
+        if not self._shutdown_pending or self._shutdown_worker is not None:
+            return
+        if any(x is not None for x in (self._gui_task, self._stop_worker, self._connection_worker)):
+            return
+        self._shutdown_pending = False
+        self._shutdown_worker = CallThread(Call(self._shutdown_blocking), self)
+        self._shutdown_worker.finished.connect(self._on_shutdown_finished)
+        self._shutdown_worker.start()
+
+    def _shutdown_blocking(self):
+        """Runs off the GUI thread; polling stays alive through movement stop."""
+        stop_ok = True
+        if self._stop_before_shutdown and self.ROS is not None and self.rOk():
+            stop_ok = bool(self.ROS.turn_off_motors())
         self._request_ros_stop()
-        worker_stopped = self._stop_update_worker()
-
-        self.ROS_active = False
-
-        self._destroy_ros_manager(worker_stopped)
+        stopped = self._stop_update_worker()
+        if not stopped:
+            # Never destroy a ROS manager while its polling worker uses it.
+            return False
+        self._destroy_ros_manager(True)
         self._close_ros_client()
+        return stop_ok
 
-        if not worker_stopped:
-            print("[MainProgram] ROS worker did not stop cleanly after cleanup.")
+    @pyqtSlot()
+    def _on_shutdown_finished(self):
+        worker = self._shutdown_worker
+        self._shutdown_worker = None
+        ok = worker.error is None and bool(worker.value)
+        worker.deleteLater()
+        self._stop_before_shutdown = False
+        self._shutting_down = False
+        self._shutdown_pending = False
+        if not self.worker_thread.isRunning():
+            self._emit_stop_ros_communication_once()
+        self.commandsBusyChanged.emit(self.isCommandBusy())
+        self.shutdownFinished.emit(ok)
 
-        # ROS was never started, or its worker already stopped. Emit immediately
-        # so plc_manager receives ROS_DISCONNECTED and the UDP flags are reset.
-        print("[MainProgram] ROS communication stopped - signaling stop.")
-        self._emit_stop_ros_communication_once()
         
             
     def isRosCommunicationActive(self) -> bool:
@@ -256,9 +312,11 @@ class RosCommunicationManager(QObject):
         self.ROS.publish_plc_command(['PLC_node/manual_mode'], [0])
         return self.ROS.turn_off_motors() if self.areMotorsOn() else True
 
-    def setExerciseType(self, mode: int) -> bool:
+    def setExerciseType(self, mode: int, force: bool = False) -> bool:
         if not self.rOk():
             return False
+        if not force and self._exercise_type == mode:
+            return True
         if self._exercise_type != mode:
             print(f"Setting exercise type to {mode} [2 proximity, 1 proximity, 0 no sensor]...")
         self._exercise_type = mode
@@ -266,6 +324,8 @@ class RosCommunicationManager(QObject):
         return True
         
     def turnOnMotors(self, show_warning: bool = True) -> bool:
+        if self._stopping or self._shutting_down:
+            return False
         if self.rOk():
             if self.manual_mode_activated:
                 if self._is_manual_switch_pressed():
@@ -273,8 +333,7 @@ class RosCommunicationManager(QObject):
                     self.ROS.publish_plc_command(['PLC_node/manual_mode'], [1])
                 else:
                     if show_warning:
-                        QMessageBox.warning(self.widget, "Warning",
-                                            "Please hold the manual mode emergency button before moving the robot!")
+                        self.commandFailed.emit("Please hold the manual mode emergency button before moving the robot!")
                     return False
             else:
                 self.ROS.publish_plc_command(['PLC_node/manual_mode'], [0])
@@ -283,9 +342,12 @@ class RosCommunicationManager(QObject):
         return False
     
     def enableControllerBehaviour(self, behaviour: str):
+        if self._stopping or self._shutting_down:
+            return False
         if not self.rOk():
             return
-        self.turnOffMotors()
+        if not self.turnOffMotors():
+            return False
         if behaviour == "Homing":
             return self.ROS.controller_and_op_mode_switch(6, None)  #type: ignore
         elif behaviour == "Jogging":
@@ -428,8 +490,7 @@ class RosCommunicationManager(QObject):
         return 
     
     def setExercise(self, CartesianPositions, TimeFromStart, Ovr: list, durations: list, eeg_mode: bool)-> None:
-        _ = self.ROS.set_exercise(CartesianPositions, TimeFromStart, Ovr, durations, eeg_mode) if self.rOk() else False
-        return 
+        return self.ROS.set_exercise(CartesianPositions, TimeFromStart, Ovr, durations, eeg_mode) if self.rOk() else False 
     
     def driveLogicSwitchOff(self) :
         if not self.rOk():
@@ -446,28 +507,114 @@ class RosCommunicationManager(QObject):
             return
         self.ROS.publish_plc_command(['PLC_node/force_sensors_pwr'], [value])
 
+    def isCommandBusy(self):
+        return self._shutting_down or any(x is not None for x in (
+            self._gui_task, self._stop_worker, self._connection_worker))
+
+    def startGuiTask(self, generator):
+        if self.isCommandBusy() or not self.rOk():
+            generator.close()
+            if self.isCommandBusy():
+                # Previously silent: the operator would press a button and see
+                # nothing happen, with no way to tell a command was dropped
+                # from the robot simply not responding.
+                self.commandFailed.emit("Comando ignorato: un'altra operazione ROS è ancora in corso.")
+            return False
+        self._gui_task = GuiTask(generator, self)
+        self._gui_task.failed.connect(self.commandFailed.emit)
+        self._gui_task.finished.connect(self._on_gui_task_finished)
+        self.commandsBusyChanged.emit(True)
+        self._gui_task.start()
+        return True
+
+    @pyqtSlot()
+    def _on_gui_task_finished(self):
+        task = self._gui_task
+        self._gui_task = None
+        task.deleteLater()
+        self.commandsBusyChanged.emit(self.isCommandBusy())
+        self._maybe_shutdown()
+
+    def isStopInProgress(self):
+        return self._stopping
+
+    def requestStopAnyMovement(self, soft_stop=False, jog_axis=None):
+        """True = request accepted. Result arrives through stopCompleted.
+
+        soft_stop preserves the training's stop -> soft-stop sequence.
+        Duplicate requests join the current operation without resetting flags.
+        """
+        if self._stop_worker is not None:
+            return True
+        if self._shutting_down or not self.rOk():
+            return False
+        if self._gui_task is not None and jog_axis is None:
+            # Jog release must not cancel a still in-flight jog start: cancel is
+            # shared via command_context.cancel with the press's worker thread,
+            # so setting it here can race the softstart call itself and cause
+            # RosServiceProxy.call() to drop it (returns None, motor never
+            # moves). The real stop below always runs on its own independent
+            # worker/Event regardless of this flag.
+            self._gui_task.cancel.set()
+        manager = self.ROS
+        self._stopping = True
+        def stop_sequence():
+            if jog_axis is not None:
+                # Preserve jog release semantics: soft stop, motors stay enabled.
+                response = manager.soft_movement_stop_client.call()
+                if not manager.manual_reset_faults:
+                    manager.enable_ethercat_error_checking(True)
+                return isinstance(response, Mapping) and bool(response.get('success', False))
+            ok = bool(manager.stop_movement())
+            if soft_stop:
+                response = manager.soft_movement_stop_client.call()
+                ok = ok and isinstance(response, Mapping) and bool(response.get('success', False))
+            return ok
+        self._stop_worker = CallThread(Call(stop_sequence), self)
+        self._stop_worker.finished.connect(self._on_stop_finished)
+        self.commandsBusyChanged.emit(True)
+        self._stop_worker.start()
+        return True
+
+    @pyqtSlot()
+    def _on_stop_finished(self):
+        worker = self._stop_worker
+        self._stop_worker = None
+        self._stopping = False
+        ok = worker.error is None and bool(worker.value)
+        error = str(worker.error) if worker.error else "Stop sequence failed; inspect ROS logs."
+        worker.deleteLater()
+        if not ok:
+            self.stopFailed.emit(error)
+        self.stopCompleted.emit(ok)
+        self.commandsBusyChanged.emit(self.isCommandBusy())
+        self._maybe_shutdown()
+
     def stopAnyMovement(self) -> bool:
+        """Legacy synchronous API, not used by patched GUI slots."""
+        if self._stopping:
+            return False
         return self.ROS.stop_movement() if self.rOk() else False
-    
+
     def getExecutionTimePercentage(self) -> int:
         return self.ROS.execution_time_percentage if self.rOk() else 0
     
-    # def setExerciseCompleted(self, value : bool) -> None:
-    #     if self.rOk(): 
-    #         self.ROS.exercise_completed = value
+    def setExerciseCompleted(self, value : bool) -> None:
+        if self.rOk(): 
+            self.ROS.exercise_completed = value
 
-    # def getExerciseCompleted(self) -> bool:
-    #     return self.ROS.exercise_completed if self.rOk() else False
+    def getExerciseCompleted(self) -> bool:
+        return self.ROS.exercise_completed if self.rOk() else False
     
     def getExerciseRepetitionCounter(self) -> int:
         return self.ROS.repetition_cnt if self.rOk() else 0
     
-    # def setTrajectoryCompleted(self, value : bool) -> None:
-    #     if self.rOk(): 
-    #         self.ROS.trajectory_completed = value
+    def setTrajectoryCompleted(self, value : bool) -> None:
+        if self.rOk(): 
+            self.ROS.trajectory_completed = value
 
-    # def getTrajectoryCompleted(self) -> bool:
-    #     return self.ROS.trajectory_completed if self.rOk() else False
+    def getTrajectoryCompleted(self) -> bool:
+        return self.ROS.trajectory_completed if self.rOk() else False
     
     def getMovementStopped(self) -> bool:
         return self.ROS.movement_stopped if self.rOk() else False
@@ -494,7 +641,7 @@ class RosCommunicationManager(QObject):
         return self._exercise_in_suspension
 
     def eegSync(self, movement_count: int) -> None:
-        """Send the current movement identifier to the EEG system via the PLC."""
+        """Send the movement identifier once."""
         if not self.rOk():
             return
         self.ROS.send_eeg_sync(movement_count)
@@ -521,23 +668,3 @@ class RosCommunicationManager(QObject):
 
     def getMovementStatus(self) -> str:
         return self.ROS.get_movement_status() if self.rOk() else 'n/a'
-    
-    def consumeTrajectoryResult(self, movement_kind=None):
-        if not self.rOk() or not self.ROS.trajectory_result_pending:
-            return None
-
-        result = dict(self.ROS.trajectory_result)
-        if movement_kind is not None and result.get("movement_kind") != movement_kind:
-            return None
-
-        self.ROS.trajectory_result_pending = False
-        return result
-
-    def consumeExerciseResult(self):
-        if not self.rOk() or not self.ROS.exercise_result_pending:
-            return None
-
-        result = dict(self.ROS.exercise_result)
-        
-        self.ROS.exercise_result_pending = False
-        return result

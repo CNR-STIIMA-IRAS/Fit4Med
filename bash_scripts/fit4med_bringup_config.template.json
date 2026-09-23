@@ -1,0 +1,4 @@
+{
+  "_comment": "Copy this file to ~/.config/fit4med/bringup_config.json on the robot PC (the 'fit4med' user's home) and point FIT4MED_BRINGUP_CONFIG at it via Environment= in systemctl_services/fit4med-bringup@.service. Fill in EEG_DELAY_MS below; this _comment key is ignored by the loader.",
+  "EEG_DELAY_MS": 4000
+}

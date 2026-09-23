@@ -8,7 +8,7 @@ import types
 from typing import Tuple
 
 # Must be BEFORE importing rclpy (sets logging format globally)
-os.environ['RCUTILS_CONSOLE_OUTPUT_FORMAT'] = '[{severity}] [{name}]: {message}'
+os.environ['RCUTILS_CONSOLE_OUTPUT_FORMAT'] = '[{severity}] [{time}] [{name}]: {message}'
 
 import rclpy
 from rclpy.signals import SignalHandlerOptions
@@ -37,6 +37,8 @@ from plc_manager.plc_types import EStopState, Event, State
 from plc_manager.udp_client import UdpClient
 
 
+DEFAULT_EEG_DELAY_MS = 4000
+
 CALLBACK_STATUS_MESSAGE : dict[State,str] = {
     State.IDLE : 'Waiting for ros controllers to start - TURN THE KEY to START!' ,
     State.IDLE_RECOVERY : 'RECOVERY MODE - Waiting for ros controllers to start - TURN THE KEY to START!' ,
@@ -48,13 +50,17 @@ CALLBACK_STATUS_MESSAGE : dict[State,str] = {
     State.ERROR_RECOVERY : 'Z-LIMIT Recovered! Set IDLE state' ,
     State.ERROR: ''
 }
+
+PLC_INPUT_LOG_STYLE = '\033[44m\033[97m'
+
+
 class FailedSafeShutdown(Exception):
     pass
 
 
 class PLCControllerInterface(Node):
 
-    def __init__(self, target_ip: str):
+    def __init__(self, target_ip: str, eeg_delay_ms: int = DEFAULT_EEG_DELAY_MS):
 
         super().__init__('plc_manager')
 
@@ -92,6 +98,7 @@ class PLCControllerInterface(Node):
         # ========== PLC State Variables ==========
         self.interface_names : list[str] = []
         self.state_values : list[int] = []
+        self._plc_input_values_cached: tuple[tuple[str, int], ...] | None = None
         self.command_values : list[int] = []
         self.launch_status : list[bool] = []
         self.sw_estop_cached : EStopState = EStopState.OK   # Cached E-stop value for transition detection
@@ -110,6 +117,7 @@ class PLCControllerInterface(Node):
             self,
             service_group=self.service_group,
             timer_group=self.timer_group,
+            eeg_delay_ms=eeg_delay_ms,
         )
 
 
@@ -192,6 +200,34 @@ class PLCControllerInterface(Node):
 
         interface_index = self.interface_names.index(interface_name)
         return bool(self.state_values[interface_index])
+
+    def _plc_input_str(self, str_len: int = 100, restore_style: str = "") -> str | None:
+        current_values = tuple(
+            (interface_name, int(value))
+            for interface_name, value in zip(self.interface_names, self.state_values)
+        )
+
+        previous_values = self._plc_input_values_cached
+        if previous_values == current_values:
+            return None
+
+        previous_by_name = dict(previous_values or ())
+        self._plc_input_values_cached = current_values
+
+        name_width = min(
+            max((len(interface_name) for interface_name in self.interface_names), default=0),
+            max(str_len, 0),
+        )
+        entries = [
+            (
+                f"{interface_name[:name_width]:<{name_width}}: "
+                f"{bc.BOLD}{bc.WARNING}{value}{bc.ENDC}{restore_style}"
+                if previous_by_name.get(interface_name) != value
+                else f"{interface_name[:name_width]:<{name_width}}: {value}"
+            )
+            for interface_name, value in current_values
+        ]
+        return "[" + ", ".join(entries) + "]"
 
     def _get_z_limit_switch_state(self) -> bool:
         return self._get_plc_input_bool("z_limit_switch")
@@ -393,9 +429,13 @@ class PLCControllerInterface(Node):
             
             # ========== FSM Evolution ========== 
             _event, _msg = Event.NONE, ""
-            
+            _plc_input_str = self._plc_input_str(10, restore_style=PLC_INPUT_LOG_STYLE)
+            if _plc_input_str:
+                self.get_logger().info(
+                    f'{PLC_INPUT_LOG_STYLE}PLC Inputs: {_plc_input_str}{bc.ENDC}'
+                ) #type: ignore
             if self.fsm.pending is None:
-                if CALLBACK_STATUS_MESSAGE[self.fsm.state]:
+                if CALLBACK_STATUS_MESSAGE[self.fsm.state] is not None:
                     self.get_logger().info( #type: ignore
                         bc.WARNING + f'[{self.fsm.state}]' + bc.ENDC + ' ' +
                         bc.MAGENTA + CALLBACK_STATUS_MESSAGE[self.fsm.state] + bc.ENDC,
@@ -493,16 +533,32 @@ class PLCControllerInterface(Node):
         self.shutdown_requested = True
 
 
+def _parse_eeg_delay_ms(value: str | None) -> int:
+    if value is None:
+        return DEFAULT_EEG_DELAY_MS
+
+    try:
+        eeg_delay_ms = int(value)
+    except ValueError:
+        raise SystemExit("EEG_DELAY_MS must be an integer number of milliseconds.")
+
+    if eeg_delay_ms < 0:
+        raise SystemExit("EEG_DELAY_MS must be greater than or equal to 0.")
+
+    return eeg_delay_ms
+
+
 def main(args=None): #type: ignore
+
+    # ========== Parse arguments ==========
+    target_ip = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.0"
+    eeg_delay_ms = _parse_eeg_delay_ms(sys.argv[2] if len(sys.argv) > 2 else None)
 
     # Initialize ROS 2 without automatic signal handling
     rclpy.init(args=args, signal_handler_options=SignalHandlerOptions.NO) #type: ignore
-    
-    # ========== Parse arguments ==========
-    target_ip = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.0"
 
     # ========== Create node instance ==========
-    node = PLCControllerInterface(target_ip)
+    node = PLCControllerInterface(target_ip, eeg_delay_ms)
     
     # ========== Create multi-threaded executor ==========
     # Thread 1: PLC state subscription callback (state_callback)

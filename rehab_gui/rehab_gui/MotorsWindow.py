@@ -1,6 +1,8 @@
 # Copyright 2026 CNR-STIIMA
 # SPDX-License-Identifier: Apache-2.0
 
+from GuiRosTasks import Call, gui_task
+
 from datetime import datetime
 
 from PyQt5 import QtWidgets, QtCore
@@ -25,7 +27,7 @@ class MotorsWindow(QtWidgets.QWidget):
         self.UDP : UdpCommunicationManager = UDP
         self.ui.pushButton_ResetFaults.clicked.connect(self.resetFaults) #type: ignore
         self.parent_timer = parent_timer
-        self.ui.comboBox_ResetFaults.currentIndexChanged.connect(self.ROS.resetModeChanged)
+        self.ui.comboBox_ResetFaults.currentIndexChanged.connect(self.resetModeChanged)
 
         
         self.ui.label_SystemState.setAlignment(QtCore.Qt.AlignCenter)
@@ -177,6 +179,7 @@ class MotorsWindow(QtWidgets.QWidget):
         self._update_table_items(self._plc_outputs, self.UDP.getPLCOutputItems())
         self._update_table_items(self._plc_inputs, self.UDP.getPLCInputItems())
 
+    @gui_task
     def resetFaults(self) -> None:
         if self.ui.comboBox_ResetFaults.currentIndex() == 2:
             print('Switch Off Logic Power')
@@ -189,7 +192,7 @@ class MotorsWindow(QtWidgets.QWidget):
             self.ui.pushButton_ResetFaults.setEnabled(False)
             QTimer.singleShot(2000, self._resetFaults_FTSensorOn)
         else:
-            self.ROS.resetFaults()
+            yield Call(self.ROS.resetFaults)
 
     def _resetFaults_driveLogicOn(self) -> None:
         print('Switch On Logic Power')
@@ -202,11 +205,12 @@ class MotorsWindow(QtWidgets.QWidget):
         self.ui.pushButton_ResetFaults.setEnabled(True)
 
 
+    @gui_task
     def resetModeChanged(self, index: int) -> None:
-        self.ROS.resetModeChanged(index=index)
+        yield Call(self.ROS.resetModeChanged, index=index)
 
     def disconnect_ros(self):
-        self.ui.comboBox_ResetFaults.currentIndexChanged.disconnect(self.ROS.resetModeChanged)
+        self.ui.comboBox_ResetFaults.currentIndexChanged.disconnect(self.resetModeChanged)
         
     def updateWindow(self):
         # Determine emergency state key

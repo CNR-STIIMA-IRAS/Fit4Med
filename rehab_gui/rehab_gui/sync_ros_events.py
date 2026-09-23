@@ -3,13 +3,17 @@
 
 from typing import List
 import time
+from collections.abc import Mapping
 import threading
+import logging
 
 # mathematics
 import numpy as np
 
 #ROS
 import roslibpy
+
+command_context = threading.local()
 
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
@@ -40,33 +44,67 @@ class RosilibpyServiceHandler(object):
             self.on_done_callback(response) #type: ignore
 
     def error_callback(self, response):
-        self.response = response
+        self.error = response
         if self.on_error_callback:
             self.on_error_callback(response) #type: ignore
 
-    def call_async(self, req: dict = None, on_done_callback = None, on_error_callback = None) -> None: #type: ignore
+    def call_async(self, req=None, on_done_callback=None, on_error_callback=None):
+        """Callbacks belong to this request, not to mutable handler attributes.
+
+        Callbacks execute in the ROS context: use Qt signals to update widgets.
+        """
+        def done(response):
+            self.response = response
+            if on_done_callback is not None:
+                on_done_callback(response)
+
+        def failed(error):
+            self.error = error
+            if on_error_callback is not None:
+                on_error_callback(error)
+
         try:
-            _req : roslibpy.ServiceRequest = roslibpy.ServiceRequest(req) if req is not None else roslibpy.ServiceRequest()
-            self.on_done_callback = on_done_callback
-            self.on_error_callback = on_error_callback
-            _ = self.service_client.call(_req, self.response_callback, self.error_callback) # type: ignore
-        except Exception as e:
-            print(f'>>>> Service {self.namespace} [{self.msg_type}] failed with exception: {e}')
-            print(f'<<<< Given request: {req}')
-        return 
-    
-    def call(self, req: dict = None, on_error_callback = None) -> dict: #type: ignore
+            request = roslibpy.ServiceRequest(req) if req is not None else roslibpy.ServiceRequest()
+            self.service_client.call(request, callback=done, errback=failed)
+        except Exception as exc:
+            logging.getLogger(__name__).exception("Async ROS service %s failed", self.namespace)
+            failed(exc)
+
+    def call(self, req=None, on_error_callback=None):
+        """Return this request's response, or None on failure (never old data).
+
+        Synchronous by design; do not call from GUI callbacks or ROS callbacks.
+        Enable DEBUG logging for all durations; slow calls are logged as WARNING.
+        """
+        cancel = getattr(command_context, "cancel", None)
+        allowed_during_stop = (
+            '/ethercat_checker/stop_motors',
+            '/tecnobody_workbench_utils/stop_movement',
+            '/tecnobody_workbench_utils/soft_movement_stop',
+        )
+        if cancel is not None and cancel.is_set() and self.namespace not in allowed_during_stop:
+            return None
+        started = time.monotonic()
+        result = None
+        self.error = None
         try:
-            _req : roslibpy.ServiceRequest = roslibpy.ServiceRequest(req)\
-                if req is not None\
-                    else roslibpy.ServiceRequest()
-            self.on_done_callback = None #type: ignore
-            self.on_error_callback = on_error_callback
-            self.response = self.service_client.call(_req, errback = self.error_callback, timeout=3) # type: ignore
-        except Exception as e:
-            print(f'>>>> Service {self.namespace} [{self.msg_type}] failed with exception: {e}')
-            print(f'<<<< Given request: {req}')
-        return self.response
+            request = roslibpy.ServiceRequest(req) if req is not None else roslibpy.ServiceRequest()
+            result = self.service_client.call(request, timeout=3)
+            return result
+        except Exception as exc:
+            self.error = exc
+            logging.getLogger(__name__).warning("ROS service %s failed: %s", self.namespace, exc)
+            if on_error_callback is not None:
+                on_error_callback(exc)
+            return None
+        finally:
+            self.response = result
+            elapsed = time.monotonic() - started
+            logger = logging.getLogger(__name__)
+            logger.log(logging.WARNING if elapsed >= 0.5 else logging.DEBUG,
+                       "ROS service %s took %.3fs (thread=%s, response=%s)",
+                       self.namespace, elapsed, threading.current_thread().name,
+                       result is not None)
 
 class ConstRequestServiceHandler(RosilibpyServiceHandler):
     def __init__(self, ros_client: roslibpy.Ros, namespace: str, msg_type: str, req: dict = None): #type: ignore
@@ -83,13 +121,8 @@ class ConstRequestServiceHandler(RosilibpyServiceHandler):
             print(f'>>>> Service {self.namespace} [{self.msg_type}] failed with exception: {e}')
             print(f'<<<< Given request: {self.req}')
 
-    def call(self, on_error_callback = None) -> dict: # type: ignore
-        try:
-            self.response = super().call(self.req, on_error_callback)
-        except Exception as e:
-            print(f'>>>> Service {self.namespace} [{self.msg_type}] failed with exception: {e}')
-            print(f'<<<< Given request: {self.req}')
-        return self.response
+    def call(self, on_error_callback=None):
+        return super().call(self.req, on_error_callback)
 
 class CoEDriveStates:
     def __init__(self, lenght : int):
@@ -141,11 +174,8 @@ class SyncRosManager:
         self.current_controller_name : str = None # type: ignore
         self.jog_cmd_pos = []
 
-        self.trajectory_result_pending = False
-        self.trajectory_result = {}
-
-        self.exercise_result_pending = False
-        self.exercise_result = {}
+        self.trajectory_completed = False
+        self.exercise_completed = False
         self.movement_stopped = False
         self.exercise_suspended = False
         self.cancel_movement = False
@@ -288,10 +318,10 @@ class SyncRosManager:
         self.bag_recorder_stop_client : ConstRequestServiceHandler = ConstRequestServiceHandler(self.ros_client, '/bag_recorder/stop',
                                                                                                  'std_srvs/srv/Trigger', roslibpy.ServiceRequest())
 
-        self.on_trajectory_finished_server : roslibpy.Service = roslibpy.Service(self.ros_client, "/rehab_gui/trajectory_finished", "tecnobody_msgs/TrajectoryResult")
+        self.on_trajectory_finished_server : roslibpy.Service = roslibpy.Service(self.ros_client, "/rehab_gui/trajectory_finished", "std_srvs/Trigger")
         self.on_trajectory_finished_server.advertise(self.on_trajectory_finished)
 
-        self.on_exercise_finished_server : roslibpy.Service = roslibpy.Service(self.ros_client, "/rehab_gui/exercise_finished", "tecnobody_msgs/TrajectoryResult")
+        self.on_exercise_finished_server : roslibpy.Service = roslibpy.Service(self.ros_client, "/rehab_gui/exercise_finished", "std_srvs/Trigger")
         self.on_exercise_finished_server.advertise(self.on_exercise_finished)
         
         self.on_exercise_progress_server : roslibpy.Service = roslibpy.Service(self.ros_client, "/rehab_gui/exercise_progress", "tecnobody_msgs/MovementProgress")
@@ -377,8 +407,13 @@ class SyncRosManager:
         positions = [
             name_to_position[joint] for joint in self._joint_names if joint in name_to_position
         ]
+        # Independent list objects even though the values coincide today:
+        # callers (e.g. RehabilitationMovementWindow) treat these as separate
+        # snapshots and some mutate one in place for display -- sharing the
+        # same list would silently corrupt the other (RobotJointPosition is
+        # used directly as the robot's current position for PTP trajectories).
         self.RobotJointPosition = positions
-        self.HandlePosition = positions
+        self.HandlePosition = list(positions)
 
     def update_controller_and_driver_states(self) -> None:
         
@@ -441,7 +476,7 @@ class SyncRosManager:
 
     def activate_controller_after_homing(self) -> None:
         res : dict = self.switch_controller(self.current_controller_name, None)
-        if not res['ok'] == True:
+        if not isinstance(res, Mapping) or not res.get("ok", False):
             print("❌ Failed to activate controller after homing")
             return
         self.set_mode_of_operation(8) if self.current_controller_name == self.trajectory_controller_name else self.set_mode_of_operation(9)
@@ -474,20 +509,21 @@ class SyncRosManager:
         if not ok: 
             do_switch_controller = new_controller != self.current_controller_name
             do_switch_moo = False
+            ok = True  # Keeping the current controller is already successful.
             if do_switch_controller:
                 print(f'{GREEN}....{NC} >>>> Switch Controller')
                 res = self.switch_controller(new_controller, self.current_controller_name)
-                ok = res['ok']
+                ok = isinstance(res, Mapping) and bool(res.get("ok", False))
                 print(f"{GREEN}....{NC} <<<< Switch Controller [{GREEN+'OK'+NC if ok else RED+'FAILED'+NC}]")
             do_switch_moo = ok and not all(new_mode == moo[j] for j in range(len(self._joint_names)))
             if do_switch_moo:
                 print(f'{GREEN}....{NC} >>>> Switch MOO')
                 ok = self.set_mode_of_operation(new_mode)
                 if ok:
-                    start_time = time.time()
+                    start_time = time.monotonic()
                     while True:
                         moo = [ self.get_op_mode_number(moo) for moo in self.coe_drive_states.modes_of_operation]
-                        current_time = time.time()
+                        current_time = time.monotonic()
                         elapsed = current_time - start_time
                         if elapsed > timeout_s:
                             ok = False
@@ -506,9 +542,14 @@ class SyncRosManager:
     def set_mode_of_operation(self, mode_value: int) -> bool:
         for idx,dof in enumerate(self._joint_names):
             if self.get_op_mode_number(self.coe_drive_states.modes_of_operation[idx]) == mode_value:
-                pass
+                continue
             req = {'dof_name': dof, 'mode_of_operation': mode_value,}
-            _ = self.mode_of_op_client.call(req)
+            response = self.mode_of_op_client.call(req)
+            if response is None:
+                return False
+            if isinstance(response, Mapping):
+                if response.get("success") is False or response.get("ok") is False:
+                    return False
 
         return True
 
@@ -525,18 +566,19 @@ class SyncRosManager:
 
     def perform_homing(self) -> bool:
         print('--------------->Performing Homing for all three joints')
-        self.turn_on_motors()
+        if not self.turn_on_motors():
+            return False
         ok : bool = False
         request = roslibpy.ServiceRequest()
         try:
             result : dict = self.perform_homing_client.call(request)
             if result['success']:
-                start_time = time.time()
+                start_time = time.monotonic()
                 timeout_sec = 5.0
                 print('Homing started, waiting for completion...')
                 self.homing_process_running = True
                 while True:
-                    current_time = time.time()
+                    current_time = time.monotonic()
                     elapsed = current_time - start_time
 
                     if all((status_word & (1 << 12)) != 0 for status_word in self.coe_drive_states.status_words):
@@ -569,10 +611,10 @@ class SyncRosManager:
             'data': enable
         })
         result = self.enable_eth_error_check.call(req)
-        if result['success']==True:
+        if isinstance(result, Mapping) and result.get('success', False):
             print(f"Ethercat error automatic checking state changed to: {enable}")
         else:
-            print(f"Service call failed: {result['message']}")
+            print(f"Service call failed: {result}")
 
     def get_list_controllers(self) -> dict: #type: ignore
         result : dict = None # type: ignore
@@ -654,8 +696,7 @@ class SyncRosManager:
         with self.lock:
             # Avoid multiple event
             if self.jog_enabled_pressed == pressed:
-                pass
-            self.jog_enabled_pressed = pressed
+                return
             # print(f"pressed: {pressed}")
             if pressed:
                 # print(f"pressed true - current controller: {self.current_controller_name}")
@@ -673,6 +714,7 @@ class SyncRosManager:
                         print(f"❌ Failed to switch to {self.trajectory_controller_name}!")
                         return
                 self.jog_enabled = False
+            self.jog_enabled_pressed = pressed
             # print(f"jog_enabled: {self.jog_enabled}")
 
     def jog_command(self, direction: int, joint_to_move: int):
@@ -724,6 +766,7 @@ class SyncRosManager:
             return response['success'] if response is not None and 'success' in response.keys() else False
 
         except Exception as e:
+            print(f"{CYAN}>>>>{NC} Send PTP TRAJECTORY Exception: {e}")
             self.stop_movement_client.call()
 
         return False
@@ -745,15 +788,15 @@ class SyncRosManager:
             print(f"{CYAN}<<<<{NC} Set Go-To-Start Trajectory Request [{GREEN+'OK'+NC if response is not None and 'success' in response.keys() and response['success'] else RED+'FAILED'+NC}]")
             return response['success'] if response is not None and 'success' in response.keys() else False
         except Exception as e:
+            print(f"{CYAN}>>>>{NC} Send GO TO START PTP TRAJECTORY Exception: {e}")
             self.stop_movement_client.call()
         return False
 
     def set_exercise(self, CartesianPositions, TimeFromStart, ovrs: List[float], durations: List[float], eeg_mode: bool) -> bool:
         msg = roslibpy.Message({'factor': int(100)})
         self.repetition_cnt = 0
+        self.exercise_completed = False
         self.exercise_suspended = False
-        self.exercise_result_pending = False
-        self.exercise_result = {}
         response : dict = None #type: ignore
         if len(ovrs) != len(durations):
             print(f"[Set Trajectory] mismatching input dimension!")
@@ -789,45 +832,30 @@ class SyncRosManager:
             ok = False
             msg = f'{e}'
         
-        print(f"{GREEN}<<<<{NC} STOP Movement Request [{GREEN+'OK'+NC if ok else RED+'FAILED'+NC}]{':{msg}' if len(msg)>0 else ''}")
+        print(f"{GREEN}<<<<{NC} STOP Movement Request [{GREEN+'OK'+NC if ok else RED+'FAILED'+NC}]{(':' + msg) if msg else ''}")
         
         if ok:
             print(f'{GREEN}<<<<{NC} Wait for the actual movement stop...')
-            start_time = time.time()
+            start_time = time.monotonic()
             while not self.movement_stopped:
-                current_time = time.time()
+                current_time = time.monotonic()
                 elapsed = current_time - start_time
                 if elapsed > 10.0:
                     print(f'{RED}>>>>{NC} Timeout! Failed to stop the movement in 10s... weird')
                     break
                 time.sleep(0.05)
 
+        stop_accepted = ok
         print(f'{GREEN}>>>>{NC} Send Motor Off Request')
         ok = self.turn_off_motors()
         print(f"{GREEN}<<<<{NC} Motor Off Request [{GREEN+'OK'+NC if ok else RED+'FAILED'+NC}]")
-        return ok and self.movement_stopped
+        return stop_accepted and ok and self.movement_stopped
 
     def on_trajectory_finished(self, request, response):
         print(f"[on_trajectory_finished] The Trajectory Execution's just finished {request}")
-        #self.trajectory_completed = True
-        self.trajectory_result = {
-                "success": bool(request.get("success", False)),
-                "message": request.get("message", ""),
-                "error_code": int(request.get("error_code", 0)),
-                "action_status": int(request.get("action_status", 0)),
-                "movement_kind": request.get("movement_kind", ""),
-            }
-        if self.trajectory_result["success"]:
-            print(f"[on_trajectory_finished] Trajectory Execution completed successfully.")
-        else:
-            print(f"[on_trajectory_finished] Trajectory Execution failed with error code {self.trajectory_result['error_code']}: {self.trajectory_result['message']}")
-            print(f'{GREEN}>>>>{NC} Send Motor Off Request')
-            ok = self.turn_off_motors()
-            print(f"{GREEN}<<<<{NC} Motor Off Request [{GREEN+'OK'+NC if ok else RED+'FAILED'+NC}]")
-        self.trajectory_result_pending = True
-        response["accepted"] = True
-        return True
-        
+        self.trajectory_completed = True
+        response['success'] = True
+        return True       
     
     def on_movement_stopped(self, request, response):
         print(f"[on_movement_stopped] Service Call: {request}")
@@ -843,24 +871,8 @@ class SyncRosManager:
     
     def on_exercise_finished(self, request, response):
         self.repetition_cnt = self.repetition_cnt +1
-        print(f"[on_exercise_finished] The Trajectory Execution's just finished {request}")
-        #self.trajectory_completed = True
-        self.exercise_result = {
-                "success": bool(request.get("success", False)),
-                "message": request.get("message", ""),
-                "error_code": int(request.get("error_code", 0)),
-                "action_status": int(request.get("action_status", 0)),
-                "movement_kind": request.get("movement_kind", ""),
-            }
-        if self.exercise_result["success"]:
-            print(f"[on_exercise_finished] Exercise Execution completed successfully.")
-        else:
-            print(f"[on_exercise_finished] Exercise Execution failed with error code {self.exercise_result['error_code']}: {self.exercise_result['message']}")
-            print(f'{GREEN}>>>>{NC} Send Motor Off Request')
-            ok = self.turn_off_motors()
-            print(f"{GREEN}<<<<{NC} Motor Off Request [{GREEN+'OK'+NC if ok else RED+'FAILED'+NC}]")
-        self.exercise_result_pending = True
-        response["accepted"] = True
+        self.exercise_completed = True
+        response['success'] = True
         return True       
 
     def on_exercise_progress(self, request, response):
@@ -879,10 +891,7 @@ class SyncRosManager:
         self.sonar_bias_client.call()
 
     def send_eeg_sync(self, movement_count: int) -> None:
-        """Send the movement identifier on PLC_node/eeg_sync, wrapped to uint8.
-
-        The counter records completed returns, so the movement starting now is
-        the next one.
-        """
+        """Send the wrapped movement identifier through the PLC manager."""
+        # The counter records completed returns; the next movement starts now.
         new_obtained_value = (movement_count + 1) % 256
         self.publish_plc_command(['PLC_node/eeg_sync'], [new_obtained_value])

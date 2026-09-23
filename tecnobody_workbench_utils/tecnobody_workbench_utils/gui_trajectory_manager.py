@@ -13,7 +13,7 @@ Core Responsibilities:
        using cubic splines, and resamples at fixed 10 Hz frequency for controller compatibility
     2. Exercise Execution: Manages multi-repetition exercise loops with individual
        speed override factors for each repetition (e.g., 80%, 100%, 120% of nominal speed)
-    3. Progress Tracking: Monitors exercise progression at 50 Hz and reports completion
+    3. Progress Tracking: Monitors exercise progression at 10 Hz and reports completion
        percentage back to GUI for visual feedback and speed adjustment
     4. Pause/Resume: Detects speed scaling factor drops (< 0.01) as pause signals,
        accounting for pause duration in progress calculations
@@ -28,7 +28,7 @@ Service Interface:
 Callback Interface (to GUI):
     - /rehab_gui/trajectory_finished: Signals end of single-rep trajectory
     - /rehab_gui/exercise_finished: Signals end of current repetition (loops N times)
-    - /rehab_gui/exercise_progress: Periodic status (50 Hz) with progress % for display
+    - /rehab_gui/exercise_progress: Periodic status (10 Hz) with progress % for display
 
 Architecture:
     Two execution modes:
@@ -40,7 +40,7 @@ Architecture:
 
 Performance:
     - Trajectory resampling: ~100 ms (cubic spline interpolation)
-    - Progress reporting: 50 Hz (20 ms timer interval)
+    - Progress reporting: 10 Hz (100 ms timer interval)
     - Pause detection: 2 ms (real-time speed factor subscription)
     - Joint trajectory controller interface: ~10 Hz (100 ms trajectory points)
 
@@ -54,14 +54,14 @@ Attributes:
     _is_paused (bool): Current pause state detected from speed scaling factor
     _paused_duration (float): Accumulated pause time [s]
     repetition_ovrs (List[float]): Speed override factors for each repetition [%]
-    exercise_status_timer (Timer): 50 Hz progress monitoring timer
+    exercise_status_timer (Timer): 10 Hz progress monitoring timer
     follow_joint_trajectory_action_client (ActionClient): Connection to controller
 """
 
 import sys
 import time
 import random
-from typing import List
+from typing import Callable, List, Optional
 from copy import deepcopy
 
 # Mathematics libraries
@@ -89,7 +89,7 @@ from control_msgs.action import FollowJointTrajectory
 from control_msgs.msg import SpeedScalingFactor, JointTrajectoryControllerState
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectoryPoint
-from tecnobody_msgs.srv import SetExercise, SetTrajectory, MovementProgress, TrajectoryResult
+from tecnobody_msgs.srv import SetExercise, SetTrajectory, MovementProgress
 from action_msgs.msg import GoalStatus
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
@@ -97,6 +97,9 @@ from std_srvs.srv import Trigger
 # Development tooling
 from rich.traceback import install
 install(show_locals=True)
+
+
+DEFAULT_EEG_DELAY_MS = 4000
 
 
 class FollowJointTrajectoryActionManager(Node):
@@ -109,7 +112,7 @@ class FollowJointTrajectoryActionManager(Node):
     1. Trajectory Interpolation: Cubic spline interpolation with fixed resampling frequency
     2. Multi-Repetition Loops: Automatic looping of exercises with per-repetition speed factors
     3. Pause Detection: Real-time pause/resume via SpeedScalingFactor subscription (< 0.01 = paused)
-    4. Progress Tracking: 50 Hz progress reporting with elapsed time percentage
+    4. Progress Tracking: 10 Hz progress reporting with elapsed time percentage
     5. Action Management: Asynchronous action client handling, goal state monitoring
     
     The node operates in two modes:
@@ -129,7 +132,7 @@ class FollowJointTrajectoryActionManager(Node):
         - Use case: rehabilitation workout (e.g., 5 reps @ 80%, 5 reps @ 100%, 5 reps @ 120%)
     
     Progress Monitoring:
-        - 50 Hz timer (20 ms) checks exercise_status via check_exercise_status()
+        - 10 Hz timer (100 ms) checks exercise_status via check_exercise_status()
         - Calculates elapsed time percentage: (elapsed_time / total_time) * 100%
         - Detects and accounts for pauses (speed_factor < 0.01)
         - Calls /rehab_gui/exercise_progress service with progress_percentage
@@ -178,6 +181,9 @@ class FollowJointTrajectoryActionManager(Node):
         super().__init__("fct_manager_node")
         
         self.controller_name = controller_name
+        self.declare_parameter('eeg_delay_ms', DEFAULT_EEG_DELAY_MS)
+        self.eeg_delay_ms = self._get_eeg_delay_ms()
+        self.eeg_delay_s = self.eeg_delay_ms / 1000.0
         self.number_of_repetition : int = 0
         self.cancel_from_gui : bool = False
         self.additional_speed_override : float = 1.0
@@ -187,6 +193,8 @@ class FollowJointTrajectoryActionManager(Node):
         self._total_time_s : List[float] = list()
         self.speed_scaling_factor : List[float] = list()
         self._last_time_from_start_percentage : float = 0.0
+        self._progress_report_period_s: float = 0.1
+        self._last_reported_progress_pct: Optional[int] = None
         
         self._dt : float = 0.1
         self._init_time_s : float = 0
@@ -228,8 +236,25 @@ class FollowJointTrajectoryActionManager(Node):
             FollowJointTrajectory,
             "/go_to_start_controller/follow_joint_trajectory"
         )
-        self.movement_kind = ''
         self.clear(0)
+
+    def _get_eeg_delay_ms(self) -> int:
+        raw_delay_ms = self.get_parameter('eeg_delay_ms').value
+        try:
+            eeg_delay_ms = int(raw_delay_ms) #type: ignore[arg-type]
+        except (TypeError, ValueError):
+            self.get_logger().warning(
+                f"Invalid eeg_delay_ms parameter {raw_delay_ms!r}; using {DEFAULT_EEG_DELAY_MS} ms."
+            )
+            return DEFAULT_EEG_DELAY_MS
+
+        if eeg_delay_ms < 0:
+            self.get_logger().warning(
+                f"Invalid negative eeg_delay_ms parameter {eeg_delay_ms}; using {DEFAULT_EEG_DELAY_MS} ms."
+            )
+            return DEFAULT_EEG_DELAY_MS
+
+        return eeg_delay_ms
 
     def _init_sevices(self) -> None:
         """Initialize service servers for trajectory and exercise commands.
@@ -400,13 +425,6 @@ class FollowJointTrajectoryActionManager(Node):
             - GUI is freed immediately and receives completion via callback
             - No repetition loop (unlike set_exercise)
         """
-        if self._has_active_trajectory():
-            self.get_logger().warning(
-                'Rejecting set_trajectory request because another trajectory goal is active or pending.'
-            )
-            response.success = False
-            return response
-
         self.clear(size=1)
 
         # ========== Extract trajectory waypoints and times ==========
@@ -434,8 +452,6 @@ class FollowJointTrajectoryActionManager(Node):
         self.get_logger().info(f'Goal has {len(self.goal_fjt[0].trajectory.points)} points.')
         self._total_time_s[0] = t[-1]
 
-        self.movement_kind = 'ptp'
-
         # ========== Apply speed override and submit goal ==========
         self.get_logger().info(f'Set Trajectory -> sending the new FJT Goal')
         response.success = self.sendFollowJointTrajectoryGoal(self.on_trajectory_goal_accepted)
@@ -453,15 +469,8 @@ class FollowJointTrajectoryActionManager(Node):
         Identical interpolation pipeline to set_trajectory, but routes the goal to
         /go_to_start_controller/follow_joint_trajectory instead of the default controller.
         Called when the GUI "Go To Start" button is pressed and go_to_start_controller
-          is the active controller (joint_trajectory_controller is inactive).
+        is the active controller (joint_trajectory_controller is inactive).
         """
-        if self._has_active_trajectory():
-            self.get_logger().warning(
-                'Rejecting set_go_to_start_trajectory request because another trajectory goal is active or pending.'
-            )
-            response.success = False
-            return response
-
         self.clear(size=1)
 
         _P = [r.point for r in request.cartesian_positions]
@@ -479,11 +488,8 @@ class FollowJointTrajectoryActionManager(Node):
             )
         self._total_time_s[0] = t[-1]
 
-        self.movement_kind = 'go_to_start'
-
         self.get_logger().info('Set Go-To-Start Trajectory -> sending FJT goal to go_to_start_controller')
         self._send_goal_future = self.go_to_start_action_client.send_goal_async(self.goal_fjt[0])
-        self._goal_acceptance_pending = True
         self._send_goal_future.add_done_callback(self.on_trajectory_goal_accepted)
         response.success = True
         return response
@@ -507,7 +513,7 @@ class FollowJointTrajectoryActionManager(Node):
             5. Build FollowJointTrajectory goal from repeated resampled trajectory
             6. Apply speed override for first repetition (repetition_ovrs[0])
             7. Submit goal to action client with on_exercise_goal_accepted callback
-            8. Start 50 Hz progress monitoring timer
+            8. Start 10 Hz progress monitoring timer
             9. Return success immediately (non-blocking)
         
         The node then manages the repetition loop internally:
@@ -531,20 +537,13 @@ class FollowJointTrajectoryActionManager(Node):
             - exercise_cnt: Incremented after each repetition completion
             - repetition_ovrs: Persisted to check for more reps in on_exercise_goal_done()
             - _total_time_s: Duration of single repetition (used for progress %)
-            - exercise_status_timer: 50 Hz timer for progress updates
+            - exercise_status_timer: 10 Hz timer for progress updates
         
         Note:
             - GUI can modify speed_scaling_factor during exercise via pause/resume
             - Progress is reported via /rehab_gui/exercise_progress service
             - GUI can request stop via /tecnobody_workbench_utils/stop_movement
         """
-        if self._has_active_trajectory():
-            self.get_logger().warning(
-                'Rejecting set_rehab_exercise request because another trajectory goal is active or pending.'
-            )
-            response.success = False
-            return response
-
         self.number_of_repetition = len(request.repetition_ovrs)
         self.clear(self.number_of_repetition)
 
@@ -580,18 +579,55 @@ class FollowJointTrajectoryActionManager(Node):
         return response
     
     def set_eeg_exercise(
-        self,
-        request: SetExercise.Request,
-        response: SetExercise.Response
-    ) -> SetExercise.Response:
-        """Execute multi-repetition exercise from GUI request (EEG mode)."""
-        if self._has_active_trajectory():
-            self.get_logger().warning(
-                'Rejecting set_eeg_exercise request because another trajectory goal is active or pending.'
-            )
-            response.success = False
-            return response
-       
+            self,
+            request: SetExercise.Request,
+            response: SetExercise.Response
+        ) -> SetExercise.Response:
+        """Execute multi-repetition exercise from GUI request (EXERCISE mode).
+        
+        Implements the set_exercise service handler for repetitive rehabilitation exercises.
+        The trajectory is repeated multiple times with different speed override factors
+        provided by the GUI (e.g., reps at 80%, 100%, 120%).
+        
+        Processing Steps:
+            1. Clear previous state
+            2. Extract cartesian waypoints (single repetition) and normalize times
+            3. Calculate number of repetitions N = floor(duration / single_rep_time)
+            4. Interpolate single repetition, resample at 10 Hz, repeat N times
+            5. Build FollowJointTrajectory goal from repeated resampled trajectory
+            6. Apply speed override for first repetition (repetition_ovrs[0])
+            7. Submit goal to action client with on_exercise_goal_accepted callback
+            8. Start 50 Hz progress monitoring timer
+            9. Return success immediately (non-blocking)
+        
+        The node then manages the repetition loop internally:
+            - on_exercise_goal_done() callback checks if more reps remain
+            - If yes: increment exercise_cnt, apply next speed override, resubmit goal
+            - If no: signal exercise completion to GUI
+        
+        Args:
+            request (SetExercise.Request): Contains:
+                - cartesian_positions: Single-rep waypoints (position, time_from_start)
+                - repetition_durations: Duration for current exercise [s]
+                (must be >= single_rep_duration * num_reps)
+                - repetition_ovrs: Speed override for each repetition [%]
+                (length = number of reps to execute)
+            response (SetExercise.Response): Response object to populate
+        
+        Returns:
+            SetExercise.Response: success=True if first goal submitted successfully
+        
+        State Tracking:
+            - exercise_cnt: Incremented after each repetition completion
+            - repetition_ovrs: Persisted to check for more reps in on_exercise_goal_done()
+            - _total_time_s: Duration of single repetition (used for progress %)
+            - exercise_status_timer: 50 Hz timer for progress updates
+        
+        Note:
+            - GUI can modify speed_scaling_factor during exercise via pause/resume
+            - Progress is reported via /rehab_gui/exercise_progress service
+            - GUI can request stop via /tecnobody_workbench_utils/stop_movement
+        """
         self.number_of_repetition = len(request.repetition_ovrs)
         self.clear(self.number_of_repetition)
 
@@ -609,10 +645,15 @@ class FollowJointTrajectoryActionManager(Node):
             self.speed_scaling_factor[trj_idx] = speed_scaling_pct/100
 
             # ========== Interpolate single rep, scale and repeat N times ==========
-            # Set pause duration
-            pause_duration = 6.0 + random.uniform(0.1, 3.9)
-            self.get_logger().info(f"Pause duration for repetition {trj_idx}: {pause_duration:.2f} seconds")
-            t,p,v,a = self.resample_with_speed_override(P=_P,t=_t, dt=self._dt, total_time=request.repetition_durations[trj_idx], pause_duration=pause_duration, speed_ovr=speed_scaling_pct)
+            # Draw a fresh pause duration for every individual pause inside this
+            # phase, instead of once per phase: a single value reused for every
+            # gap made every pause within a phase identical, defeating the point
+            # of jittering it for the EEG paradigm.
+            def _next_pause_duration(_trj_idx=trj_idx) -> float:
+                value = self.eeg_delay_s + random.uniform(0.1, 3.9)
+                self.get_logger().info(f"Pause duration for repetition {_trj_idx}: {value:.2f} seconds")
+                return value
+            t,p,v,a = self.resample_with_speed_override(P=_P,t=_t, dt=self._dt, total_time=request.repetition_durations[trj_idx], pause_duration_fn=_next_pause_duration, speed_ovr=speed_scaling_pct)
 
             self._total_time_s[trj_idx] = t[-1]
             for i, tau in enumerate(t):
@@ -636,7 +677,7 @@ class FollowJointTrajectoryActionManager(Node):
             dt: float,
             total_time: float,
             speed_ovr: int = 100,
-            pause_duration: float = 0.0
+            pause_duration_fn: Optional[Callable[[], float]] = None
         ) -> tuple[NDArray, NDArray, NDArray, NDArray]:
 
         # Convert inputs to numpy arrays for efficient operations
@@ -672,32 +713,43 @@ class FollowJointTrajectoryActionManager(Node):
         acc_scaled_N = np.array(acc_scaled)
         t_scaled_N = np.array(t_scaled)
 
-        _N = math.floor(total_time / t_scaled[-1])
+        single_rep_time = t_scaled[-1]
 
-        # ========== Concatenate trajectory N times ==========
-        # For each additional repetition, append time-shifted copies
-        pause_points = int(pause_duration / dt) if pause_duration > 0 else 0
-        
-        for _ in range(_N - 1):
-            # ========== Add pause if requested ==========
-            if pause_points > 0:
-                last_time = t_scaled_N[-1]
-                last_pos = pos_scaled_N[-1]
-                
-                for i in range(pause_points):
-                    pause_time = last_time + (i + 1) * dt
-                    t_scaled_N = np.append(t_scaled_N, pause_time)
-                    pos_scaled_N = np.vstack((pos_scaled_N, last_pos))
-                    vel_scaled_N = np.vstack((vel_scaled_N, np.zeros_like(last_pos)))
-                    acc_scaled_N = np.vstack((acc_scaled_N, np.zeros_like(last_pos)))
-            
-            # ========== Offset time to continue from last point ==========
-            t_scaled_N = np.concatenate((t_scaled_N, float(t_scaled_N[-1] + dt) + t_scaled))
-            # Append position waypoints unchanged
-            pos_scaled_N = np.concatenate((pos_scaled_N, positions))
-            # Append velocity and acceleration with scaling
-            vel_scaled_N = np.concatenate((vel_scaled_N, vel_scaled))
-            acc_scaled_N = np.concatenate((acc_scaled_N, acc_scaled))
+        # ========== Concatenate trajectory repetitions ==========
+        if pause_duration_fn is None:
+            # No pause: repetition count can be precomputed, as before.
+            _N = math.floor(total_time / single_rep_time)
+            for _ in range(_N - 1):
+                t_scaled_N = np.concatenate((t_scaled_N, float(t_scaled_N[-1] + dt) + t_scaled))
+                pos_scaled_N = np.concatenate((pos_scaled_N, positions))
+                vel_scaled_N = np.concatenate((vel_scaled_N, vel_scaled))
+                acc_scaled_N = np.concatenate((acc_scaled_N, acc_scaled))
+        else:
+            # Each gap gets its own freshly-drawn pause duration, so the
+            # repetition count can't be precomputed up front (unlike the
+            # no-pause branch above) -- keep adding (pause + repetition)
+            # blocks while there is still room in the requested total_time
+            # for one more repetition. The pause itself is accounted for
+            # only after it is drawn, so the very last pause can overshoot
+            # total_time slightly; that is preferable to guessing the
+            # repetition count from an average pause duration up front.
+            while t_scaled_N[-1] + single_rep_time <= total_time:
+                pause_duration = pause_duration_fn()
+                pause_points = int(pause_duration / dt) if pause_duration > 0 else 0
+                if pause_points > 0:
+                    last_time = t_scaled_N[-1]
+                    last_pos = pos_scaled_N[-1]
+                    for i in range(pause_points):
+                        pause_time = last_time + (i + 1) * dt
+                        t_scaled_N = np.append(t_scaled_N, pause_time)
+                        pos_scaled_N = np.vstack((pos_scaled_N, last_pos))
+                        vel_scaled_N = np.vstack((vel_scaled_N, np.zeros_like(last_pos)))
+                        acc_scaled_N = np.vstack((acc_scaled_N, np.zeros_like(last_pos)))
+
+                t_scaled_N = np.concatenate((t_scaled_N, float(t_scaled_N[-1] + dt) + t_scaled))
+                pos_scaled_N = np.concatenate((pos_scaled_N, positions))
+                vel_scaled_N = np.concatenate((vel_scaled_N, vel_scaled))
+                acc_scaled_N = np.concatenate((acc_scaled_N, acc_scaled))
 
         return t_scaled_N, pos_scaled_N, vel_scaled_N, acc_scaled_N
 
@@ -750,6 +802,7 @@ class FollowJointTrajectoryActionManager(Node):
         self._init_time_s = time.time()
         self._paused_duration = 0.0
         self._last_actual_time_pct = 0.0
+        self._last_reported_progress_pct = None
         self._pause_start_time = 0.0
         self.goal_fjt[trajectory_index].trajectory.header.stamp = self.get_clock().now().to_msg()
 
@@ -786,52 +839,6 @@ class FollowJointTrajectoryActionManager(Node):
         self._send_goal_future.add_done_callback(on_goal_accepted)
         return True
 
-    def _has_active_trajectory(self) -> bool:
-        """Return True while a trajectory/exercise goal is pending or running."""
-        return self._goal_acceptance_pending or self._goal_handle is not None
-
-    def _notify_trajectory_result(
-        self,
-        success: bool,
-        status: int,
-        error_code: int,
-        message: str,
-        movement_kind: str
-    ) -> None:
-        """Send the trajectory action outcome to the GUI."""
-        self.get_logger().info(
-            f'Trajectory execution result: status {status}, code: {error_code}, '
-            f'message: {message}, movement_kind: {movement_kind}; notifying GUI...'
-        )
-
-        client: Client = self.create_client(TrajectoryResult, '/rehab_gui/trajectory_finished')
-        if not client.wait_for_service(timeout_sec=5.0):
-            self.get_logger().info('Trajectory Finished server is not available.')
-            return
-
-        req = TrajectoryResult.Request()
-        req.success = success
-        req.action_status = int(status)
-        req.error_code = int(error_code)
-        req.message = message
-        req.movement_kind = movement_kind
-        future =client.call_async(req)
-        future.add_done_callback(self._on_trajectory_finished_ack)
-        self.get_logger().info('Trajectory Finished sent to GUI')
-
-    def _on_trajectory_finished_ack(self, future):
-        try:
-            response = future.result()
-        except Exception as exc:
-            self.get_logger().error(
-                f"trajectory_finished service call failed: {exc!r}"
-            )
-            return
-
-        self.get_logger().info(
-            f"Acknowledge received from GUI for trajectory_finished service call: {response}."
-        )
-
     def on_trajectory_goal_accepted(self, future) -> None:  # type: ignore
         """Callback for trajectory goal acceptance/rejection (TRAJECTORY mode).
         
@@ -866,15 +873,6 @@ class FollowJointTrajectoryActionManager(Node):
                 self._goal_handle = None
                 self._notify_movement_stopped()
                 self.clear(0)
-            else:
-                self._goal_handle = None
-                self._notify_trajectory_result(
-                    success=False,
-                    status=GoalStatus.STATUS_UNKNOWN,
-                    error_code=FollowJointTrajectory.Result.INVALID_GOAL,
-                    message='Trajectory goal rejected by controller',
-                    movement_kind=self.movement_kind
-                )
             return
         self.get_logger().info('Trajectory Goal accepted!!')
         if self.cancel_from_gui:
@@ -909,34 +907,18 @@ class FollowJointTrajectoryActionManager(Node):
             - Service unavailable logged as info (GUI may not be running)
             - Continues gracefully without state corruption
         """
-        status = GoalStatus.STATUS_UNKNOWN
-        error_code = 999
-        error_string = "NULL GOAL HANDLE"
         try:
-            if self._goal_handle is not None:
-                result = future.result()
-                status = result.status
-                error_code = result.result.error_code
-                error_string = result.result.error_string
-        except Exception as e:
-            error_string = f'Exception in on_trajectory_goal_done: {e}'
-            self.get_logger().info(error_string)
-        finally:
-            self._goal_handle = None
+            self.get_logger().info('Trajectory execution DONE, notifying GUI...')
+            client: Client = self.create_client(Trigger, '/rehab_gui/trajectory_finished')
+            if not client.wait_for_service(timeout_sec=5.0):
+                self.get_logger().info('Trajectory DONE server is not available.')
 
-        try:
-            self._notify_trajectory_result(
-                success=(
-                    status == GoalStatus.STATUS_SUCCEEDED and
-                    error_code == FollowJointTrajectory.Result.SUCCESSFUL
-                ),
-                status=status,
-                error_code=error_code,
-                message=error_string,
-                movement_kind=self.movement_kind
-            )
+            req = Trigger.Request()
+            client.call_async(req)
+            self.get_logger().info('Trajectory DONE sent to GUI')
+            self._goal_handle = None
         except Exception as e:
-            self.get_logger().info(f'Exception while notifying trajectory result: {e}')
+            self.get_logger().info(f'Exception in on_trajectory_goal_done: {e}')
 
     def on_exercise_goal_accepted(self, future) -> None:  # type: ignore
         """Callback for exercise goal acceptance/rejection (EXERCISE mode).
@@ -948,10 +930,10 @@ class FollowJointTrajectoryActionManager(Node):
         Actions:
             1. Check if goal accepted by server
             2. If accepted: request result asynchronously
-            3. Start 50 Hz progress monitoring timer (check_exercise_status)
+            3. Start 10 Hz progress monitoring timer (check_exercise_status)
             4. Set up result callback for completion handling
         
-        The progress timer runs at 50 Hz (20 ms interval) and continuously
+        The progress timer runs at 10 Hz (100 ms interval) and continuously
         computes elapsed time percentage for the current repetition, accounting
         for pause/resume events.
         
@@ -969,10 +951,7 @@ class FollowJointTrajectoryActionManager(Node):
                 self._goal_handle = None
                 self._notify_movement_stopped()
                 self.clear(0)
-            else:
-                self._goal_handle = None
-                self.exercise_suspended_client.call_async(Trigger.Request())
-            self._cancel_exercise_status_timer()
+
             return
         self.get_logger().info(f'Exercise Goal accepted!!')
         if self.cancel_from_gui:
@@ -986,8 +965,9 @@ class FollowJointTrajectoryActionManager(Node):
 
         self._jtc_feedback_triggered = False
 
-        # Start progress monitoring
-        self.exercise_status_timer = self.create_timer(0.02, self.check_exercise_status, callback_group=self.timer_group)
+        # Start progress monitoring. The GUI refreshes at 10 Hz, so faster
+        # rosbridge service calls only create redundant load.
+        self.exercise_status_timer = self.create_timer(self._progress_report_period_s, self.check_exercise_status, callback_group=self.timer_group)
 
     def _cancel_exercise_status_timer(self) -> None:
         if self.exercise_status_timer is not None:
@@ -1000,18 +980,9 @@ class FollowJointTrajectoryActionManager(Node):
             return
 
         # Notify GUI
-        client = self.create_client(TrajectoryResult, '/rehab_gui/exercise_finished')
-        if not client.wait_for_service(timeout_sec=5.0):
-            self.get_logger().info('Trajectory Finished server is not available.')
-            return
-        
-        req = TrajectoryResult.Request()
-        req.success = True
-        req.action_status = int(GoalStatus.STATUS_SUCCEEDED)
-        req.error_code = int(FollowJointTrajectory.Result.SUCCESSFUL)
-        req.message = f"Exercise repetition {self.exercise_cnt} completed"
-        req.movement_kind = ""
-        client.call_async(req)
+        client = self.create_client(Trigger, '/rehab_gui/exercise_finished')
+        if client.wait_for_service(timeout_sec=0.5):
+            client.call_async(Trigger.Request())
 
         # Cancel old timer
         self._cancel_exercise_status_timer()
@@ -1029,41 +1000,26 @@ class FollowJointTrajectoryActionManager(Node):
             self.get_logger().info('All repetitions completed!')
 
     def on_exercise_goal_done(self, future):
-        if self._goal_handle is None:
-            return
-
-        try:
+        if self._goal_handle is not None:
             result = future.result()
             status = result.status
-        except Exception as e:
-            self.get_logger().info(f'Exception in on_exercise_goal_done: {e}')
-            self._cancel_exercise_status_timer()
-            self._goal_handle = None
-            self.exercise_suspended_client.call_async(Trigger.Request())
-            return
 
-        if status == GoalStatus.STATUS_SUCCEEDED:
-            self.get_logger().info(f'Repetition {self.exercise_cnt} completed successfully.')
-            self._advance_exercise()
-            return
-
-        self._cancel_exercise_status_timer()
-        self._goal_handle = None
-
-        if status == GoalStatus.STATUS_CANCELED:
-            self.get_logger().info(f'Repetition {self.exercise_cnt} was cancelled.')
-        elif status == GoalStatus.STATUS_ABORTED:
-            self.get_logger().info(f'Repetition {self.exercise_cnt} was aborted.')
-            self.exercise_suspended_client.call_async(Trigger.Request())
-        else:
-            self.get_logger().info(f'Repetition {self.exercise_cnt} ended with status: {status}')
-            self.exercise_suspended_client.call_async(Trigger.Request())
+            if status == GoalStatus.STATUS_SUCCEEDED:
+                self.get_logger().info(f'Repetition {self.exercise_cnt} completed successfully.')
+                self._advance_exercise()
+            elif status == GoalStatus.STATUS_CANCELED:
+                self.get_logger().info(f'Repetition {self.exercise_cnt} was cancelled.')
+            elif status == GoalStatus.STATUS_ABORTED:
+                self.get_logger().info(f'Repetition {self.exercise_cnt} was aborted.')
+                self.exercise_suspended_client.call_async(Trigger.Request())
+            else:
+                self.get_logger().info(f'Repetition {self.exercise_cnt} ended with status: {status}')
 
 
     def check_exercise_status(self) -> None:
-        """Monitor exercise progress and report percentage to GUI (50 Hz timer).
+        """Monitor exercise progress and report percentage to GUI (10 Hz timer).
         
-        This timer callback executes at 50 Hz during exercise execution and
+        This timer callback executes at 10 Hz during exercise execution and
         computes real-time progress for display on the GUI progress bar.
         
         Progress Calculation:
@@ -1093,7 +1049,7 @@ class FollowJointTrajectoryActionManager(Node):
             - Final time in controller: ~8 seconds (5 + 3 = total_time - pause)
         
         Args:
-            None. Triggered by 20 ms timer at 50 Hz.
+            None. Triggered by 100 ms timer at 10 Hz.
         
         Returns:
             None. Makes asynchronous service call to GUI with progress percentage.
@@ -1141,22 +1097,33 @@ class FollowJointTrajectoryActionManager(Node):
             self._last_time_from_start_percentage = actual_time_from_start_percentage
         else:
             self.get_logger().warning(
-                f'The movement is paused at {self._last_time_from_start_percentage:.2f}%'
+                f'The movement is paused at {self._last_time_from_start_percentage:.2f}%',
+                throttle_duration_sec=5.0
             )
 
         # ========== Report progress to GUI ==========
-        if self.exercise_progress_client.wait_for_service(timeout_sec=.5):
+        progress_pct = int(actual_time_from_start_percentage)
+        should_report_progress = progress_pct != self._last_reported_progress_pct
+
+        if should_report_progress and self.exercise_progress_client.wait_for_service(timeout_sec=0.0):
             req = MovementProgress.Request()
             req.progress = actual_time_from_start_percentage
             future = self.exercise_progress_client.call_async(req)
             future.add_done_callback(self.on_progress_response)
+            self._last_reported_progress_pct = progress_pct
         
-        self._last_actual_time_pct = int(actual_time_from_start_percentage)
+        self._last_actual_time_pct = progress_pct
 
     def on_progress_response(self, future) -> None:  # type: ignore
         #if len(self.repetition_ovrs) == len(future.result().repetition_ovrs.tolist()):
             #self.repetition_ovrs = future.result().repetition_ovrs.tolist()
-        self.additional_speed_override = future.result().additional_speed_override
+        try:
+            response = future.result()
+        except Exception as exc:
+            self.get_logger().warning(f'exercise_progress service call failed: {exc!r}')
+            return
+        if response is not None:
+            self.additional_speed_override = response.additional_speed_override
         
     def _notify_movement_stopped(self) -> None:
         client : Client = self.create_client(Trigger, '/rehab_gui/movement_stopped')

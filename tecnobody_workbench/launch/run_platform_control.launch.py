@@ -4,6 +4,7 @@
 from launch import LaunchDescription
 from launch.substitutions import Command, FindExecutable, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration
@@ -44,11 +45,13 @@ def clean_shutdown():
         package='controller_manager',
         executable='unspawner',
         arguments=['joint_state_broadcaster'],
+        output='screen',
     )
     state_controller_unspawner = Node(
         package='controller_manager',
         executable='unspawner',
         arguments=['state_controller'],
+        output='screen',
     )
     force_torque_sensor_broadcaster_unspawner = Node(
         package='controller_manager',
@@ -56,6 +59,7 @@ def clean_shutdown():
         arguments=[
             "ft_sensor_command_broadcaster"
         ],
+        output='screen',
     )
     joint_controller_unspawner = Node(
         package='controller_manager',
@@ -64,6 +68,7 @@ def clean_shutdown():
             "joint_trajectory_controller"
             # 'scaled_joint_trajectory_controller'
         ],
+        output='screen',
     )
     forward_pos_controller_unspawner = Node(
         package='controller_manager',
@@ -71,6 +76,7 @@ def clean_shutdown():
         arguments=[
             "forward_position_controller"
         ],
+        output='screen',
     )
     forward_vel_controller_unspawner = Node(
         package='controller_manager',
@@ -78,6 +84,7 @@ def clean_shutdown():
         arguments=[
             "forward_velocity_controller"
         ],
+        output='screen',
     )
     admittance_controller_unspawner = Node(
         package='controller_manager',
@@ -85,6 +92,7 @@ def clean_shutdown():
         arguments=[
             "admittance_controller"
         ],
+        output='screen',
     )
 
 
@@ -102,11 +110,17 @@ def clean_shutdown():
 def generate_launch_description():
     ros2_controllers = 'safemod_controllers.yaml'
     description_package = 'tecnobody_workbench'
-    DeclareLaunchArgument(
+    declare_perform_homing = DeclareLaunchArgument(
             'perform_homing',
             default_value='false',
             description='Se true lancia il nodo extra'
-    ),
+    )
+
+    declare_eeg_delay_ms = DeclareLaunchArgument(
+            'eeg_delay_ms',
+            default_value='6000',
+            description='Base EEG pause duration in milliseconds'
+    )
 
     
     nodes_names = []
@@ -265,6 +279,12 @@ def generate_launch_description():
         package='tecnobody_workbench_utils',
         executable='fct_manager_node',
         arguments=['joint_trajectory_controller'],
+        parameters=[{
+            'eeg_delay_ms': ParameterValue(
+                LaunchConfiguration('eeg_delay_ms'),
+                value_type=int,
+            ),
+        }],
         output='screen',
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'fct_manager_node_%p_%t.log'}
     )
@@ -371,6 +391,8 @@ def generate_launch_description():
     )
 
     ld = LaunchDescription()
+    ld.add_action(declare_perform_homing)
+    ld.add_action(declare_eeg_delay_ms)
     ld.add_action(ros2_control_node)
     ld.add_action(ssb)
     ld.add_action(rsp)

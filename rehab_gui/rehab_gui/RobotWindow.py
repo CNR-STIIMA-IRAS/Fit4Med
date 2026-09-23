@@ -1,6 +1,7 @@
 # Copyright 2026 CNR-STIIMA
 # SPDX-License-Identifier: Apache-2.0
 
+from GuiRosTasks import Call, gui_task
 import os
 import sys
 from PyQt5 import QtWidgets
@@ -13,45 +14,27 @@ from UdpCommunicationManager import UdpCommunicationManager
 from copy import deepcopy
 import time
 
-class Worker(QObject):
-    
-    def __init__(self, progress_dialog : QProgressBar):
-        super().__init__()
-        self.stop_thread : bool = False
-        self.progress_dialog = progress_dialog
-        
-    def run(self):
-        while not self.stop_thread:
-            time.sleep(0.1)
-            self.progress_dialog.setValue(self.progress_dialog.value()+1)
-        
-        self.progress_dialog.setValue(100)
-
 class ProgressBarWorker(QObject):
-
-    def __init__(self, progress_bar : QProgressBar):
-        super().__init__()
+    def __init__(self, progress_bar):
+        super().__init__(progress_bar)
         self.progress_dialog = progress_bar
-        self.progress_dialog.setVisible(True)
-        self.progress_dialog.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.progress_dialog.setValue(0)
-        self.progress_dialog.hide()
+        self.timer = QTimer(self)
+        self.timer.setInterval(100)
+        self.timer.timeout.connect(self._tick)
 
-        self.worker_thread = QThread()
-        self.worker = Worker(self.progress_dialog)
-        self.worker.moveToThread(self.worker_thread)
-        self.worker_thread.started.connect(self.worker.run) 
+    def _tick(self):
+        self.progress_dialog.setValue(min(99, self.progress_dialog.value() + 1))
 
     def start(self):
-        self.worker.stop_thread = False
-        self.worker_thread.start()
+        self.progress_dialog.setValue(0)
         self.progress_dialog.show()
+        self.timer.start()
 
     def stop(self):
-        self.worker.stop_thread = True
-        self.worker_thread.quit()
-        self.worker_thread.wait()
-        self.progress_dialog.close()
+        self.timer.stop()
+        self.progress_dialog.setValue(100)
+        self.progress_dialog.hide()
+        self.deleteLater()
 
 class RobotWindow(QtWidgets.QDialog):
     _progres_dialog_finished = pyqtSignal(bool)
@@ -70,21 +53,21 @@ class RobotWindow(QtWidgets.QDialog):
         self._last_homing_state = None
         self._last_jog_state = None
         self._last_manual_guidance_state = None
+
+        # Debounce for JOG button release: this GUI runs on a touchscreen/
+        # stylus panel where a "hold" can arrive as pressed+released only a
+        # few ms apart (spurious release), so a held press never moves the
+        # robot. Delay the actual stop by this many ms; a new press on the
+        # same axis before it fires cancels it, treating the tap as a
+        # continued hold instead of a release.
+        self._JOG_RELEASE_DEBOUNCE_MS = 200
+        self._jog_stop_timers = {}
         self._last_ptp_state = None
 
-    def handleButtonCallbackFailure(self, pb : QPushButton, callback, error_msg : str) -> None:
-        previous_state = pb.isChecked()  # Save the previous state
-        try:
-            # Call the boolean function
-            success = callback()
-            if not success:
-                QMessageBox.warning(self, "Error", error_msg)
-            # If successful, toggle the button's checked state
-            pb.setChecked(not previous_state)
-        except Exception as e:
-            # Restore previous state if there was an error
-            pb.setChecked(previous_state)
-            QMessageBox.warning(self, "Exception", str(e))
+    def handleButtonCallbackFailure(self, pb, callback, error_msg):
+        # Only homing uses this helper. Its result is handled after completion.
+        self.relativeHoming()
+
 
     def connect(self, ROS: RosCommunicationManager, UDP: UdpCommunicationManager, parent_timer: QTimer):
         self.ROS = ROS
@@ -108,20 +91,20 @@ class RobotWindow(QtWidgets.QDialog):
         self.ui.pushButton_JOG.setStyleSheet("")
         self.ui.pushButton_JOG.setText("Activate JOG")
         
-        self.ui.pushButton_Xminus.pressed.connect(lambda : self.ROS.toogleJoggingBehaviour(axis=0, direction = -1))
-        self.ui.pushButton_Xminus.released.connect(lambda : self.ROS.toogleJoggingBehaviour(axis=0, direction = 0))
-        self.ui.pushButton_Xplus.pressed.connect(lambda : self.ROS.toogleJoggingBehaviour(axis=0, direction = 1))
-        self.ui.pushButton_Xplus.released.connect(lambda : self.ROS.toogleJoggingBehaviour(axis=0, direction = 0))
+        self.ui.pushButton_Xminus.pressed.connect(lambda : self.jogDirection(axis=0, direction = -1))
+        self.ui.pushButton_Xminus.released.connect(lambda : self.jogDirection(axis=0, direction = 0))
+        self.ui.pushButton_Xplus.pressed.connect(lambda : self.jogDirection(axis=0, direction = 1))
+        self.ui.pushButton_Xplus.released.connect(lambda : self.jogDirection(axis=0, direction = 0))
 
-        self.ui.pushButton_Yminus.pressed.connect(lambda : self.ROS.toogleJoggingBehaviour(axis=1, direction = -1))
-        self.ui.pushButton_Yminus.released.connect(lambda : self.ROS.toogleJoggingBehaviour(axis=1, direction = 0))
-        self.ui.pushButton_Yplus.pressed.connect(lambda : self.ROS.toogleJoggingBehaviour(axis=1, direction = 1))
-        self.ui.pushButton_Yplus.released.connect(lambda : self.ROS.toogleJoggingBehaviour(axis=1, direction = 0))
+        self.ui.pushButton_Yminus.pressed.connect(lambda : self.jogDirection(axis=1, direction = -1))
+        self.ui.pushButton_Yminus.released.connect(lambda : self.jogDirection(axis=1, direction = 0))
+        self.ui.pushButton_Yplus.pressed.connect(lambda : self.jogDirection(axis=1, direction = 1))
+        self.ui.pushButton_Yplus.released.connect(lambda : self.jogDirection(axis=1, direction = 0))
 
-        self.ui.pushButton_Zminus.pressed.connect(lambda : self.ROS.toogleJoggingBehaviour(axis=2, direction = -1))
-        self.ui.pushButton_Zminus.released.connect(lambda : self.ROS.toogleJoggingBehaviour(axis=2, direction = 0))
-        self.ui.pushButton_Zplus.pressed.connect(lambda : self.ROS.toogleJoggingBehaviour(axis=2, direction = 1))
-        self.ui.pushButton_Zplus.released.connect(lambda : self.ROS.toogleJoggingBehaviour(axis=2, direction = 0))
+        self.ui.pushButton_Zminus.pressed.connect(lambda : self.jogDirection(axis=2, direction = -1))
+        self.ui.pushButton_Zminus.released.connect(lambda : self.jogDirection(axis=2, direction = 0))
+        self.ui.pushButton_Zplus.pressed.connect(lambda : self.jogDirection(axis=2, direction = 1))
+        self.ui.pushButton_Zplus.released.connect(lambda : self.jogDirection(axis=2, direction = 0))
 
         self.ui.pushButton_ApproachAllJoint.setCheckable(True)
         self.ui.pushButton_ApproachAllJoint.toggled.connect(self.goTo)
@@ -129,63 +112,74 @@ class RobotWindow(QtWidgets.QDialog):
         self.ui.pushButton_SensorBias.setCheckable(False)
         self.ui.pushButton_SensorBias.clicked.connect(self.confirmSensorBias)
 
+    def jogDirection(self, axis, direction):
+        # Cancel any pending debounced stop for this axis: a fresh press
+        # (same or opposite direction) means the earlier release was either
+        # spurious or the operator changed direction -- either way the axis
+        # keeps moving and _startJog below will (re)send the right command.
+        pending_stop = self._jog_stop_timers.pop(axis, None)
+        if pending_stop is not None:
+            pending_stop.stop()
+            pending_stop.deleteLater()
+
+        if direction == 0:
+            timer = QTimer(self)
+            timer.setSingleShot(True)
+            timer.timeout.connect(lambda: self._confirmJogStop(axis))
+            self._jog_stop_timers[axis] = timer
+            timer.start(self._JOG_RELEASE_DEBOUNCE_MS)
+        else:
+            self._startJog(axis, direction)
+
+    def _confirmJogStop(self, axis):
+        self._jog_stop_timers.pop(axis, None)
+        self.ROS.requestStopAnyMovement(jog_axis=axis)
+
+    @gui_task
+    def _startJog(self, axis, direction):
+        yield Call(self.ROS.toogleJoggingBehaviour, axis=axis, direction=direction)
+
+    @gui_task
     def confirmSensorBias(self) -> None:
-        decision = QMessageBox.question(
-            self,
-            "Sensor Calibration",
-            "Are you sure you want to start the sensor calibration procedure?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
+        decision = QMessageBox.question(self, 'Sensor Calibration', 'Are you sure you want to start the sensor calibration procedure?', QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
         if decision == QMessageBox.Yes:
-            self.ROS.SonarBias()
+            yield Call(self.ROS.SonarBias)
 
     def onBehaviourOptionChanged(self, index):
         # Handle the change in MOO option here
         selected_option = self.ui.comboBox_MOO.itemText(index)
         print(f"MOO option changed to: {selected_option}")
     
+    @gui_task
     def onBehaviourActivation(self, index):
-        print(f"MOO option activated to: {index}")
+        print(f'MOO option activated to: {index}')
         slave_states = self.UDP.getSlaveStates()
         if not all([state == 'OP' for state in slave_states]):
             slave_names = self.UDP.getSlaveNames()
             slave_states_dict = dict(zip(slave_names, slave_states))
-            move_states = [
-                slave_state for slave_name, slave_state in slave_states_dict.items()
-                if 'delta' in slave_name.lower()
-            ]
-            manual_guidance_states = [
-                slave_state for slave_name, slave_state in slave_states_dict.items()
-                if 'delta' in slave_name.lower() or 'ati' in slave_name.lower()
-            ]
-            move_ok = bool(move_states) and all(
-                slave_state == 'OP' for slave_state in move_states
-            )
-            manual_guidance_ok = bool(manual_guidance_states) and all(
-                slave_state == 'OP' for slave_state in manual_guidance_states
-            )
-
-            if (not move_ok and index in [1,2,4]) or (not manual_guidance_ok and index == 3):
-                QMessageBox.warning(self, "Warning", f"Please check for errors the Ethercat Configuration")
+            move_states = [slave_state for slave_name, slave_state in slave_states_dict.items() if 'delta' in slave_name.lower()]
+            manual_guidance_states = [slave_state for slave_name, slave_state in slave_states_dict.items() if 'delta' in slave_name.lower() or 'ati' in slave_name.lower()]
+            move_ok = bool(move_states) and all((slave_state == 'OP' for slave_state in move_states))
+            manual_guidance_ok = bool(manual_guidance_states) and all((slave_state == 'OP' for slave_state in manual_guidance_states))
+            if not move_ok and index in [1, 2, 4] or (not manual_guidance_ok and index == 3):
+                QMessageBox.warning(self, 'Warning', f'Please check for errors the Ethercat Configuration')
                 return
-
         try:
-            if index == 1:  # Zeroing
-                self.ROS.enableControllerBehaviour("Homing")
-            elif index == 2:  # JOG
+            if index == 1:
+                yield Call(self.ROS.enableControllerBehaviour, 'Homing')
+            elif index == 2:
                 self.ROS.setManualMode(True)
-                self.ROS.enableControllerBehaviour("Jogging")
-            elif index == 3:  # Manual Guidance
+                yield Call(self.ROS.enableControllerBehaviour, 'Jogging')
+            elif index == 3:
                 self.ROS.setManualMode(True)
-                self.ROS.enableControllerBehaviour("ManualGuidance")
-            elif index == 4:  # PTP
+                yield Call(self.ROS.enableControllerBehaviour, 'ManualGuidance')
+            elif index == 4:
                 self.ROS.setManualMode(False)
-                ActualRobotConfiguration = deepcopy( self.ROS.getHandleFeedbackPosition())
+                ActualRobotConfiguration = deepcopy(self.ROS.getHandleFeedbackPosition())
                 self.ui.doubleSpin_Joint1_Value.setValue(ActualRobotConfiguration[0])
                 self.ui.doubleSpin_Joint2_Value.setValue(ActualRobotConfiguration[1])
                 self.ui.doubleSpin_Joint3_Value.setValue(ActualRobotConfiguration[2])
-                self.ROS.enableControllerBehaviour("PTP")
+                yield Call(self.ROS.enableControllerBehaviour, 'PTP')
         except Exception as e:
             print(f'Exception: {e}')
         
@@ -193,83 +187,82 @@ class RobotWindow(QtWidgets.QDialog):
     def goTo(self, toggled) -> None:
         print(f'toogled the goTo event with toggled value {toggled}')
         if toggled == 0:
-            self.ROS.stopAnyMovement()
+            self.ROS.requestStopAnyMovement()
             return
         
         self.ROS.setManualMode(True)
-        QTimer.singleShot(500, self._goTo_afterDelay)
+        self._goTo_afterDelay()
 
+    @gui_task
     def _goTo_afterDelay(self) -> None:
-        ActualRobotConfiguration  = deepcopy( self.ROS.getHandleFeedbackPosition())
+        yield Call(time.sleep, 0.5)
+        if not self.ui.pushButton_ApproachAllJoint.isChecked():
+            return
+        ActualRobotConfiguration = deepcopy(self.ROS.getHandleFeedbackPosition())
         NewRobotConfiguration = ActualRobotConfiguration
         JointTargetPosition = (float(self.ui.doubleSpin_Joint1_Value.value()), float(self.ui.doubleSpin_Joint2_Value.value()), float(self.ui.doubleSpin_Joint3_Value.value()))
-        if any(abs(JointTargetPosition[idx]) > 0.5 for idx in range(len(self.ROS.getJointNames()))):
-            QMessageBox.warning(self, "Warning", f"Joint target position is out of range. Please set a value between -0.5 and 0.5.")
+        if any((abs(JointTargetPosition[idx]) > 0.5 for idx in range(len(self.ROS.getJointNames())))):
+            QMessageBox.warning(self, 'Warning', f'Joint target position is out of range. Please set a value between -0.5 and 0.5.')
             return
         NewRobotConfiguration = JointTargetPosition
-        
-        target_time = max(abs(NewRobotConfiguration[i]) for i in range(len(self.ROS.getJointNames())))/0.1
+        target_time = max((abs(NewRobotConfiguration[i]) for i in range(len(self.ROS.getJointNames())))) / 0.1
         if target_time < 1.0:
             target_time = 2.0
-        
-        if self.ROS.turnOnMotors():
+        if (yield Call(self.ROS.turnOnMotors)):
             print(f'Go To {NewRobotConfiguration} from {self.ROS.getHandleFeedbackPosition()}')
-            self.ROS.sendPTPTrajectory(NewRobotConfiguration, target_time)
+            yield Call(self.ROS.sendPTPTrajectory, NewRobotConfiguration, target_time)
         else:
-            QMessageBox.warning(self, "Warning", "Failed in switching on the motors")
+            QMessageBox.warning(self, 'Warning', 'Failed in switching on the motors')
         
+    @gui_task
     def moveRobotManually(self, activate):
         if activate:
-            if not self.ROS.turnOnMotors():
+            if not (yield Call(self.ROS.turnOnMotors)):
                 self.ui.pushButton_MoveRobotManually.setChecked(False)
         else:
-            self.ROS.turnOffMotors()
+            yield Call(self.ROS.turnOffMotors)
     
+    @gui_task
     def moveJOG(self, activate):
         if activate:
-            if not self.ROS.turnOnMotors():
+            if not (yield Call(self.ROS.turnOnMotors)):
                 self.ui.pushButton_JOG.setChecked(False)
         else:
-            self.ROS.turnOffMotors()
+            yield Call(self.ROS.turnOffMotors)
 
+    @gui_task
     def relativeHoming(self) -> bool:
-        
-        ##########
         pd = ProgressBarWorker(self.ui.progressBar_RelativeHoming)
         pd.start()
-        if not os.path.exists(os.path.join("/","tmp")):
-            # Create the directory
-            os.makedirs(os.path.join("/","tmp"))
-
-        file_path = os.path.join("/", "tmp", "absolute_homing_performed")
+        if not os.path.exists(os.path.join('/', 'tmp')):
+            os.makedirs(os.path.join('/', 'tmp'))
+        file_path = os.path.join('/', 'tmp', 'absolute_homing_performed')
         if os.path.exists(file_path):
             try:
-                print("Removing file: ", file_path)
+                print('Removing file: ', file_path)
                 os.remove(file_path)
             except Exception as e:
-                print(f"Failed to remove {file_path}: {e}")
+                print(f'Failed to remove {file_path}: {e}')
                 pd.stop()
                 return False
-        file_path = os.path.join("/", "tmp", "relative_homing_performed")
+        file_path = os.path.join('/', 'tmp', 'relative_homing_performed')
         if os.path.exists(file_path):
             try:
                 os.remove(file_path)
             except Exception as e:
-                print(f"Failed to remove {file_path}: {e}")
+                print(f'Failed to remove {file_path}: {e}')
                 pd.stop()
                 return False
-        print(f"Files removed {not os.path.exists(file_path)}")
-        # Call homing service
-        if not self.ROS.performHoming():
+        print(f'Files removed {not os.path.exists(file_path)}')
+        try:
+            if not (yield Call(self.ROS.performHoming)):
+                QMessageBox.warning(self, 'Homing', 'Homing failed.')
+                return False
+            with open(os.path.join('/', 'tmp', 'relative_homing_performed'), 'w') as f:
+                f.write('homing performed')
+            return True
+        finally:
             pd.stop()
-            return False
-        # Create an empty file under /tmp
-        with open(os.path.join("/", "tmp", "relative_homing_performed"), 'w') as f:
-            f.write("homing performed")
-            f.close()
-
-        pd.stop()
-        return True
 
     ##############################################################################################
     #####                                                                                    #####
@@ -284,19 +277,17 @@ class RobotWindow(QtWidgets.QDialog):
         self.enablePTPFrame(self.ROS.isPTPEnabled() and self.ui.comboBox_MOO.currentIndex() == 4)
 
         self.ROS.setExerciseType(0)
-        _result = self.ROS.consumeTrajectoryResult("ptp")
-        if _result is not None:
+        if self.main_app.ui.tabWidget.currentIndex() == 0 and\
+            self.ROS.areMotorsOn() and self.ROS.getTrajectoryCompleted():
+            self.ui.pushButton_ApproachAllJoint.blockSignals(True)
             self.ui.pushButton_ApproachAllJoint.setChecked(False)
+            self.ui.pushButton_ApproachAllJoint.blockSignals(False)
+            self.ROS.setTrajectoryCompleted(False)
+            self._finishTrajectory()
 
-            if self.ROS.areMotorsOn():
-                self.ROS.turnOffMotors()
-
-            if not _result["success"]:
-                QMessageBox.warning(
-                    self,
-                    "Trajectory failed",
-                    f"{_result['message']}\nError code: {_result['error_code']}"
-                )
+    @gui_task
+    def _finishTrajectory(self):
+        yield Call(self.ROS.turnOffMotors)
 
     def enableRelativeHomingButton(self, activate: bool):
         if activate == self._last_homing_state:

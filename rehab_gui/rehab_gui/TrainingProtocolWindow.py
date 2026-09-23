@@ -1,11 +1,19 @@
 # Copyright 2026 CNR-STIIMA
 # SPDX-License-Identifier: Apache-2.0
 
+from GuiRosTasks import Call, gui_task
+from YamlSupport import (read_yaml, validate_movement, validate_protocol,
+                         atomic_save_yaml, gui_transaction, check_spin_value,
+                         number, YamlDataError, report_yaml_error)
+
 import os
 import yaml
 import time
 import numpy as np
-from yaml.loader import SafeLoader
+try:
+    from yaml import CSafeLoader as SafeLoader
+except ImportError:
+    from yaml import SafeLoader
 
 from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import QProgressBar, QSpinBox, QLCDNumber, QComboBox, QMessageBox, QWidget, QButtonGroup, QFileDialog, QApplication
@@ -39,6 +47,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         self.ui_main = ui_main
         
         # self.FIRST_TIME = True
+        self._stop_pending = False
         self.Training_ON = False
         self.NumberExecMovements = 0
         self._near_zero_triggered = True
@@ -204,8 +213,11 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
     def connect(self, ROS: RosCommunicationManager, parent_timer: QTimer):
         self.ROS = ROS
         self.parent_timer = parent_timer
+        self.ROS.stopCompleted.connect(self._onStopCompleted)
     
     def updateWindow(self):
+        if self._stop_pending:
+            return
         movement_name_text = ""
         if self.ui_main.movement_loaded:
             movement_name_text = self.ui_main.rehabMovementWindow.ui.lineEdit_MovementName.text().strip()
@@ -224,7 +236,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
             self._last_start_state = start_state
             if start_state[0] and start_state[1] and start_state[2]:
                 self.ui.pushButton_STARTtrainig.setEnabled(True)
-                self.ui.pushButton_STARTtrainig.setStyleSheet("background-color: rgb(85, 255, 127); color: black;")
+                self.ui.pushButton_STARTtrainig.setStyleSheet("background-color: rgb(255, 69, 0); color: black;" if self.Training_ON else "background-color: rgb(85, 255, 127); color: black;")
             else:
                 self.ui.pushButton_STARTtrainig.setEnabled(False)
                 self.ui.pushButton_STARTtrainig.setStyleSheet("")
@@ -258,12 +270,6 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
                 self.ui.radioButton_SideRight.blockSignals(False)
 
         movement_type: ExerciseType = self.ui_main.rehabMovementWindow.TypeOfMovement
-        if movement_type == ExerciseType.REACHING:
-            self.ROS.setExerciseType(2) # 2: switch sensor
-        elif movement_type == ExerciseType.HAND_TO_MOUTH:
-            self.ROS.setExerciseType(1) # 1: proximity sensor
-        else:
-            self.ROS.setExerciseType(0) # 0: no sensor
         if movement_type != self._last_type:
             self._last_type = movement_type
             if movement_type == ExerciseType.REACHING:
@@ -318,7 +324,8 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
                 self.progressBarPhases[_iPhase].setValue(_pct)
                 if self.ROS.getExerciseRepetitionCounter() > 0:
                     self.progressBarPhases[_iPhase - 1].setValue(100) # type: ignore
-                if self.ROS.consumeExerciseResult():
+                if self.ROS.getExerciseCompleted():
+                    self.ROS.setExerciseCompleted(False)
                     self.ModalityActualValue = self.Modalities[_iPhase] # change here the modality
                     self._exec_pct_stall_count = 0  # reset stall counter on phase completion
                 # set movemnt count lcd number
@@ -335,13 +342,11 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
             else:
                 self.progressBarPhases[19].setValue(100)
                 self.stopTrainig()
-                self._set_training_buttons_idle()
         if not self.ROS.isRosCommunicationActive():
             # Properly uncheck/reset the button every time so it's never left
             # showing "STOP TRAINING" after an emergency disconnect.
             if self.Training_ON or self.ui.pushButton_STARTtrainig.isChecked():
                 self.stopTrainig()
-                self._set_training_buttons_idle()
             # Invalidate the start_state cache so the button re-enables as soon
             # as the connection is restored (without needing movement state change).
             self._last_start_state = None
@@ -369,6 +374,9 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         self._update_total_training_time_display()
 
     def clbk_LoadCreateProtocol(self):
+        if self.Training_ON or self._stop_pending or self.ROS.isCommandBusy():
+            QMessageBox.warning(self, "Protocollo", "Terminare l'operazione in corso prima di caricare un protocollo.")
+            return
         dlg = QFileDialog(None, "Load Protocol", self.ui_main.FMRR_Paths['Protocols'], "*.yaml")
         dlg.setOption(QFileDialog.DontUseNativeDialog, True)
         dlg.setFileMode(QFileDialog.ExistingFile)
@@ -382,40 +390,52 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
             return
         filename = [selected[0]]
 
-        # load data 
-        if self.ProtocolData is not None:
-            self.ProtocolData = None
+        try:
+            candidate = read_yaml(filename[0], validate_protocol)
+            self._applyProtocol(candidate)
+        except Exception as exc:
+            report_yaml_error(self, filename[0], exc)
 
-        self.ProtocolData = yaml.load(open(filename [0]), Loader=SafeLoader) # type: ignore
-        # get values       
-        self.PhaseIsEnabled = self.ProtocolData["Phases"].get('PhaseIsEnabled')[0]
-        self.NrEnabledPhases = sum( self.PhaseIsEnabled ) #Sistemare se non si usa
-        # self.TotalTrainingTime =  self.ui_main.PhaseDuration * self.NrEnabledPhases
-        self.Modalities = self.ProtocolData["Phases"].get('Modalities')[0]
-        self.Percentage = self.ProtocolData["Phases"].get('Percentage')[0]
-        # Load durations if available (for backward compatibility with old protocols)
-        duration_data = self.ProtocolData["Phases"].get('Duration')
-        self.Durations = duration_data[0] if duration_data else None
-        self.ui.lcdNumber_SinglePhaseDuration.display(np.floor(self.ui_main.PhaseDuration))
-        # self.ui.lcdNumberExerciseTotalTime.display( np.floor(self.TotalTrainingTime/60) )
-        self.ui.lcdNumber_MaxVel.display(np.floor(self.ui_main.Vmax))
-        self.TotalTrainingTime = 0
-        self._iPhase_0 = 0
-            
-        for iPhase in range(20):
-            self.lcdNumberPhases[iPhase].setNumDigits(3) # type: ignore
-            iPhaseVel = int( float(self.Percentage[iPhase]) /100 * self.ui_main.Vmax )
-            self.lcdNumberPhases[iPhase].display( iPhaseVel ) # type: ignore
-            self.spinBoxSpeedOvr[iPhase].setValue(max(self._min_speed_ovr, self.Percentage[iPhase])) # type: ignore
-            # Load duration if available in YAML
-            if self.Durations is not None:
-                self.spinBoxDuration[iPhase].setValue(self.Durations[iPhase]) # type: ignore
+    def _applyProtocol(self, candidate):
+        validate_protocol(candidate)
+        phases = candidate['Phases']
+        flags, modes = list(phases['PhaseIsEnabled'][0]), list(phases['Modalities'][0])
+        percentages = [int(x) for x in phases['Percentage'][0]]
+        # Old files without Duration get explicit defaults, never previous values.
+        durations = [int(x) for x in phases['Duration'][0]] if 'Duration' in phases else [60] * 20
+        effective = [max(self._min_speed_ovr, p) for p in percentages]
+        vmax = number(getattr(self.ui_main, 'Vmax', None), 'velocità del movimento caricato', minimum=0)
+        phase_duration = number(getattr(self.ui_main, 'PhaseDuration', None), 'durata del movimento caricato', minimum=0)
+        for i in range(20):
+            check_spin_value(self.spinBoxSpeedOvr[i], effective[i], 'Percentage[{}]'.format(i))
+            check_spin_value(self.spinBoxDuration[i], durations[i], 'Duration[{}]'.format(i))
+        displays = [int(p / 100 * vmax) for p in effective]
+        # Normalize the in-memory protocol to the values actually displayed.
+        normalized = deepcopy(candidate)
+        normalized['Phases']['Percentage'] = [effective]
+        normalized['Phases']['Duration'] = [durations]
+        widgets = [(w, 'value', 'setValue') for w in self.spinBoxSpeedOvr + self.spinBoxDuration + self.progressBarPhases]
+        widgets += [(w, 'value', 'display') for w in self.lcdNumberPhases]
+        widgets += [(w, 'value', 'display') for w in (self.ui.lcdNumber_SinglePhaseDuration, self.ui.lcdNumber_MaxVel, self.ui.lcdNumberExerciseTotalTime)]
+        names = ['ProtocolData', 'PhaseIsEnabled', 'NrEnabledPhases', 'Modalities', 'Percentage', 'Durations',
+                 'TotalTrainingTime', '_iPhase_0', '_last_total_time_display', '_last_start_state', '_last_load_enabled']
+        with gui_transaction([(self, names)], widgets):
+            self.ProtocolData = normalized
+            self.PhaseIsEnabled, self.NrEnabledPhases = flags, sum(flags)
+            self.Modalities, self.Percentage, self.Durations = modes, effective, durations
+            self._iPhase_0 = 0
+            self.TotalTrainingTime = sum(durations)
+            self._last_total_time_display = np.floor(self.TotalTrainingTime) / 60
+            self._last_start_state = self._last_load_enabled = None
+            self.ui.lcdNumber_SinglePhaseDuration.display(np.floor(phase_duration))
+            self.ui.lcdNumber_MaxVel.display(np.floor(vmax))
+            for i in range(20):
+                self.lcdNumberPhases[i].display(displays[i])
+                self.spinBoxSpeedOvr[i].setValue(effective[i])
+                self.spinBoxDuration[i].setValue(durations[i])
+                self.progressBarPhases[i].setValue(0)
+            self.ui.lcdNumberExerciseTotalTime.display(self._last_total_time_display)
 
-        self._update_total_training_time_display(force=True)
-                    
-        for iProgressBar in self.progressBarPhases:
-            iProgressBar.setValue(0) # type: ignore
-                
     def clbk_SaveProtocol(self):
         dlg = QFileDialog(None, "Save Protocol", self.ui_main.FMRR_Paths['Protocols'], "*.yaml")
         dlg.setOption(QFileDialog.DontUseNativeDialog, True)
@@ -447,90 +467,108 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
             }
             
             # Save to YAML file
-            with open(filename[0], 'w') as file:
-                yaml.dump(protocol_data, file, default_flow_style=None)
+            try:
+                atomic_save_yaml(filename[0], protocol_data, validate_protocol)
+            except Exception as exc:
+                report_yaml_error(self, filename[0], exc)
             
     def startStopTraining(self, start: bool):
+        if self._stop_pending:
+            return
         if start:
-            if self.ui_main.rehabMovementWindow.TypeOfMovement == ExerciseType.REACHING:
-                self.ROS.setExerciseType(2) # 2: switch sensor
-            elif self.ui_main.rehabMovementWindow.TypeOfMovement == ExerciseType.HAND_TO_MOUTH:
-                self.ROS.setExerciseType(1) # 1: proximity sensor
-            else:
-                self.ROS.setExerciseType(0) # 0: no sensor
-            self.ui.pushButton_PauseTrainig.setEnabled(True)
-            self.ui.pushButton_STARTtrainig.setStyleSheet("background-color: rgb(255, 69, 0); color: black;")
-            self.ui.pushButton_STARTtrainig.setText("STOP TRAINING")
-            if not self.startTrainig():
-                self.ui.pushButton_STARTtrainig.setChecked(False)
+            self._startTrainingTask()
         else:
             self.stopTrainig()
-            self.ui.pushButton_STARTtrainig.setStyleSheet("background-color: rgb(85, 255, 127); color: black;")
-            self.ui.pushButton_STARTtrainig.setText("START TRAINING")
-            self.ui.pushButton_PauseTrainig.setEnabled(False)
-            self.ui.pushButton_ResumeTraining.setEnabled(False)
 
+    @gui_task
+    def _startTrainingTask(self):
+        self.ui_main.syncExerciseTypeToPLC(force=True)
+        if not (yield from self.startTrainig.__wrapped__(self)):
+            self.Training_ON = False
+            self._set_training_buttons_idle()
+            return
+        self.ui.pushButton_STARTtrainig.setStyleSheet('background-color: rgb(255, 69, 0); color: black;')
+        self.ui.pushButton_STARTtrainig.setText('STOP TRAINING')
+        self.ui.pushButton_PauseTrainig.setEnabled(True)
+
+
+    @gui_task
     def startTrainig(self) -> bool:
         if not self.ROS.isRosCommunicationActive() or self.ROS.isInFaultState():
-            QMessageBox.warning(self, "Warning", "No communication is active or the robot is in FAULT state.")
+            QMessageBox.warning(self, 'Warning', 'No communication is active or the robot is in FAULT state.')
             return False
-        
         HandlePosition = self.ROS.getHandleFeedbackPosition()
-        if any([abs(HandlePosition[idx]) > 3e-3 for idx in range(3)]):
-            print(f"[Movement Program] Handle position is not zero, detected states: [{HandlePosition[0]}, {HandlePosition[1]}, {HandlePosition[2]}]")
-            QMessageBox.warning(self, "Warning", "Handle position is not zero, please set it to zero before going to training")
+        if any([abs(HandlePosition[idx]) > 0.003 for idx in range(3)]):
+            print(f'[Movement Program] Handle position is not zero, detected states: [{HandlePosition[0]}, {HandlePosition[1]}, {HandlePosition[2]}]')
+            QMessageBox.warning(self, 'Warning', 'Handle position is not zero, please set it to zero before going to training')
             return False
-
         self.ROS.setManualMode(False)
-        self.ROS.enableControllerBehaviour("FCT")
+        if not (yield Call(self.ROS.enableControllerBehaviour, 'FCT')):
+            return False
         self.ROS.setExerciseSuspended(False)
         self.ROS.setMovementStopped(False)
-        self.ROS.setExerciseInSuspension(False)  # clear suspension warning
-        self.Training_ON = True
+        self.ROS.setExerciseInSuspension(False)
         self._near_zero_triggered = True
         self._training_paused = False
         self._exec_pct_prev = -1
         self._exec_pct_stall_count = 0
         self.ActualTrainingTime = 0
-        self.sendExercise()
+        if not (yield from self.sendExercise.__wrapped__(self)):
+            return False
+        self.Training_ON = True
         self.ModalityActualValue = self.Modalities[0]
-
         for speedSpinBox in self.spinBoxSpeedOvr:
             speedSpinBox.setEnabled(False)
         for durationSpinBox in self.spinBoxDuration:
             durationSpinBox.setEnabled(False)
-
         self.NumberExecMovements = 0
         if self.SaveModeEnabled:
             self._start_bag_recording()
         return True
         
+    @gui_task
     def clbk_PauseTrainig(self):
         self._training_paused = True
-        self._exec_pct_stall_count = 0  # don't accumulate stall ticks while paused
-        self.ROS.triggerSoftMovementStart(amplitude=0.0, time_constant=0.2, target='speed_ovr')
+        self._exec_pct_stall_count = 0
+        yield Call(self.ROS.triggerSoftMovementStart, amplitude=0.0, time_constant=0.2, target='speed_ovr')
         self.ui.pushButton_ResumeTraining.setEnabled(True)
     
+    @gui_task
     def clbk_ResumeTrainig(self):
         self._training_paused = False
-        self._exec_pct_stall_count = 0  # fresh stall window after resume
+        self._exec_pct_stall_count = 0
         self._exec_pct_prev = -1
-        self.ROS.triggerSoftMovementStop()
+        yield Call(self.ROS.triggerSoftMovementStop)
         self.ui.pushButton_PauseTrainig.setEnabled(True)
 
     def stopTrainig(self):
+        if self._stop_pending:
+            return
         self._stop_bag_recording()
         self.Training_ON = False
         self._near_zero_triggered = False
-        self.ROS.setExerciseInSuspension(False)  # clear any suspension warning
-        self.ROS.stopAnyMovement()
-        self.ROS.triggerSoftMovementStop()
-        for iProgBar in self.progressBarPhases:
-            iProgBar.setValue(0) 
-        for speedSpinBox in self.spinBoxSpeedOvr:
-            speedSpinBox.setEnabled(True)
-        for durationSpinBox in self.spinBoxDuration:
-            durationSpinBox.setEnabled(True)
+        self.ROS.setExerciseInSuspension(False)
+        self._stop_pending = True
+        self.ui.pushButton_STARTtrainig.setText("STOPPING...")
+        self.ui.pushButton_STARTtrainig.setEnabled(False)
+        self.ui.pushButton_PauseTrainig.setEnabled(False)
+        self.ui.pushButton_ResumeTraining.setEnabled(False)
+        if not self.ROS.requestStopAnyMovement(soft_stop=True):
+            self._onStopCompleted(False)
+
+    def _onStopCompleted(self, ok):
+        if not self._stop_pending:
+            return
+        self._stop_pending = False
+        self._set_training_buttons_idle()
+        self._last_start_state = None
+        for bar in self.progressBarPhases:
+            bar.setValue(0)
+        for spin in self.spinBoxSpeedOvr + self.spinBoxDuration:
+            spin.setEnabled(True)
+        if not ok:
+            QMessageBox.warning(self, "Stop", "Arresto non confermato. Controllare stato robot e log ROS.")
+
         # self.ProtocolData = None
 
     def _start_bag_recording(self) -> None:
@@ -547,28 +585,24 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         self.ROS.stopBagRecording()
         print('[BagRecord] Stop request sent.')
 
+    @gui_task
     def sendExercise(self):
         if not self.ROS.isRosCommunicationActive():
-            QMessageBox.warning(self, "Warning", "Check the state of the driver - No communication is active.")
+            QMessageBox.warning(self, 'Warning', 'Check the state of the driver - No communication is active.')
             return
-
         TrjYamlData = self.ui_main.rehabMovementWindow.TrjYamlData
-        self.CartesianPositions = TrjYamlData.get("cart_trj3").get("cart_positions")
-        self.TimeFromStart = TrjYamlData.get("cart_trj3").get("time_from_start")
-        if not self.ROS.turnOnMotors():
+        self.CartesianPositions = TrjYamlData.get('cart_trj3').get('cart_positions')
+        self.TimeFromStart = TrjYamlData.get('cart_trj3').get('time_from_start')
+        if not (yield Call(self.ROS.turnOnMotors)):
             return
-
         pending_percentages = self._get_pending_phase_percentages()
         pending_durations = self._get_pending_phase_durations()
-        self.ROS.setExercise(
-            self.CartesianPositions,
-            self.TimeFromStart,
-            pending_percentages,
-            pending_durations,
-            self.EEGModeEnabled,
-        )
+        sent = (yield Call(self.ROS.setExercise, self.CartesianPositions, self.TimeFromStart, pending_percentages, pending_durations, self.EEGModeEnabled))
+        if not sent:
+            return False
         self.TotalTrainingTime = sum(pending_durations)
         self._update_total_training_time_display(force=True)
+        return True
             
         
 def main(args=None):

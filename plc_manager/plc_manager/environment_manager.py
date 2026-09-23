@@ -27,8 +27,10 @@ class EnvironmentManager:
         node,
         service_group,
         timer_group,
+        eeg_delay_ms: int = 4000,
     ) -> None:
         self.node = node
+        self.eeg_delay_ms = eeg_delay_ms
         self.startup_cleanup_action: Callable[[], None] | None = None
         self.node.declare_parameter('environment_process_poll_period', 0.5)
         self._process_cache_lock = threading.Lock()
@@ -155,7 +157,8 @@ class EnvironmentManager:
         subprocess.Popen(
             [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_env.sh"],
             shell=True,
-            executable="/bin/bash"
+            executable="/bin/bash",
+            env={**os.environ, 'EEG_DELAY_MS': str(self.eeg_delay_ms)}
         )
         subprocess.Popen(
             [" /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./launch_ros2_bridge.sh"],

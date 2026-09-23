@@ -1,6 +1,12 @@
 # Copyright 2026 CNR-STIIMA
 # SPDX-License-Identifier: Apache-2.0
 
+from GuiRosTasks import Call, gui_task
+from YamlSupport import (read_yaml, validate_movement, validate_protocol,
+                         atomic_save_yaml, gui_transaction, check_spin_value,
+                         number, YamlDataError, report_yaml_error)
+
+
 # -*- coding: utf-8 -*-
 
 
@@ -13,7 +19,10 @@ from PyQt5.QtCore import QTimer
 from ui.uiRehabilitationMovementWindow import Ui_RehabilitationMovementWindow
 from RosCommunicationManager import RosCommunicationManager
 import yaml
-from yaml.loader import SafeLoader
+try:
+    from yaml import CSafeLoader as SafeLoader
+except ImportError:
+    from yaml import SafeLoader
 import numpy as np
 from copy import deepcopy
 #MC Classes/methods
@@ -104,30 +113,11 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
             self.ui.pushButton_GoToZERO.setEnabled(False)
             self._go_to_start_retry_armed = False
 
-        movement_type: ExerciseType = self.TypeOfMovement
-        if movement_type == ExerciseType.REACHING:
-            self.ROS.setExerciseType(2) # 2: switch sensor
-        elif movement_type == ExerciseType.HAND_TO_MOUTH:
-            self.ROS.setExerciseType(1) # 1: proximity sensor
-        else:
-            self.ROS.setExerciseType(0) # 0: no sensor
-
-        _result = self.ROS.consumeTrajectoryResult("go_to_start")
-        if _result is not None:
+        if self.main_app.ui.tabWidget.currentIndex() == 1 and\
+            self.ROS.areMotorsOn() and self.ROS.getTrajectoryCompleted():
             self.ui.pushButton_GoToZERO.setChecked(False)
-
-            if self.ROS.areMotorsOn():
-                self.ROS.turnOffMotors()
-
-            if self.ROS.getCurrentControllerName() == self.ROS.getGoToStartControllerName():
-                QTimer.singleShot(200, self._restoreTrajectoryController)
-
-            if not _result["success"]:
-                QMessageBox.warning(
-                    self,
-                    "Trajectory failed",
-                    f"{_result['message']}\nError code: {_result['error_code']}"
-                )
+            self.ROS.setTrajectoryCompleted(False)
+            self._finishTrajectory()
 
 ##############################################################################################################
 #####                                                                                                    #####  
@@ -136,8 +126,19 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
 #####                                                                                                    #####
 ##############################################################################################################
     def clbk_BtnCreateMovementData(self):
+        source_data = None
+        if self.ui.radioButton_TypeOfExercise_HandtoMouth.isChecked():
+            source_path = open_file(path=self.main_app.FMRR_Paths['Movements'])
+            if not source_path:
+                return
+            try:
+                source_data = read_yaml(source_path, validate_movement)
+                if len(source_data['cart_trj3']['cart_positions']) < 6:
+                    raise YamlDataError('Il movimento sorgente richiede almeno 6 punti per la suddivisione andata/ritorno.')
+            except Exception as exc:
+                report_yaml_error(self, source_path, exc)
+                return
         from scipy import interpolate
-        import matplotlib.pyplot as plt
 
         MovementsPath = self.main_app.FMRR_Paths['Movements']
         update_rate = 50
@@ -178,7 +179,7 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
         print("_time")
         print(_time[0:4])
         numSamples = len(_time) # length of the final vectors, the ones given as results
-        _numPoints = numSamples * 1000 #lenght of oversampled vectors
+        _numPoints = numSamples * 30 #lenght of oversampled vectors
         v1 = np.zeros( (numSamples,), dtype = float, order='C' )    
 
         if self.TypeOfMovement == ExerciseType.REACHING:  # Reaching (rectilinear trajectory)
@@ -188,11 +189,8 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
             L = L12
             _ContinueCreateMovement = 1
         elif self.TypeOfMovement == ExerciseType.HAND_TO_MOUTH:    # Hand to Mouth
-            filename = QtWidgets.QFileDialog.getOpenFileName(None, "Load Movement", MovementsPath, "*.yaml")
-            if bool(filename[0]):
-                print('This is the filename of the loaded movement:')
-                print(filename)
-                _TrjYamlData = yaml.load(open(filename [0]), Loader=SafeLoader)
+            if source_data is not None:
+                _TrjYamlData = source_data
                 PositionsLenght_LF = len( _TrjYamlData.get("cart_trj3").get("cart_positions") )
                 cart_positions_LF = _TrjYamlData.get("cart_trj3").get("cart_positions")
 
@@ -216,13 +214,6 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
                 print("position lenght lf: ", PositionsLenght_LF)
                 print("movement data lenght lf: ", len(MovementData))
                 print("loaded movement data size [x, y , z]: ",len(x_coords_LF), len(y_coords_LF), len(z_coords_LF))
-
-                plt.figure()
-                plt.plot(x_coords_LF, label = 'x_file ')
-                plt.plot(y_coords_LF, label = 'y_file ')
-                plt.plot(z_coords_LF, label = 'z_file ')
-                plt.legend()
-
 
                 print('L12_LF:')
                 print(L12_LF)
@@ -303,12 +294,6 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
                 print('z_endCov:')
                 print(z_new[-1])
 
-                plt.figure()
-                plt.plot(x, label = 'x_before_inv ')
-                plt.plot(y, label = 'y_before_inv ')
-                plt.plot(z, label = 'z_before_inv ')
-                plt.legend()
-              
                 print("self.SideOfMovement")
                 print(self.SideOfMovement)
                 print("side da file:")
@@ -320,12 +305,6 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
                     print("y after: ", y[10:14])
 
 
-                plt.figure()
-                plt.plot(x, label = 'x_after_inv ')
-                plt.plot(y, label = 'y_after_inv ')
-                plt.plot(z, label = 'z_after_inv ')
-                plt.legend()
-                    
                 print('_numpoints')
                 print(_numPoints)
                 _numPoints2 = len(x)
@@ -388,15 +367,7 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
             positions[1] = y[samples] # type:ignore
             positions[2] = z[samples] # type:ignore
 
-            plt.figure()
-            plt.plot(positions[0], label = 'x_after_resampling')
-            plt.plot(positions[1], label = 'y_after_resampling')
-            plt.plot(positions[2], label = 'z_after_resampling')
-            plt.legend()
-
-            # plt.show()
-            
-    # Traj2: data of backward movement        
+    # Traj2: data of backward movement
             positions2 = np.fliplr(positions)
             time2 = time
             sv2 = sv
@@ -418,9 +389,7 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
 
             positions3 =  np.append( positions, positions2, axis = 1 )      
 
-            # update main_app parameters
-            self.main_app.PhaseDuration = 2 * T
-            self.main_app.Vmax = Vmax*100 # conversion to cm/s         
+            # Main application values are committed only after validation.
             
     #       Creation of Trajectorydata to be save in yaml file
             TrjYamlData = dict()
@@ -473,7 +442,14 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
             cart_trj3['joint_names'] =  joint_names
             TrjYamlData['cart_trj3'] = cart_trj3
             
-            self.TrjYamlData =TrjYamlData
+            try:
+                validate_movement(TrjYamlData, execution=True)
+            except Exception as exc:
+                report_yaml_error(self, "movimento generato", exc)
+                return
+            self.TrjYamlData = TrjYamlData
+            self.main_app.PhaseDuration = 2 * T
+            self.main_app.Vmax = float(Vmax * 100)
             NewFilename = QtWidgets.QFileDialog.getSaveFileName(None, "Save new movement as:", MovementsPath, "*.yaml")            
             self.ui.pushButton_SAVEMovement.setEnabled(True)
 
@@ -481,7 +457,8 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
                 print('This is the filename of the created movement: ')
                 print(NewFilename[0])
                 print('This is T: %s' %T)
-                self.SaveNewFile(TrjYamlData, NewFilename[0])
+                if not self.SaveNewFile(TrjYamlData, NewFilename[0]):
+                    return
                 self.main_app.PhaseDuration = 2 * T
                 # self.main_app.Vmax = Vmax*100 # conversion to cm/s
                 self.main_app.movement_loaded = 1
@@ -496,154 +473,79 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
         if bool(NewFilename[0]):
             print('This is the filename of the loaded movement:')
             print(NewFilename[0])
-            self.SaveNewFile(self.TrjYamlData, NewFilename[0])
+            if self.SaveNewFile(self.TrjYamlData, NewFilename[0]):
+                self.main_app.movement_loaded = True
 
     def SaveNewFile(self, Data, NewFilename):
-        print('This is the new file.yaml:')
-        print(NewFilename)
-        
-        # Authomatically add .yaml extension if not given by the user
-        if not NewFilename.endswith('.yaml'):
-            NewFilename += '.yaml'
-        
-        yaml.Dumper.ignore_aliases = lambda *args : True
-        with open(NewFilename, 'w') as outfile:
-            yaml.dump(Data, outfile , default_flow_style=False)
-        FMRR_RootPath = self.main_app.FMRR_Paths['Root']
-        MovementsPath = self.main_app.FMRR_Paths['Movements']
-        MovementName = NewFilename [len(FMRR_RootPath+MovementsPath)+2:-5 ] # +2 for the / symbols
-        print(f'MovementName: {MovementName}')
-        self.ui.lineEdit_MovementName.setText(MovementName)
-        print('MovementName: ')
-        print(MovementName)
+        destination = Path(NewFilename)
+        if destination.suffix.lower() not in ('.yaml', '.yml'):
+            destination = Path(str(destination) + '.yaml')
+        try:
+            atomic_save_yaml(destination, Data, validate_movement)
+        except Exception as exc:
+            report_yaml_error(self, destination, exc)
+            return False
+        self.ui.lineEdit_MovementName.setText(destination.stem)
+        return True
+
 
     def clbk_BtnLoadMovementData(self) -> None:
-        FMRR_RootPath = self.main_app.FMRR_Paths['Root']
-        MovementsPath = self.main_app.FMRR_Paths['Movements']
-        #filename = QtWidgets.QFileDialog.getOpenFileName(None, "Load Movement", MovementsPath, "*.yaml")
-        selected_file = open_file(path=MovementsPath)
-        if bool(selected_file):
-            try:
-                print(f'This is the filename of the loaded movement:{selected_file}')
-                self.TrjYamlData = yaml.load(open(selected_file), Loader=SafeLoader)
-                # self.CartesianMovementData = yaml.load(open(filename [0]), Loader=SafeLoader)
-                MovementName = Path(selected_file).stem
-                print(f'MovementName: {selected_file}')
-                print(f'MovementName: {MovementName}')
-                self.ui.lineEdit_MovementName.setText(MovementName)
-                self.main_app.movement_loaded = 1 # da sistemare, va messo sotto l'altra finestra in modo da non resettare MovementWindow quando ci ritorno!!!
-                self.main_app.movement_loaded = True
-                self.ui.pushButton_SAVEMovement.setEnabled(True)
-     
+        training = self.main_app.trainingProtocolWindow
+        if training.Training_ON or training._stop_pending or self.ROS.isCommandBusy():
+            QMessageBox.warning(self, "Movimento", "Terminare l'operazione in corso prima di caricare un movimento.")
+            return
+        selected_file = open_file(path=self.main_app.FMRR_Paths['Movements'])
+        if not selected_file:
+            return
+        try:
+            candidate = read_yaml(selected_file, lambda data: validate_movement(data, execution=True))
+            self._applyMovement(candidate, Path(selected_file).stem)
+        except Exception as exc:
+            report_yaml_error(self, selected_file, exc)
 
-                ##############################################################################################################
-                #####                                                                                                    #####  
-                #####        Here after all parameters to create the movement are set and dispalyed in the GUI           ##### 
-                #####                                                                                                    #####
-                #####                                                                                                    #####
-                ############################################################################################################## 
+    def _applyMovement(self, candidate, name):
+        # Every conversion/range check happens before changing self or widgets.
+        validate_movement(candidate, execution=True)
+        meta = candidate['a_movement_definition']
+        kind = ExerciseType(meta['type'][0])
+        side, profile = meta['side'][0], meta['vel_profile'][0]
+        duration, vmax = meta['total_time'][0], meta['max_velocity'][0]
+        check_spin_value(self.ui.doubleSpinBox_MoveTime, duration, 'total_time')
+        end = list(meta['end_config'][0])
+        display = [int(value * 100) for value in end[:3]]
+        radios = [self.ui.radioButton_TypeOfExercise_Reaching,
+                  self.ui.radioButton_TypeOfExercise_HandtoMouth,
+                  self.ui.radioButton_SideLeft, self.ui.radioButton_SideRight]
+        widgets = [(w, 'isChecked', 'setChecked') for w in radios]
+        widgets += [(self.ui.lineEdit_MovementName, 'text', 'setText'),
+                    (self.ui.doubleSpinBox_MoveTime, 'value', 'setValue'),
+                    (self.ui.pushButton_SAVEMovement, 'isEnabled', 'setEnabled'),
+                    (self.ui.pushButton_CREATEMovement, 'isEnabled', 'setEnabled')]
+        widgets += [(w, 'value', 'display') for w in (self.ui.lcdNumber_EndPos_X, self.ui.lcdNumber_EndPos_Y, self.ui.lcdNumber_EndPos_Z)]
+        names = ['TrjYamlData', 'TypeOfMovement', 'SideOfMovement', 'vel_profile',
+                 'JointTargetPosition', 'Start_HandlePosition', 'End_HandlePosition',
+                 'Start_RobotJointPosition', '_go_to_start_retry_armed']
+        with gui_transaction([(self, names), (self.main_app, ['Vmax', 'PhaseDuration', 'movement_loaded'])], widgets):
+            self.TrjYamlData = candidate
+            self.TypeOfMovement, self.SideOfMovement, self.vel_profile = kind, side, profile
+            self.JointTargetPosition = list(end)
+            self.Start_HandlePosition = list(meta['begin_config'][0])
+            self.End_HandlePosition = end
+            self.Start_RobotJointPosition = list(meta['begin_joint_config'][0])
+            self._go_to_start_retry_armed = False
+            self.main_app.Vmax, self.main_app.PhaseDuration = vmax, 2 * duration
+            self.ui.lineEdit_MovementName.setText(name)
+            self.ui.doubleSpinBox_MoveTime.setValue(duration)
+            self.ui.radioButton_TypeOfExercise_Reaching.setChecked(kind == ExerciseType.REACHING)
+            self.ui.radioButton_TypeOfExercise_HandtoMouth.setChecked(kind == ExerciseType.HAND_TO_MOUTH)
+            self.ui.radioButton_SideLeft.setChecked(side == 1)
+            self.ui.radioButton_SideRight.setChecked(side == 2)
+            for widget, value in zip((self.ui.lcdNumber_EndPos_X, self.ui.lcdNumber_EndPos_Y, self.ui.lcdNumber_EndPos_Z), display):
+                widget.display(value)
+            self.ui.pushButton_SAVEMovement.setEnabled(True)
+            self.ui.pushButton_CREATEMovement.setEnabled(True)
+            self.main_app.movement_loaded = True  # Commit last.
 
-                self.TypeOfMovement = ExerciseType(self.TrjYamlData.get("a_movement_definition").get("type")[0])
-                self.SideOfMovement = self.TrjYamlData.get("a_movement_definition").get("side")[0]
-                self.vel_profile = self.TrjYamlData.get("a_movement_definition").get("vel_profile")[0]            
-                MovTime =  self.TrjYamlData.get("a_movement_definition").get("total_time")[0]
-                Vmax =  self.TrjYamlData.get("a_movement_definition").get("max_velocity")[0]
-
-                self.ui.doubleSpinBox_MoveTime.setValue(MovTime)
-
-                self.main_app.Vmax = Vmax
-                self.main_app.PhaseDuration = 2* MovTime
-
-                if self.TypeOfMovement == ExerciseType.REACHING:
-                    self.ui.radioButton_TypeOfExercise_Reaching.setChecked(True)
-                    print('Type of movements is ''Reaching'' ')
-                    pass
-                elif self.TypeOfMovement == ExerciseType.HAND_TO_MOUTH:
-                    self.ui.radioButton_TypeOfExercise_HandtoMouth.setChecked(True)
-                    print('Type of movements is ''Hand to Mouth'' ')
-                    pass
-                else:
-                    print('No type of movement is selected!')
-                    
-                # Checkbox side (left or right) 
-                if self.SideOfMovement == 1:
-                    self.ui.radioButton_SideLeft.setChecked(True)
-                    print('Selected side is ''left'' ')
-                    pass
-                elif self.SideOfMovement == 2:
-                    self.ui.radioButton_SideRight.setChecked(True)
-                    print('Selected side is ''Right'' ')
-                    pass
-                else:
-                    print('No side is selected!')  
-
-                #Checkbox Velocity profile  (Constant or Bell Shaped) 
-                if self.vel_profile == 1:
-                    print('Velocity is constant')
-                    pass
-                elif self.vel_profile == 2:
-                    print('Velocity is Bell-Shaped')
-                    pass
-                else:
-                    print('No Velocity profile is selected!')                
-
-                #START and END positions are converted from meters to cm and further displayed
-                
-                _toolPosCovFact = self.main_app._toolPosCovFact
-                
-                StartPos = deepcopy(self.TrjYamlData.get("a_movement_definition").get("begin_config")[0][0:3]) # take only first 3 elements, the last one is the orientation
-                EndPos = deepcopy(self.TrjYamlData.get("a_movement_definition").get("end_config")[0][0:3])
-                
-                StartPos[:] = [i_position * _toolPosCovFact for i_position in StartPos]
-                EndPos[:]   = [i_position * _toolPosCovFact for i_position in EndPos]
-                
-                # Check if all elements in StartPos are (approximately) zero
-                if not all(abs(x) < 1e-4 for x in StartPos):
-                    print("Start position is not zero, it is: ", StartPos)
-                    return -1
-                
-                #Spin values of Joint approachconfiguration are loaded, converted in degrees nbd displayed
-
-                JointData = self.TrjYamlData.get("a_movement_definition").get("end_config") [0]
-                self.JointTargetPosition = JointData
-                JointTargetPositions = [0, 0, 0]
-
-                for iJoint in range(0,3):
-                    JointTargetPositions[iJoint]= JointData[iJoint]*100
-
-                # Start and End positions needed to create a new movement            
-                self.Start_HandlePosition = deepcopy( self.TrjYamlData.get("a_movement_definition").get("begin_config")[0] )
-                self.End_HandlePosition = deepcopy( self.TrjYamlData.get("a_movement_definition").get("end_config")[0] )
-                self.Start_RobotJointPosition  = deepcopy( self.TrjYamlData.get("a_movement_definition").get("begin_joint_config") [0] )
-                self.ui.pushButton_CREATEMovement.setEnabled(True)
-
-                if all(abs(x) < 1 for x in JointTargetPositions):
-                    print("End position is zero, please recreate the movement")
-                    return
-
-                self.ui.lcdNumber_EndPos_X.display( int( JointTargetPositions[0] ) )
-                self.ui.lcdNumber_EndPos_Y.display( int( JointTargetPositions[1] ) )
-                self.ui.lcdNumber_EndPos_Z.display( int( JointTargetPositions[2] ) )           
-
-            except FileNotFoundError as e:
-                error_msg = f"File not found: {e}"
-                print(f"Error: {error_msg}")
-                QMessageBox.critical(self, "File Error", error_msg)
-            except yaml.YAMLError as e:
-                error_msg = f"Error parsing YAML file: {e}"
-                print(f"Error: {error_msg}")
-                QMessageBox.critical(self, "YAML Error", "The selected file is not a valid YAML file.")
-            except (KeyError, TypeError, IndexError) as e:
-                error_msg = f"The trajectory file is missing required fields or has incorrect structure: {e}"
-                print(f"Error: {error_msg}")
-                QMessageBox.critical(self, "Invalid Trajectory File", "The trajectory file is missing required fields.\nPlease ensure the file contains all required movement definition parameters.")
-            except Exception as e:
-                error_msg = f"An unexpected error occurred while loading the trajectory: {e}"
-                print(f"Error: {error_msg}")
-                QMessageBox.critical(self, "Error Loading Trajectory", error_msg)
-
-        else:
-            print('No file was selected!')
 
             
 ##############################################################################################################
@@ -653,74 +555,72 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
 #####                                                                                                    #####
 ##############################################################################################################    
     def clbk_pushButton_SetCurrentPos(self):
-        _toolPosCovFact = self.main_app._toolPosCovFact     
-        HandlePosition = self.main_app.trainingProtocolWindow.ROS.getHandleFeedbackPosition()   
-        RobotJointPosition = self.main_app.trainingProtocolWindow.ROS.getRobotJointPosition()#       Put doublespin values in list to allow for iteration
+        _toolPosCovFact = self.main_app._toolPosCovFact
+        # Deep-copy before any local mutation: ROS.HandlePosition/RobotJointPosition
+        # are live references shared with the joint_states callback (and, by
+        # construction, with each other -- see getJointAndToolState). Scaling
+        # them in place for display would corrupt the actual feedback used as
+        # the robot's current position for the next PTP/Go-To-Start command.
+        HandlePosition = deepcopy(self.main_app.trainingProtocolWindow.ROS.getHandleFeedbackPosition())
+        RobotJointPosition = deepcopy(self.main_app.trainingProtocolWindow.ROS.getRobotJointPosition())#       Put doublespin values in list to allow for iteration
 
         # save data to create movement
-        self.End_HandlePosition = deepcopy( self.main_app.trainingProtocolWindow.ROS.getHandleFeedbackPosition() )
+        self.End_HandlePosition = deepcopy(HandlePosition)
         self.End_RobotJointPosition = RobotJointPosition
-        
-        # visualize data            
+
+        # visualize data
         HandlePosition[:] = [iPosition * _toolPosCovFact for iPosition in HandlePosition]
         self.ui.lcdNumber_EndPos_X.display( int( HandlePosition[0] ) ) 
         self.ui.lcdNumber_EndPos_Y.display( int( HandlePosition[1] ) ) 
         self.ui.lcdNumber_EndPos_Z.display( int( HandlePosition[2] ) )
         self.ui.pushButton_CREATEMovement.setEnabled(True)
 
-    def clbk_BtnGoToStartPosition(self):
+    @gui_task
+    def clbk_BtnGoToStartPosition(self) -> None:
+        if not self.main_app.syncExerciseTypeToPLC(force=True):
+            QMessageBox.warning(self, 'Warning', 'Failed to synchronize exercise type with PLC.\nPlease check the PLC connection and try again.')
+            return
         self.ROS.setManualMode(False)
-        switch_ok = self.ROS.enableControllerBehaviour("GoToStart")
+        switch_ok = (yield Call(self.ROS.enableControllerBehaviour, 'GoToStart'))
         ctrl = self.ROS.getCurrentControllerName()
         target_ctrl = self.ROS.getGoToStartControllerName()
         ctrl_ready = ctrl == target_ctrl
-
         if not (switch_ok and ctrl_ready):
             if not self._go_to_start_retry_armed:
                 self._go_to_start_retry_armed = True
-                QMessageBox.information(
-                    self,
-                    "Info",
-                    "Setting mode of operation 8 and Go to start controller.\n"
-                    "Press the button again to start the movement."
-                )
-                return False
-
+                QMessageBox.information(self, 'Info', 'Setting mode of operation 8 and Go to start controller.\nPress the button again to start the movement.')
+                return
             moos = self.ROS.getDriversModeOfOperations()
             if not switch_ok:
-                QMessageBox.warning(
-                    self, "Warning",
-                    f"Could not switch to Cyclic Synchronous Position mode (mode 8).\n"
-                    f"Active controller: {ctrl}\nDrive modes: {moos}\n"
-                    "Please verify that all drives are operational before starting training."
-                )
-                return False
-
-            QMessageBox.warning(
-                self, "Warning",
-                f"Go to start controller is not active "
-                f"(active: {ctrl}).\n"
-                "Cannot start training."
-            )
-            return False
-
+                QMessageBox.warning(self, 'Warning', f'Could not switch to Cyclic Synchronous Position mode (mode 8).\nActive controller: {ctrl}\nDrive modes: {moos}\nPlease verify that all drives are operational before starting training.')
+                return
+            QMessageBox.warning(self, 'Warning', f'Go to start controller is not active (active: {ctrl}).\nCannot start training.')
+            return
         self._go_to_start_retry_armed = False
         self.Training_ON = True
-        QTimer.singleShot(500, self._goToStartPosition_afterDelay)
+        yield Call(__import__("time").sleep, 0.5)
+        yield from self._goToStartPosition_afterDelay.__wrapped__(self)
 
+    @gui_task
+    def _finishTrajectory(self):
+        if (yield Call(self.ROS.turnOffMotors)):
+            if self.ROS.getCurrentControllerName() == self.ROS.getGoToStartControllerName():
+                yield Call(self.ROS.enableControllerBehaviour, 'PTP')
+
+    @gui_task
     def _restoreTrajectoryController(self):
-        self.ROS.enableControllerBehaviour("PTP")
+        yield Call(self.ROS.enableControllerBehaviour, 'PTP')
 
+    @gui_task
     def _goToStartPosition_afterDelay(self):
         if self.ROS.getCurrentControllerName() != self.ROS.getGoToStartControllerName():
-            if not self.ROS.enableControllerBehaviour("GoToStart"):
-                QMessageBox.warning(self, "Warning", "Failed in setting the go to startcontroller")
+            if not (yield Call(self.ROS.enableControllerBehaviour, 'GoToStart')):
+                QMessageBox.warning(self, 'Warning', 'Failed in setting the go to startcontroller')
                 return
-            
-        if self.ROS.turnOnMotors():
-            self.ROS.sendGoToStartPTPTrajectory([0.0, 0.0, 0.0], 3.0)
+        if (yield Call(self.ROS.turnOnMotors)):
+            yield Call(self.ROS.sendGoToStartPTPTrajectory, [0.0, 0.0, 0.0], 3.0)
         else:
-            QMessageBox.warning(self, "Warning", "Failed in switching on the motors")
+            QMessageBox.warning(self, 'Warning', 'Failed in switching on the motors')
 
         
 def main():

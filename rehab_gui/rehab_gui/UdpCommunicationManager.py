@@ -67,6 +67,7 @@ def free_udp_port(port: int, force: bool = False, timeout: float = 3.0):
 
 class UdpServer(QObject):
     message_received = pyqtSignal(bytes, tuple)  # data, addr
+    bind_failed = pyqtSignal(str)
 
     def __init__(self, host:str="0.0.0.0", port:int=5005, parent:Any=None):
         super().__init__(parent)
@@ -85,13 +86,32 @@ class UdpServer(QObject):
         
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         free_udp_port(5005, force=True)
-        self.sock.bind((self.host, self.port))
+        try:
+            self.sock.bind((self.host, self.port))
+        except OSError as e:
+            # This runs as a slot on its own QThread: an uncaught exception here
+            # is silently swallowed by Qt, leaving the UDP layer dead with no
+            # visible error -- the rest of the GUI keeps running normally, but
+            # nothing from the embedded controller ever arrives again. Surface
+            # it instead so the failure is visible and the socket is released.
+            print(f"[UdpServer] Failed to bind UDP port {self.port}: {e}")
+            try:
+                self.sock.close()
+            except OSError:
+                pass
+            self.sock = None
+            self.bind_failed.emit(str(e))
+            return
+        self.sock.settimeout(0.2)
         self._running = True
+        sock = self.sock
         while self._running:
             try:
-                data, addr = self.sock.recvfrom(4096)
+                data, addr = sock.recvfrom(4096)
                 self._last_addr = addr
                 self.message_received.emit(data, addr)
+            except socket.timeout:
+                continue
             except OSError as e:
                 print(f"[UdpServer] OSError: {e}")
                 break
@@ -109,7 +129,7 @@ class UdpServer(QObject):
 
     def send_response(self, message: bytes, addr: Optional[Tuple[Any, ...]] =None):
         """Send response to client."""
-        if not self.sock:
+        if not self._running or not self.sock:
             return
         if addr is None:
             addr = self._last_addr
@@ -128,6 +148,7 @@ class UdpCommunicationManager(QObject):
     stop_ros_communication : pyqtSignal = pyqtSignal()
     udp_message_received : pyqtSignal = pyqtSignal(bytes, tuple)
     plc_status_payload_received : pyqtSignal = pyqtSignal(dict)
+    udp_bind_failed : pyqtSignal = pyqtSignal(str)
 
     DEFAULT_PLC_STATES: Dict[str, Any] = {
         's_input.0': False,
@@ -166,12 +187,14 @@ class UdpCommunicationManager(QObject):
         self._plc_output_items: List[Tuple[str, Any]] = []
         self._cached_slave_names: List[str] = self._fit_slave_values([])
         self._cached_slave_states: List[str] = self._fit_slave_values([])
+        self._udp_bind_failure_reason: Optional[str] = None
         self.udp_thread = QThread()
         self.server = UdpServer(port=remote_port)
         self.server.moveToThread(self.udp_thread)
         self.udp_thread.started.connect(self.server.start)
 
         self.server.message_received.connect(self.onUdpMessageReceived)
+        self.server.bind_failed.connect(self._onUdpBindFailed)
         self.udp_thread.start()
 
     def setRosCommunicationActiveChecker(self, checker: Callable[[], bool]) -> None:
@@ -192,6 +215,18 @@ class UdpCommunicationManager(QObject):
         self._cache_udp_received_time()
         self.udpMessageReceived(data)
         self.udp_message_received.emit(data, addr)
+
+    @pyqtSlot(str)
+    def _onUdpBindFailed(self, reason: str) -> None:
+        self._udp_bind_failure_reason = reason
+        print(f"[UdpServer] UDP layer is down, no status from the embedded controller will arrive: {reason}")
+        self.udp_bind_failed.emit(reason)
+
+    def isUdpBindFailed(self) -> bool:
+        return self._udp_bind_failure_reason is not None
+
+    def getUdpBindFailureReason(self) -> Optional[str]:
+        return self._udp_bind_failure_reason
 
     def onResetRosCommunication(self) -> None:
         self.server.send_response(b"ROS_DISCONNECTED")

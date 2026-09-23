@@ -42,13 +42,13 @@ def clean_shutdown():
         package='controller_manager',
         executable='unspawner',
         arguments=['joint_state_broadcaster'],
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
     state_controller_unspawner = Node(
         package='controller_manager',
         executable='unspawner',
         arguments=['state_controller'],
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
     force_torque_sensor_broadcaster_unspawner = Node(
         package='controller_manager',
@@ -56,7 +56,7 @@ def clean_shutdown():
         arguments=[
             "ft_sensor_command_broadcaster"
         ],
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
     joint_controller_unspawner = Node(
         package='controller_manager',
@@ -65,7 +65,7 @@ def clean_shutdown():
             #"joint_trajectory_controller"
             'scaled_joint_trajectory_controller'
         ],
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
     forward_pos_controller_unspawner = Node(
         package='controller_manager',
@@ -73,7 +73,7 @@ def clean_shutdown():
         arguments=[
             "forward_position_controller"
         ],
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}        
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}        
     )
     forward_vel_controller_unspawner = Node(
         package='controller_manager',
@@ -81,7 +81,7 @@ def clean_shutdown():
         arguments=[
             "forward_velocity_controller"
         ],
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
     admittance_controller_unspawner = Node(
         package='controller_manager',
@@ -89,7 +89,7 @@ def clean_shutdown():
         arguments=[
             "admittance_controller"
         ],
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
     return LaunchDescription([
         joint_state_broadcaster_unspawner,
@@ -126,7 +126,7 @@ def generate_launch_description():
         executable='ros2_control_node',
         parameters=[initial_joint_controllers],
         output='screen',
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
 
     jsb = Node(
@@ -134,7 +134,7 @@ def generate_launch_description():
         executable='spawner',
         arguments=['joint_state_broadcaster'],
         output='screen',
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
     
     rsp = Node(
@@ -142,7 +142,7 @@ def generate_launch_description():
         executable='robot_state_publisher',
         output='screen',
         parameters=[robot_description],
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
     
     plc_spawner = Node(
@@ -150,14 +150,14 @@ def generate_launch_description():
         executable='spawner',
         arguments=['PLC_controller'],
         output='screen',
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
 
     plc_manager = Node(
         package='plc_manager',
         executable='plc_manager_node',
         output = 'screen',
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
 
     ssb = Node(
@@ -165,7 +165,7 @@ def generate_launch_description():
         executable='spawner',
         arguments=['state_controller'],
         output='screen',
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
 
     fsb = Node(
@@ -173,7 +173,7 @@ def generate_launch_description():
         executable='spawner',
         arguments=['ft_sensor_command_broadcaster'],
         output='screen',
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
 
     homing = Node(
@@ -181,14 +181,14 @@ def generate_launch_description():
         executable='boot_hw',
         arguments=['MODE_CYCLIC_SYNC_POSITION'],
         output='screen',
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
 
     homing_done_publisher = Node(
         package='tecnobody_workbench_utils',
         executable='homing_completion_publisher',
         output='screen',
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
 
     eth_checker = Node(
@@ -196,14 +196,14 @@ def generate_launch_description():
         executable='ethercat_checker_node',
         name='tecnobody_ethercat_checker_node',
         output='screen',
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
 
     ft_offset_updater = Node(
         package='tecnobody_workbench_utils',
         executable='ft_offset_updater',
         output='screen',
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
 
     joint_controller_node = Node(
@@ -214,7 +214,7 @@ def generate_launch_description():
             # 'scaled_trajectory_controller'
         ],
         output='screen',
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
 
     forward_controller_node = Node(
@@ -222,7 +222,7 @@ def generate_launch_description():
         executable='spawner',
         arguments=['forward_velocity_controller', '--inactive'],
         output='screen',
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
 
     forward_pos_controller_node = Node(
@@ -230,7 +230,7 @@ def generate_launch_description():
         executable='spawner',
         arguments=['forward_position_controller'],
         output='screen',
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
 
     admittance_controller_node = Node(
@@ -238,7 +238,7 @@ def generate_launch_description():
         executable='spawner',
         arguments=['admittance_controller', '--inactive'],
         output='screen',
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{name}]: {message}'}
+        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
 
     homing_launcher = RegisterEventHandler(
@@ -281,7 +281,7 @@ def generate_launch_description():
     ld.add_action(
         SetEnvironmentVariable(
             name='RCUTILS_CONSOLE_OUTPUT_FORMAT',
-            value='[{severity}] [{name}]: {message}'
+            value='[{severity}] [{time}] [{name}]: {message}'
         ))
     ld.add_action(ros2_control_node)
     ld.add_action(plc_spawner)
