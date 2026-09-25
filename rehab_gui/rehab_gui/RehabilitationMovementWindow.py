@@ -12,6 +12,7 @@ from YamlSupport import (read_yaml, validate_movement, validate_protocol,
 
 from enum import Enum
 import sys
+import traceback
 from pathlib import Path
 from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtWidgets import QMessageBox, QPushButton, QFileDialog, QWidget, QApplication
@@ -126,6 +127,21 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
 #####                                                                                                    #####
 ##############################################################################################################
     def clbk_BtnCreateMovementData(self):
+        # This runs in a Qt slot: an exception escaping it makes PyQt5 abort the
+        # whole GUI. Numerical failures (interpolation of odd source files,
+        # degenerate geometry) are reported instead.
+        if not (self.ui.radioButton_TypeOfExercise_Reaching.isChecked()
+                or self.ui.radioButton_TypeOfExercise_HandtoMouth.isChecked()):
+            QMessageBox.warning(self, "Warning", "Select the type of exercise (Reaching or Hand to Mouth) before creating the movement.")
+            return
+        try:
+            self._createMovementData()
+        except Exception as exc:
+            traceback.print_exc()
+            QMessageBox.critical(self, "Movement not created",
+                                 f"The movement could not be created:\n{type(exc).__name__}: {exc}")
+
+    def _createMovementData(self):
         source_data = None
         if self.ui.radioButton_TypeOfExercise_HandtoMouth.isChecked():
             source_path = open_file(path=self.main_app.FMRR_Paths['Movements'])
@@ -182,6 +198,7 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
         _numPoints = numSamples * 30 #lenght of oversampled vectors
         v1 = np.zeros( (numSamples,), dtype = float, order='C' )    
 
+        _ContinueCreateMovement = 0
         if self.TypeOfMovement == ExerciseType.REACHING:  # Reaching (rectilinear trajectory)
             x = np.linspace( x1, x2, _numPoints)
             y = np.linspace( y1, y2, _numPoints )
@@ -218,6 +235,9 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
                 print('L12_LF:')
                 print(L12_LF)
                 # _ConvPara = L12/L12_LF
+                if min(abs(x2_LF - x1_LF), abs(y2_LF - y1_LF), abs(z2_LF - z1_LF)) < 1e-9:
+                    raise YamlDataError('The source movement has no displacement along one axis '
+                                        f'(dx={x2_LF - x1_LF}, dy={y2_LF - y1_LF}, dz={z2_LF - z1_LF}): it cannot be scaled.')
                 _ConvParaX = np.abs(x12/(x2_LF - x1_LF))
                 _ConvParaY = np.abs(y12/(y2_LF - y1_LF))
                 _ConvParaZ = np.abs(z12/(z2_LF - z1_LF))
