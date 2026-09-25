@@ -75,6 +75,7 @@ class RosCommunicationManager(QObject):
         self.roslib_first_time_connection = True
         self.manual_mode_activated = False
         self._exercise_in_suspension: bool = False
+        self._exercise_suspension_label: str = ""
         self._exercise_type: Optional[int] = None
         self._plc_status_provider: Any = None
         self._stop_signal_emitted = False
@@ -629,16 +630,41 @@ class RosCommunicationManager(QObject):
     def setExerciseSuspended(self, value: bool) -> None:
         if self.rOk():
             self.ROS.exercise_suspended = value
+            if not value:
+                self.ROS.exercise_suspension = None  # the cause goes with the flag
 
     # ------------------------------------------------------------------ #
     # Suspension state (GUI-level flag — survives ROS flag reset)          #
     # ------------------------------------------------------------------ #
-    def setExerciseInSuspension(self, value: bool) -> None:
-        """Mark/clear the persistent 'exercise suspended, waiting for resume' state."""
+    def setExerciseInSuspension(self, value: bool, label: str = "") -> None:
+        """Mark/clear the persistent 'exercise suspended, waiting for resume' state.
+
+        label: short cause shown in the system state (e.g. "TRACKING ERROR").
+        """
         self._exercise_in_suspension = value
+        self._exercise_suspension_label = label if value else ""
 
     def isExerciseInSuspension(self) -> bool:
         return self._exercise_in_suspension
+
+    def getExerciseSuspensionLabel(self) -> str:
+        return self._exercise_suspension_label
+
+    def getExerciseSuspensionInfo(self):
+        """Why the robot suspended the exercise (SyncRosManager.result_info), or None."""
+        return self.ROS.exercise_suspension if self.rOk() else None
+
+    def getLastTrajectoryResult(self):
+        """How the last single trajectory (PTP / go-to-start) ended, or None."""
+        return self.ROS.trajectory_result if self.rOk() else None
+
+    def reportLastTrajectoryFailure(self) -> None:
+        """Status-bar message when the last single trajectory did not succeed."""
+        result = self.getLastTrajectoryResult()
+        if result and not result['success']:
+            self.commandFailed.emit(
+                f"Movement ({result['movement_kind'] or 'trajectory'}) not completed: "
+                f"code {result['error_code']} - {result['message']}")
 
     def eegSync(self, movement_count: int) -> None:
         """Send the movement identifier once."""

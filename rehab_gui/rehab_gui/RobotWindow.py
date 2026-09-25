@@ -314,6 +314,7 @@ class RobotWindow(QtWidgets.QDialog):
             self.ui.pushButton_ApproachAllJoint.setChecked(False)
             self.ui.pushButton_ApproachAllJoint.blockSignals(False)
             self.ROS.setTrajectoryCompleted(False)
+            self.ROS.reportLastTrajectoryFailure()
             self._finishTrajectory()
 
     @gui_task

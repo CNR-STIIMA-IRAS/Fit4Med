@@ -121,6 +121,7 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
             self.ROS.areMotorsOn() and self.ROS.getTrajectoryCompleted():
             self.ui.pushButton_GoToZERO.setChecked(False)
             self.ROS.setTrajectoryCompleted(False)
+            self.ROS.reportLastTrajectoryFailure()
             self._finishTrajectory()
 
 ##############################################################################################################

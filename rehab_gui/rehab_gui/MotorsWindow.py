@@ -231,7 +231,7 @@ class MotorsWindow(QtWidgets.QWidget):
         elif self.ROS.areMotorsOn():
             state_key = 'motors_on'
         elif self.ROS.isExerciseInSuspension():
-            state_key = 'suspended'
+            state_key = 'suspended:' + self.ROS.getExerciseSuspensionLabel()
         else:
             state_key = 'motors_off'
 
@@ -279,8 +279,9 @@ class MotorsWindow(QtWidgets.QWidget):
             elif state_key == 'motors_on':
                 self.ui.label_SystemState.setText("Warning \n Motors On")
                 self.ui.label_SystemState.setStyleSheet("background-color: rgb(255,215,00); color: white")
-            elif state_key == 'suspended':
-                self.ui.label_SystemState.setText("SUSPENSION STATE")
+            elif state_key.startswith('suspended'):
+                label = self.ROS.getExerciseSuspensionLabel()
+                self.ui.label_SystemState.setText("SUSPENSION STATE" + (f"\n{label}" if label else ""))
                 self.ui.label_SystemState.setStyleSheet("background-color: rgb(255,140,0); color: white")
             else:
                 self.ui.label_SystemState.setText("Motors Off \n State OK")

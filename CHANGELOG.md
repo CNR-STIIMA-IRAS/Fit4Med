@@ -2,6 +2,91 @@
 
 Notable changes to the Fit4Med platform software. Newest first.
 
+## 2026-09-25 — Movement results from the robot to the GUI, suspension causes, single-threaded trajectory manager
+
+How the robot tells the GUI how a movement ended was rewritten on both sides. The GUI now learns why an exercise was suspended (tracking error, controller error, no progress) and tells the operator. No movement request can be lost any more without the GUI noticing. Resolves the "stall detection" open point of the audit below.
+
+### Before deploying
+
+- **Update the robot and the GUI together.** The GUI services `/rehab_gui/trajectory_finished`, `/rehab_gui/exercise_finished` and `/rehab_gui/exercise_suspended` change type from `std_srvs/Trigger` to `tecnobody_msgs/TrajectoryResult`. With mismatched versions these notifications do not get through: the robot logs `notification LOST`, the GUI only notices through the "NO PROGRESS" suspension.
+- **Rebuild on the robot** and restart the whole stack, rosbridge included (it must know the new type):
+  ```bash
+  cd ~/fit4med_ws && colcon build --packages-select tecnobody_msgs tecnobody_workbench_utils
+  ```
+- **Checks on the machine:**
+  - `ros2 interface show tecnobody_msgs/srv/TrajectoryResult` shows the type;
+  - with the GUI connected, `ros2 service type /rehab_gui/exercise_suspended` gives `tecnobody_msgs/srv/TrajectoryResult`;
+  - to see the pop-up without a real error, during a training:
+    ```bash
+    ros2 service call /rehab_gui/exercise_suspended tecnobody_msgs/srv/TrajectoryResult \
+      "{success: false, action_status: 6, error_code: -4, message: 'test', movement_kind: 'exercise'}"
+    ```
+    It must answer `accepted: true`, and the GUI must show "Training suspended - tracking error".
+  - troubleshooting: `notification LOST` / `did NOT accept` / `Movement refused` in the robot journal (`fit4med_ethercat_timeline.log`), `on_exercise_suspended` in `gui_console.log`.
+- **The trajectory manager (`fct_manager_node`) now runs single-threaded with `spin()`** instead of `spin_once()` + `sleep(0.05)`. Measured on one core with the node's timer and subscription rates: CPU from ~1 % to ~2.5 %, all callbacks served. Try a full training, a PAUSE/RESUME and a STOP on the real platform.
+
+### Robot side (`tecnobody_workbench_utils/gui_trajectory_manager.py`)
+
+#### Changed
+
+- **Results sent as `tecnobody_msgs/TrajectoryResult`** (`success`, `action_status`, `error_code`, `message`, `movement_kind`), answered by the GUI with `accepted`:
+  - repetition aborted → `exercise_suspended` with the controller's code and message (e.g. −4 `PATH_TOLERANCE_VIOLATED`);
+  - repetition without a usable result → `exercise_suspended`, code 999;
+  - repetition completed → `exercise_finished`;
+  - PTP / go-to-start ended → `trajectory_finished` with its outcome.
+
+  This reinstates the reporting added in July (`4b243d2`, `c0637c6`, `21ab013`) and removed in `564cfd7` because the message was not built on the machine.
+- **`GuiNotifier` delivers every notification to the GUI**, including `movement_stopped` (still `Trigger`):
+  - it never blocks the calling callback (before: up to 5 s inside the executor);
+  - if the GUI service is missing (rosbridge reconnecting), it waits up to 10 s instead of dropping the notification (before: dropped after 0.5 s for "repetition finished");
+  - each notification is sent once and in order, since resending one whose reply got lost could count a repetition twice;
+  - the GUI's answer is checked: refusals, missing replies and notifications given up are logged;
+  - its polling timer runs only while something is pending, costing nothing at rest;
+  - one client per service instead of a new one for every notification.
+- **Movement requests are refused, not lost, when the controller is missing.** `set_trajectory`, `set_go_to_start_trajectory`, `set_rehab_exercise` and `set_eeg_exercise` used to answer `success: true` in every case. They now wait up to 1 s for the controller's action server (discovery right after a controller switch) and answer `success: false` if it does not appear; the GUI then switches the motors off and reports it.
+- **Goals that never start are reported:**
+  - rejected by the controller → `INVALID_GOAL` (−1);
+  - not answered within 5 s → code 999, and a late acceptance is cancelled at once instead of running;
+  - an acceptance of a superseded goal (e.g. after a timeout and a retry) is cancelled as well, instead of replacing the current goal.
+
+  Exercises report to `exercise_suspended`, single trajectories to `trajectory_finished`.
+- An aborted repetition stops the progress timer (it kept sending time-based progress for a dead goal).
+- A trajectory cancelled by a GUI stop no longer sends `trajectory_finished` (the GUI gets `movement_stopped`). It left the GUI's "completed" flag set, ending the next movement as soon as the motors were on.
+- **Single-threaded executor and `spin()`** in `main()`. The process is pinned to one core and Python runs one thread at a time, so the four threads gave no parallelism, only interleaved callbacks (e.g. the progress timer reading the lists `clear()` rebuilds). `spin_once()` + `sleep(0.05)` ran at most ~20 callbacks/s: the 25 Hz speed scaling subscription got ~10 Hz. No callback blocks, so running them one at a time cannot deadlock. Ctrl-C/`ExternalShutdownException` end the node cleanly.
+
+### GUI side (`rehab_gui`)
+
+#### Changed
+
+- **Two kinds of suspension** (`TrainingProtocolWindow.py`):
+  - **by the robot** (aborted repetition, or a stop not requested by the GUI): the robot is already stopped, the motors are switched off. State label "TRACKING ERROR" (codes −4/−5), "ROBOT ERROR" or "ROBOT STOP";
+  - **by the GUI** ("NO PROGRESS"): no progress from the robot for 15 s (was 5 s), now measured in real time instead of timer ticks, also at 0 %. The movement is stopped (`requestStopAnyMovement`, then motors off) because the robot may still be moving.
+
+  Both keep the phase for the resume.
+- **Non-blocking pop-up** on suspension. It gives the phase, the explanation of the code, the robot controller's message and how to resume, with the full result in the details. It is not `exec_()`, so the GUI keeps running.
+- **The state label** shows the cause under "SUSPENSION STATE" (`MotorsWindow.py`).
+- The three services are `tecnobody_msgs/TrajectoryResult` and answer `accepted` (`sync_ros_events.py`); a malformed request still counts, with code 999.
+- A failed PTP or go-to-start is reported in the status bar with its code; the motors were already switched off.
+
+#### Fixed
+
+- The "completed" flag and the last result are cleared before each PTP / go-to-start, and the progress is reset to 0 % at each exercise start (it showed the previous exercise's 100 %).
+- The suspension cause is cleared together with its flag.
+
+### Tests
+
+- Robot: `test/test_gui_notifier.py` and `test/test_goal_start.py`, 18 tests with real rclpy nodes:
+  - the notifier: late GUI, order, refusal, GUI never coming, idle timer, `Trigger` services;
+  - the goal results: aborted, without result, succeeded, cancelled;
+  - the real manager against a fake `FollowJointTrajectory` controller: absent, late, rejecting, accepting, not answering in time, a superseded late acceptance, a GUI stop;
+  - the real `main()` in its own process: answers a request, stops on Ctrl-C with exit code 0.
+- GUI: `tests/test_suspension_kinds.py`: result services, the two suspension kinds with a controlled clock, pop-up texts, flag and progress resets. `tests/test_training_resume.py` gives the suspension cause. 71 GUI tests pass.
+
+### Notes
+
+- `safemod_controllers.yaml` (used by the platform launch files) sets `trajectory: 0.15` per joint for both trajectory controllers: a deviation above 0.15 m aborts with `PATH_TOLERANCE_VIOLATED` (−4), shown as "TRACKING ERROR". With `goal_time: 0.0` the controller waits indefinitely for the goal tolerance (1 mm, 5–10 mm for go-to-start): code −5 cannot occur, and a movement that never gets within tolerance stays at 100 %, which the "NO PROGRESS" suspension now catches after 15 s.
+- Not changed: `set_trajectory` still answers before knowing whether the controller accepts the goal (answering later would mean waiting inside the service callback); rejections and timeouts are reported through `trajectory_finished` / `exercise_suspended` instead.
+
 ## 2026-09-25 — `rehab_gui` audit: crashes, motion safety, training resume
 
 Second audit of the GUI. Every fix comes with regression tests that fail on the previous code; the GUI test suite grows from 24 to 56 tests.
