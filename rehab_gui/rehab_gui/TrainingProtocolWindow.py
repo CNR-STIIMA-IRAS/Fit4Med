@@ -19,9 +19,7 @@ from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import QProgressBar, QSpinBox, QLCDNumber, QComboBox, QMessageBox, QWidget, QButtonGroup, QFileDialog, QApplication
 from PyQt5.QtCore import QTimer, pyqtSignal
 
-
-from rich.traceback import install
-install(show_locals=True)
+# rich tracebacks are installed once by session_log (terminal + gui_errors.log).
 
 from ui.uiTrainingProtocolWindow import Ui_TrainingProtocolWindow
 from RehabilitationMovementWindow import ExerciseType
