@@ -232,7 +232,12 @@ class RobotWindow(QtWidgets.QDialog):
             return
         target_time = max(PTP_MIN_TIME_S, distance / PTP_MAX_SPEED)
         print(f'Go To {target} from {current}: {distance:.3f} m in {target_time:.1f} s')
-        yield Call(self.ROS.sendPTPTrajectory, target, target_time)
+        if not (yield Call(self.ROS.sendPTPTrajectory, target, target_time)):
+            yield Call(self.ROS.turnOffMotors)
+            self._resetGoToButton()
+            QMessageBox.warning(self, 'Warning',
+                                'The PTP movement could not be sent to the robot: motors switched off.\n'
+                                'Check the robot state and the logs, then try again.')
 
     def _resetGoToButton(self):
         # Un-press GoTo without triggering goTo(False), which would send a stop.

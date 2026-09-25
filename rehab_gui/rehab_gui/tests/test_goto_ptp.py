@@ -33,7 +33,7 @@ class GoToTest(unittest.TestCase):
         self.warning = patch.object(rw.QMessageBox, 'warning').start()
         self.addCleanup(patch.stopall)
 
-    def run_goto(self, target, current, motors_on=True):
+    def run_goto(self, target, current, motors_on=True, sent=True):
         """Drive the GoTo task; return the Calls it yields after the delay."""
         ui = self.window.ui
         for spin, value in zip((ui.doubleSpin_Joint1_Value, ui.doubleSpin_Joint2_Value,
@@ -48,7 +48,8 @@ class GoToTest(unittest.TestCase):
             while True:
                 call = task.send(answer)
                 calls.append(call)
-                answer = motors_on if call.function is self.window.ROS.turnOnMotors else True
+                answer = {self.window.ROS.turnOnMotors: motors_on,
+                          self.window.ROS.sendPTPTrajectory: sent}.get(call.function, True)
         except StopIteration:
             pass
         return calls
@@ -87,6 +88,21 @@ class GoToTest(unittest.TestCase):
     def check_aborted_with_motors_off(self, calls):
         self.assertEqual([c.function for c in calls],
                          [self.window.ROS.turnOnMotors, self.window.ROS.turnOffMotors])
+        self.warning.assert_called_once()
+        self.assertFalse(self.window.ui.pushButton_ApproachAllJoint.isChecked())
+
+    def test_successful_send_leaves_the_motors_on(self):
+        calls = self.run_goto((0.1, 0.0, 0.0), [0.0, 0.0, 0.0])
+        self.assertEqual([c.function for c in calls],
+                         [self.window.ROS.turnOnMotors, self.window.ROS.sendPTPTrajectory])
+        self.warning.assert_not_called()
+        self.assertTrue(self.window.ui.pushButton_ApproachAllJoint.isChecked())
+
+    def test_failed_send_switches_the_motors_off(self):
+        calls = self.run_goto((0.1, 0.0, 0.0), [0.0, 0.0, 0.0], sent=False)
+        self.assertEqual([c.function for c in calls],
+                         [self.window.ROS.turnOnMotors, self.window.ROS.sendPTPTrajectory,
+                          self.window.ROS.turnOffMotors])
         self.warning.assert_called_once()
         self.assertFalse(self.window.ui.pushButton_ApproachAllJoint.isChecked())
 

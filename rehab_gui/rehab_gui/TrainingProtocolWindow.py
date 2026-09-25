@@ -597,11 +597,18 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         self.CartesianPositions = TrjYamlData.get('cart_trj3').get('cart_positions')
         self.TimeFromStart = TrjYamlData.get('cart_trj3').get('time_from_start')
         if not (yield Call(self.ROS.turnOnMotors)):
+            QMessageBox.warning(self, 'Warning', 'Failed in switching on the motors')
             return
         pending_percentages = self._get_pending_phase_percentages()
         pending_durations = self._get_pending_phase_durations()
         sent = (yield Call(self.ROS.setExercise, self.CartesianPositions, self.TimeFromStart, pending_percentages, pending_durations, self.EEGModeEnabled))
         if not sent:
+            # The motors were switched on above for this exercise: do not leave
+            # them on, holding position, with nothing to execute.
+            yield Call(self.ROS.turnOffMotors)
+            QMessageBox.warning(self, 'Warning',
+                                'The exercise could not be sent to the robot: motors switched off.\n'
+                                'Check the robot state and the logs, then try again.')
             return False
         self.TotalTrainingTime = sum(pending_durations)
         self._update_total_training_time_display(force=True)

@@ -667,10 +667,16 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
             if not (yield Call(self.ROS.enableControllerBehaviour, 'GoToStart')):
                 QMessageBox.warning(self, 'Warning', 'Failed in setting the go to startcontroller')
                 return
-        if (yield Call(self.ROS.turnOnMotors)):
-            yield Call(self.ROS.sendGoToStartPTPTrajectory, [0.0, 0.0, 0.0], 3.0)
-        else:
+        if not (yield Call(self.ROS.turnOnMotors)):
             QMessageBox.warning(self, 'Warning', 'Failed in switching on the motors')
+            return
+        if not (yield Call(self.ROS.sendGoToStartPTPTrajectory, [0.0, 0.0, 0.0], 3.0)):
+            # Same end state as a completed go-to-start: motors off and the
+            # trajectory controller back.
+            yield from self._finishTrajectory.__wrapped__(self)
+            QMessageBox.warning(self, 'Warning',
+                                'The movement to the start position could not be sent to the robot: '
+                                'motors switched off.\nCheck the robot state and the logs, then try again.')
 
         
 def main():

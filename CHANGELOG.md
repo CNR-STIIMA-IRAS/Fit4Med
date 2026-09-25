@@ -2,6 +2,51 @@
 
 Notable changes to the Fit4Med platform software. Newest first.
 
+## 2026-09-25 — `rehab_gui` audit: crashes, motion safety, training resume
+
+Second audit of the GUI. Every fix comes with regression tests that fail on the previous code; the GUI test suite grows from 24 to 56 tests.
+
+### Before deploying
+
+- **GoTo (Robot tab) durations change.** Some movements become slower, others faster, all within the same limit (see below). Try a long and a short GoTo on the real platform.
+- **CREATE without saving no longer changes the active movement.** To try a newly created movement, save it first.
+
+### Fixed
+
+- **`gui_errors.log` stayed empty for GUI-thread errors** (`TrainingProtocolWindow.py`). The module called `rich.traceback.install()` at import time, after `session_log` had set up its handler, and replaced it. The call is removed: `session_log` installs rich once, for the terminal and the file.
+- **CREATE (Rehabilitation Movement tab) could close the whole GUI** (`RehabilitationMovementWindow.py`). An exception escaping the Qt slot makes PyQt5 abort the process:
+  - with no exercise type selected (possible after loading a movement file with `type: 0`), an unassigned variable raised `UnboundLocalError`; CREATE now asks to select the type;
+  - a Hand-to-Mouth source movement with no displacement along one axis caused a division by zero; it is now refused with a message;
+  - any other numerical failure (e.g. cubic interpolation of repeated points) is reported as "Movement not created" and logged.
+- **CREATE changed the active movement before it was saved.** Type and side were overwritten at the start, even when the creation then failed; the trajectory, `Vmax` and `PhaseDuration` were replaced before saving. With the save cancelled, training ran the new, unsaved trajectory under the previous file's name, and the PLC could receive the wrong sensor mode. The created movement is now kept aside and becomes active only once saved, right away or later with SAVE. LOAD discards an unsaved created movement. CREATE is refused during a training or a ROS command, like LOAD.
+- **GoTo (Robot tab) could be much faster than intended** (`RobotWindow.py`). The duration was computed from the target's distance from zero, not from the current position, and per axis instead of along the path, with a discontinuity at 10 cm. Example: from −0.40 m to (0.05, 0, 0.10), 0.45 m in 1.0 s, i.e. 0.45 m/s average (~0.68 m/s peak) instead of 0.1 m/s. The duration is now the straight-path distance from the current position divided by `PTP_MAX_SPEED` (0.1 m/s average), at least `PTP_MIN_TIME_S` (2 s). The current position is read after switching the motors on, as the ROS side starts the trajectory from there.
+  - An invalid current position (wrong length, non-numeric, NaN or infinite distance) switches the motors off and is reported. A NaN distance is turned into an error on purpose: `max(2.0, nan)` would silently give 2 s.
+  - After a failure (target out of range, motors not switching on, invalid position), the GoTo button is released: the next press used to send a stop instead of a movement.
+- **After a suspension, later trainings restarted from the wrong phase** (`TrainingProtocolWindow.py`). The phase to resume from after a suspension (tracking error) was reset only by reloading the protocol, so a completed or stopped protocol ran again from the suspension phase. Stopping, completing the protocol or losing the ROS connection now reset it to phase 1, and the total time shown is updated. A suspension still resumes from the interrupted phase, so the protocol is concluded.
+- **Motors left on when a send failed after switching them on.** The operator saw nothing but "Warning Motors On":
+  - training (`sendExercise`): exercise not accepted → motors switched off, message; motors not switching on → message (previously silent);
+  - GO to START (`_goToStartPosition_afterDelay`): the send result was never checked; on failure the motors are switched off, the trajectory controller is restored (as after a completed go-to-start), message;
+  - GoTo (Robot tab): motors switched off, button released, message.
+
+  A STOP pressed during the send cancels the task: the added lines do not run, and the stop sequence switches the motors off as before.
+
+### Tests
+
+- `tests/test_create_movement.py`: CREATE without type, degenerate Hand-to-Mouth sources, created movement kept until saved, LOAD discarding it, refusal during training.
+- `tests/test_goto_ptp.py`: GoTo durations, invalid positions, button release, failed send.
+- `tests/test_training_resume.py`: phases sent by START after suspensions, stops, completions and ROS loss.
+- `tests/test_send_failures.py`: failed sends in training and go-to-start, including STOP during the send through the real `GuiTask`.
+- `tests/test_async_flow.py`: the stop harness also stubs `_update_total_training_time_display`.
+
+### Open points (not changed)
+
+- **Hand-to-Mouth template scaling** (CREATE): per-axis scaling cannot reach a target when the template does not move along an axis (now refused), amplifies noise on axes that move very little, and uses absolute scale factors, so a target of opposite sign ends at the mirrored point; the end point is then overwritten with the reached one, without warning. On hold for review by the author of the algorithm.
+- **Stall detection** (`TrainingProtocolWindow.updateWindow`): 5 s without progress are treated as a suspension and the motors are switched off, but the ROS-side progress is time based and also stops at 100 % while the last segment settles, and whenever the speed factor drops below 0.01 for reasons other than the GUI PAUSE.
+- **Drive logic power reset** (`MotorsWindow.resetFaults`): power is cut and restored by a 2 s GUI timer; if the ROS link drops meanwhile, it stays cut, and the button is re-enabled within ~100 ms, allowing overlapping cycles.
+- **`PhaseIsEnabled`** is read from the protocol but never used: all 20 phases are always executed.
+- **`'override': 50`** is sent with every PTP request; how the ROS side applies it (and so the real PTP speeds) is not verified.
+- Minor: the relative homing writes marker files to `/tmp` (on Windows `C:\tmp`) that nothing reads; `clbk_BtnGoToStartPosition` sets `Training_ON` on the movement window, where it is never used.
+
 ## 2026-09-25 — GUI/controller link robustness, logs, robot backup and sync
 
 The main goal of this round was the GUI (`rehab_gui/FMRRMainProgram.py`) that sometimes crashed or froze and left UDP port 5005 taken, so that the next GUI could not receive the controller status.
