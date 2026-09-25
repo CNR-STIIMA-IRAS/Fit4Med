@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from GuiRosTasks import Call, gui_task
+import math
 import os
 import sys
 from PyQt5 import QtWidgets
@@ -13,6 +14,11 @@ from RosCommunicationManager import RosCommunicationManager
 from UdpCommunicationManager import UdpCommunicationManager
 from copy import deepcopy
 import time
+
+# GoTo (PTP) timing. The ROS side interpolates with a clamped cubic spline, so
+# the peak speed is 1.5x the average one.
+PTP_MAX_SPEED = 0.1   # m/s, average handle speed along the straight path
+PTP_MIN_TIME_S = 2.0
 
 class ProgressBarWorker(QObject):
     def __init__(self, progress_bar):
@@ -198,21 +204,41 @@ class RobotWindow(QtWidgets.QDialog):
         yield Call(time.sleep, 0.5)
         if not self.ui.pushButton_ApproachAllJoint.isChecked():
             return
-        ActualRobotConfiguration = deepcopy(self.ROS.getHandleFeedbackPosition())
-        NewRobotConfiguration = ActualRobotConfiguration
-        JointTargetPosition = (float(self.ui.doubleSpin_Joint1_Value.value()), float(self.ui.doubleSpin_Joint2_Value.value()), float(self.ui.doubleSpin_Joint3_Value.value()))
-        if any((abs(JointTargetPosition[idx]) > 0.5 for idx in range(len(self.ROS.getJointNames())))):
+        target = (float(self.ui.doubleSpin_Joint1_Value.value()),
+                  float(self.ui.doubleSpin_Joint2_Value.value()),
+                  float(self.ui.doubleSpin_Joint3_Value.value()))
+        if any(abs(value) > 0.5 for value in target):
+            self._resetGoToButton()
             QMessageBox.warning(self, 'Warning', f'Joint target position is out of range. Please set a value between -0.5 and 0.5.')
             return
-        NewRobotConfiguration = JointTargetPosition
-        target_time = max((abs(NewRobotConfiguration[i]) for i in range(len(self.ROS.getJointNames())))) / 0.1
-        if target_time < 1.0:
-            target_time = 2.0
-        if (yield Call(self.ROS.turnOnMotors)):
-            print(f'Go To {NewRobotConfiguration} from {self.ROS.getHandleFeedbackPosition()}')
-            yield Call(self.ROS.sendPTPTrajectory, NewRobotConfiguration, target_time)
-        else:
+        if not (yield Call(self.ROS.turnOnMotors)):
+            self._resetGoToButton()
             QMessageBox.warning(self, 'Warning', 'Failed in switching on the motors')
+            return
+        # Duration from the distance to where the trajectory really starts:
+        # send_ptp_trajectory uses the current position as its first point
+        # (read after switching the motors on).
+        current = self.ROS.getRobotJointPosition()
+        try:
+            distance = math.dist(target, current)
+            if not math.isfinite(distance):
+                # max(PTP_MIN_TIME_S, nan) would silently give PTP_MIN_TIME_S.
+                raise ValueError(f'distance is {distance}')
+        except (TypeError, ValueError) as exc:
+            # Motors are already on: switch them off before giving up.
+            yield Call(self.ROS.turnOffMotors)
+            self._resetGoToButton()
+            QMessageBox.warning(self, 'Warning', f'Cannot compute the PTP movement from the current position {current}: {exc}')
+            return
+        target_time = max(PTP_MIN_TIME_S, distance / PTP_MAX_SPEED)
+        print(f'Go To {target} from {current}: {distance:.3f} m in {target_time:.1f} s')
+        yield Call(self.ROS.sendPTPTrajectory, target, target_time)
+
+    def _resetGoToButton(self):
+        # Un-press GoTo without triggering goTo(False), which would send a stop.
+        self.ui.pushButton_ApproachAllJoint.blockSignals(True)
+        self.ui.pushButton_ApproachAllJoint.setChecked(False)
+        self.ui.pushButton_ApproachAllJoint.blockSignals(False)
         
     @gui_task
     def moveRobotManually(self, activate):
