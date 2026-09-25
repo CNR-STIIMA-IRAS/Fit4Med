@@ -67,6 +67,9 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
         self.TypeOfMovement : ExerciseType = ExerciseType.NONE
         self.vel_profile = 2
         self._go_to_start_retry_armed = False
+        # Movement built by CREATE but not saved yet: it replaces the active
+        # movement (TrjYamlData, type, side, Vmax, ...) only once saved.
+        self._created_movement = None
 
         self.main_app.movement_loaded = 0
         
@@ -127,6 +130,10 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
 #####                                                                                                    #####
 ##############################################################################################################
     def clbk_BtnCreateMovementData(self):
+        training = self.main_app.trainingProtocolWindow
+        if training.Training_ON or training._stop_pending or self.ROS.isCommandBusy():
+            QMessageBox.warning(self, "Movimento", "Terminare l'operazione in corso prima di creare un movimento.")
+            return
         # This runs in a Qt slot: an exception escaping it makes PyQt5 abort the
         # whole GUI. Numerical failures (interpolation of odd source files,
         # degenerate geometry) are reported instead.
@@ -159,19 +166,21 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
         MovementsPath = self.main_app.FMRR_Paths['Movements']
         update_rate = 50
         
+        # Side and type of the movement being created. The active ones
+        # (self.SideOfMovement / self.TypeOfMovement) change only on save.
         if self.ui.radioButton_SideLeft.isChecked() == True:
-            self.SideOfMovement = 1
+            side_of_movement = 1
         elif self.ui.radioButton_SideRight.isChecked() == True :
-            self.SideOfMovement = 2
+            side_of_movement = 2
         else:
-            self.SideOfMovement = 0
+            side_of_movement = 0
               
         if self.ui.radioButton_TypeOfExercise_Reaching.isChecked() == True:
-            self.TypeOfMovement = ExerciseType.REACHING
+            type_of_movement = ExerciseType.REACHING
         elif self.ui.radioButton_TypeOfExercise_HandtoMouth.isChecked() == True:
-            self.TypeOfMovement = ExerciseType.HAND_TO_MOUTH
+            type_of_movement = ExerciseType.HAND_TO_MOUTH
         else:
-            self.TypeOfMovement = ExerciseType.NONE
+            type_of_movement = ExerciseType.NONE
             
         x_begin = 0.0        
         y_begin = 0.0
@@ -199,13 +208,13 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
         v1 = np.zeros( (numSamples,), dtype = float, order='C' )    
 
         _ContinueCreateMovement = 0
-        if self.TypeOfMovement == ExerciseType.REACHING:  # Reaching (rectilinear trajectory)
+        if type_of_movement == ExerciseType.REACHING:  # Reaching (rectilinear trajectory)
             x = np.linspace( x1, x2, _numPoints)
             y = np.linspace( y1, y2, _numPoints )
             z = np.linspace( z1, z2, _numPoints )
             L = L12
             _ContinueCreateMovement = 1
-        elif self.TypeOfMovement == ExerciseType.HAND_TO_MOUTH:    # Hand to Mouth
+        elif type_of_movement == ExerciseType.HAND_TO_MOUTH:    # Hand to Mouth
             if source_data is not None:
                 _TrjYamlData = source_data
                 PositionsLenght_LF = len( _TrjYamlData.get("cart_trj3").get("cart_positions") )
@@ -314,11 +323,11 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
                 print('z_endCov:')
                 print(z_new[-1])
 
-                print("self.SideOfMovement")
-                print(self.SideOfMovement)
+                print("side_of_movement")
+                print(side_of_movement)
                 print("side da file:")
                 print(side)
-                if self.SideOfMovement != side[0]:
+                if side_of_movement != side[0]:
                     print("Inverto movimento per cambio braccio")
                     print("y before: ", y[10:14])
                     y = - y
@@ -415,8 +424,8 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
             TrjYamlData = dict()
     #        
             a_movement_definition = dict()
-            a_movement_definition['type']= [ self.TypeOfMovement.value ]
-            a_movement_definition['side'] = [ self.SideOfMovement ]
+            a_movement_definition['type']= [ type_of_movement.value ]
+            a_movement_definition['side'] = [ side_of_movement ]
             a_movement_definition['vel_profile'] = [ self.vel_profile ]
             a_movement_definition['max_velocity'] = [ float(Vmax*100) ]
             a_movement_definition['total_time'] = [ T ]
@@ -467,9 +476,16 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
             except Exception as exc:
                 report_yaml_error(self, "movimento generato", exc)
                 return
-            self.TrjYamlData = TrjYamlData
-            self.main_app.PhaseDuration = 2 * T
-            self.main_app.Vmax = float(Vmax * 100)
+            # Kept aside until saved: training keeps using the active
+            # movement, under its own name, until the new one is on disk.
+            self._created_movement = {
+                'TrjYamlData': TrjYamlData,
+                'TypeOfMovement': type_of_movement,
+                'SideOfMovement': side_of_movement,
+                'vel_profile': self.vel_profile,
+                'Vmax': float(Vmax * 100),  # conversion to cm/s
+                'PhaseDuration': 2 * T,
+            }
             NewFilename = QtWidgets.QFileDialog.getSaveFileName(None, "Save new movement as:", MovementsPath, "*.yaml")            
             self.ui.pushButton_SAVEMovement.setEnabled(True)
 
@@ -477,14 +493,22 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
                 print('This is the filename of the created movement: ')
                 print(NewFilename[0])
                 print('This is T: %s' %T)
-                if not self.SaveNewFile(TrjYamlData, NewFilename[0]):
-                    return
-                self.main_app.PhaseDuration = 2 * T
-                # self.main_app.Vmax = Vmax*100 # conversion to cm/s
-                self.main_app.movement_loaded = 1
+                if self.SaveNewFile(TrjYamlData, NewFilename[0]):
+                    self._commitCreatedMovement()
             else:
                 self.ui.pushButton_CREATEMovement.setEnabled(False)
                 print('No proper filename was selected. Create movemement again or use the SaveMovement button')
+
+    def _commitCreatedMovement(self):
+        """Make the saved created movement the active one."""
+        created, self._created_movement = self._created_movement, None
+        self.TrjYamlData = created['TrjYamlData']
+        self.TypeOfMovement = created['TypeOfMovement']
+        self.SideOfMovement = created['SideOfMovement']
+        self.vel_profile = created['vel_profile']
+        self.main_app.Vmax = created['Vmax']
+        self.main_app.PhaseDuration = created['PhaseDuration']
+        self.main_app.movement_loaded = True
                     
     def clbk_BtnSAVEMovement(self):
         MovementsPath = self.main_app.FMRR_Paths['Movements']
@@ -493,7 +517,12 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
         if bool(NewFilename[0]):
             print('This is the filename of the loaded movement:')
             print(NewFilename[0])
-            if self.SaveNewFile(self.TrjYamlData, NewFilename[0]):
+            # A created-but-unsaved movement is saved (and becomes active);
+            # otherwise this is a "save as" of the active movement.
+            if self._created_movement is not None:
+                if self.SaveNewFile(self._created_movement['TrjYamlData'], NewFilename[0]):
+                    self._commitCreatedMovement()
+            elif self.SaveNewFile(self.TrjYamlData, NewFilename[0]):
                 self.main_app.movement_loaded = True
 
     def SaveNewFile(self, Data, NewFilename):
@@ -544,7 +573,7 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
         widgets += [(w, 'value', 'display') for w in (self.ui.lcdNumber_EndPos_X, self.ui.lcdNumber_EndPos_Y, self.ui.lcdNumber_EndPos_Z)]
         names = ['TrjYamlData', 'TypeOfMovement', 'SideOfMovement', 'vel_profile',
                  'JointTargetPosition', 'Start_HandlePosition', 'End_HandlePosition',
-                 'Start_RobotJointPosition', '_go_to_start_retry_armed']
+                 'Start_RobotJointPosition', '_go_to_start_retry_armed', '_created_movement']
         with gui_transaction([(self, names), (self.main_app, ['Vmax', 'PhaseDuration', 'movement_loaded'])], widgets):
             self.TrjYamlData = candidate
             self.TypeOfMovement, self.SideOfMovement, self.vel_profile = kind, side, profile
@@ -553,6 +582,7 @@ class RehabilitationMovementWindow(QtWidgets.QDialog):
             self.End_HandlePosition = end
             self.Start_RobotJointPosition = list(meta['begin_joint_config'][0])
             self._go_to_start_retry_armed = False
+            self._created_movement = None  # a loaded movement replaces an unsaved created one
             self.main_app.Vmax, self.main_app.PhaseDuration = vmax, 2 * duration
             self.ui.lineEdit_MovementName.setText(name)
             self.ui.doubleSpinBox_MoveTime.setValue(duration)
