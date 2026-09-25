@@ -238,6 +238,43 @@ _fit4med_sync_apply_staged() {
   echo "[INFO] Rebuild the workspace (colcon build) before the next bring-up."
 }
 
+# fit4med_merged_journal <bringup_user_unit>: one timeline (current boot) of
+# the bring-up service, ethercat.service and the EtherCAT kernel messages, to
+# see which side reports a problem first. Used by fmrr_retrieve_logs.ps1.
+fit4med_merged_journal() {
+  local unit="$1"
+  echo "# Timeline of this boot: [FIT4MED] $unit, [ETHERCAT] ethercat.service,"
+  echo "# [KERNEL] EtherCAT master kernel messages. Times are this robot's clock."
+  if [[ $EUID -ne 0 ]] && ! id -nG | grep -qwE 'systemd-journal|adm'; then
+    echo "# WARNING: $(id -un) cannot read the system journal: [ETHERCAT] and [KERNEL] lines are missing."
+    echo "#          Once, on the robot: sudo usermod -aG systemd-journal $(id -un)"
+  fi
+  {
+    journalctl --user -u "$unit" -b -o short-iso-precise --no-pager 2>/dev/null \
+      | _fit4med_tag_journal FIT4MED
+    journalctl -u ethercat.service -b -o short-iso-precise --no-pager 2>/dev/null \
+      | _fit4med_tag_journal ETHERCAT
+    journalctl -k -b -o short-iso-precise --no-pager 2>/dev/null | grep -i 'ethercat' \
+      | _fit4med_tag_journal KERNEL
+  } | LC_ALL=C sort -s -k1,1  # ISO timestamps sort chronologically; -s keeps multi-line messages in order
+}
+
+# _fit4med_tag_journal <tag>: "TIMESTAMP [TAG] ident[pid]: message" per line.
+# Continuation lines of multi-line messages get the timestamp of their message,
+# so sorting cannot separate them from it.
+_fit4med_tag_journal() {
+  awk -v tag="$1" '
+    /^-- / { next }  # journalctl banners: "-- No entries --", boot markers
+    /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T/ {
+      ts = $1
+      sub(/^[^ ]+ [^ ]+ /, "")  # drop timestamp and hostname
+      print ts " [" tag "] " $0
+      next
+    }
+    ts != "" { print ts " [" tag "] " $0 }
+  '
+}
+
 # ---------------------------------------------------------------------------
 # Running them on the robot from the user PC
 # ---------------------------------------------------------------------------

@@ -91,6 +91,25 @@ fit4med_backup.sh / fit4med_restore.sh<br>
  - SetTrajectory.srv - Tajectory execution request
 
 
+## One-time setup on the robot PC (Linux, 192.168.1.1)
+
+> [!IMPORTANT]
+> **Let `fit4med` read the system journal.** Run once on the robot PC:
+>
+> ```bash
+> sudo usermod -aG systemd-journal fit4med
+> ```
+>
+> It takes effect at the next login (for ssh: the next connection). Without it,
+> `ps_scripts/fmrr_retrieve_logs.ps1` still runs but misses the EtherCAT side
+> (the timeline file only starts with a warning): `ethercat.service` and the EtherCAT master kernel messages are
+> system logs, readable only by root or members of `systemd-journal`. The
+> `[ETHERCAT]` and `[KERNEL]` lines of the merged timeline
+> (`fit4med_ethercat_timeline.log`) would then be empty, and it would no longer
+> show whether a failure starts on the EtherCAT network or in the controller.
+>
+> Check: `id fit4med` must list `systemd-journal`.
+
 ## Setting up a GUI PC from scratch (Windows)
 
 The GUI is a plain Python/PyQt5 application: it never uses `rclpy`, it talks to
@@ -200,6 +219,18 @@ uv run python rehab_gui\rehab_gui\FMRRMainProgram.py --remote-ip 192.168.1.1 --m
 ```powershell
 .\ps_scripts\fmrr_cleanup.ps1
 ```
+
+### 9. Collect the logs after a problem
+
+```powershell
+.\ps_scripts\fmrr_retrieve_logs.ps1
+```
+
+Everything lands in `Desktop\fit4med_logs\`: the bring-up and `ethercat.service`
+journals, a merged timeline of both (`fit4med_ethercat_timeline.log`), the
+robot and PC clocks (`clocks.txt`), the ROS log archives and the GUI logs
+(`gui\`). The EtherCAT part needs the one-time step in
+[One-time setup on the robot PC](#one-time-setup-on-the-robot-pc-linux-19216811).
 
 ### If the GUI opens but shows no status
 

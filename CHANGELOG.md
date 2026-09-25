@@ -73,6 +73,8 @@ The main goal of this round was the GUI (`rehab_gui/FMRRMainProgram.py`) that so
 - **`fmrr_retrieve_logs.ps1`** also collects:
   - the GUI logs (current session and backups) into `Desktop\fit4med_logs\gui\`;
   - `ethercat_service.log`: `systemctl status`, the `ethercat.service` journal, the EtherCAT lines of the kernel log, `ethercat master` and `ethercat slaves -v`.
+  - `fit4med_ethercat_timeline.log`: one timeline of the bring-up service, `ethercat.service` and the EtherCAT kernel messages, sorted by time and tagged `[FIT4MED]`, `[ETHERCAT]`, `[KERNEL]`, to see whether the EtherCAT network or the controller reports a problem first (multi-line messages stay together);
+  - `clocks.txt`: robot and PC clocks at retrieval time, to line up the robot logs (robot clock) with the GUI logs (PC clock).
 
 ### Robot software sync, backup and restore
 
