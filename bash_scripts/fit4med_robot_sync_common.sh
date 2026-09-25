@@ -15,7 +15,7 @@ fit4med_robot_sync_usage() {
 
   cat <<USAGE
 Usage: ${script_name} [--dry-run] [--host <ip>] [--folder <relative/path>] [--skip-ssh-check]
-       [--backup | --no-backup] [--yes] [--local-path <dir>]
+       [--backup | --no-backup] [--yes] [--local-path <dir>] [--delete-extra-folders]
 
 Options:
   --dry-run            Show what would change without applying it.
@@ -29,6 +29,10 @@ Options:
   --no-backup          (to robot) Do not back up and do not ask.
   --yes                (to robot) Do not ask before deleting robot files missing locally.
   --local-path <dir>   Local workspace "src" folder (default: ${FIT4MED_LOCAL_PATH}).
+  --delete-extra-folders
+                       (to robot) Also delete the robot folders that are not in the
+                       local src. By default only the local folders are synced and
+                       the others on the robot are left untouched.
   -h, --help           Show this help message.
 USAGE
 }
@@ -43,6 +47,7 @@ fit4med_robot_sync_parse_args() {
   SELECTED_FOLDER=""
   BACKUP_MODE=ask
   ASSUME_YES=false
+  DELETE_EXTRA_FOLDERS=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -99,6 +104,10 @@ fit4med_robot_sync_parse_args() {
         ;;
       --yes|-y)
         ASSUME_YES=true
+        shift
+        ;;
+      --delete-extra-folders)
+        DELETE_EXTRA_FOLDERS=true
         shift
         ;;
       --local-path)
@@ -210,23 +219,24 @@ fit4med_robot_sync_preflight() {
   fi
 }
 
+# fit4med_robot_sync_run_rsync <filter_dry_run_output> <dest> <src>...
 fit4med_robot_sync_run_rsync() {
-  local src="$1"
+  local filter_dry_run_output="$1"
   local dest="$2"
-  local filter_dry_run_output="${3:-false}"
+  shift 2
 
   echo "[INFO] Starting synchronization..."
   if [[ -n "$SELECTED_FOLDER" ]]; then
     echo "[INFO] Selected folder: $SELECTED_FOLDER"
   fi
-  echo "[INFO] Source:      $src"
+  echo "[INFO] Source:      $*"
   echo "[INFO] Destination: $dest"
   echo "[INFO] rsync options: ${RSYNC_OPTS[*]}"
 
   if [[ "$DRY_RUN" == true && "$filter_dry_run_output" == true ]]; then
-    rsync "${RSYNC_OPTS[@]}" "$src" "$dest" | awk '$1 !~ /^cd/ && $0 !~ /\/$/'
+    rsync "${RSYNC_OPTS[@]}" "$@" "$dest" | awk '$1 !~ /^cd/ && $0 !~ /\/$/'
   else
-    rsync "${RSYNC_OPTS[@]}" "$src" "$dest"
+    rsync "${RSYNC_OPTS[@]}" "$@" "$dest"
   fi
 
   echo "[INFO] Sync completed successfully"
@@ -282,25 +292,26 @@ fit4med_sync_from_robot() {
   )
   fit4med_robot_sync_apply_dry_run_options --itemize-changes
   fit4med_robot_sync_preflight
-  fit4med_robot_sync_run_rsync "$src" "$dest" true
+  fit4med_robot_sync_run_rsync true "$dest" "$src"
 }
 
 fit4med_sync_to_robot() {
   fit4med_robot_sync_parse_args "$@"
 
   fit4med_robot_sync_check_local_path
-  local src
-  src="$(fit4med_robot_sync_source_path "$FIT4MED_LOCAL_PATH")"
   local dest="${FIT4MED_REMOTE_USER}@${REMOTE_HOST}:${FIT4MED_REMOTE_PATH}"
 
   fit4med_robot_sync_check_local_selected_folder
   fit4med_robot_sync_set_base_rsync_options
+  fit4med_robot_sync_to_robot_sources
   # The robot copy must become identical to the local one: no --update (the
   # offline robot clock makes timestamps unreliable, and edits made on the
   # robot would win), and --delete for files that exist only on the robot.
-  # Excluded paths (.git, caches) are neither sent nor deleted.
+  # Excluded paths (.git, caches) are neither sent nor deleted. --checksum:
+  # compare contents, not size+time (an edit can keep both unchanged).
   RSYNC_OPTS+=(
     --delete
+    --checksum
     --exclude='__pycache__/'
     --exclude='*.pyc'
   )
@@ -309,9 +320,40 @@ fit4med_sync_to_robot() {
 
   if [[ "$DRY_RUN" != true ]]; then
     fit4med_robot_sync_maybe_backup
-    fit4med_robot_sync_confirm_deletions "$src" "$dest"
+    fit4med_robot_sync_confirm_deletions "$dest" "${SYNC_SOURCES[@]}"
   fi
-  fit4med_robot_sync_run_rsync "$src" "$dest"
+  fit4med_robot_sync_run_rsync false "$dest" "${SYNC_SOURCES[@]}"
+}
+
+# SYNC_SOURCES: what is mirrored onto the robot. By default each top-level
+# entry of the local src separately (--relative), so --delete acts only inside
+# them: robot folders the user does not have locally (other repositories of
+# the workspace) are never touched.
+fit4med_robot_sync_to_robot_sources() {
+  SYNC_SOURCES=()
+  if [[ -n "$SELECTED_FOLDER" ]]; then
+    SYNC_SOURCES=("$(fit4med_robot_sync_source_path "$FIT4MED_LOCAL_PATH")")
+    return
+  fi
+  if [[ "$DELETE_EXTRA_FOLDERS" == true ]]; then
+    echo "[WARN] --delete-extra-folders: robot folders missing in the local src will be deleted"
+    SYNC_SOURCES=("$FIT4MED_LOCAL_PATH")
+    return
+  fi
+
+  local names=() name
+  mapfile -t names < <(find "$FIT4MED_LOCAL_PATH" -mindepth 1 -maxdepth 1 \
+                         ! -name '.git' ! -name '.github' -printf '%f\n' | sort)
+  if [[ ${#names[@]} -eq 0 ]]; then
+    echo "[ERROR] Nothing to sync: $FIT4MED_LOCAL_PATH is empty"
+    exit 1
+  fi
+  for name in "${names[@]}"; do
+    SYNC_SOURCES+=("${FIT4MED_LOCAL_PATH}./${name}")
+  done
+  RSYNC_OPTS+=(--relative)
+  echo "[INFO] Synced from the local src: ${names[*]}"
+  echo "[INFO] Other folders on the robot are left untouched (--delete-extra-folders to delete them)"
 }
 
 fit4med_robot_sync_maybe_backup() {
@@ -331,9 +373,11 @@ fit4med_robot_sync_maybe_backup() {
   fi
 }
 
+# fit4med_robot_sync_confirm_deletions <dest> <src>...
 fit4med_robot_sync_confirm_deletions() {
-  local src="$1" dest="$2" deletions=()
-  mapfile -t deletions < <(rsync "${RSYNC_OPTS[@]}" --dry-run --itemize-changes "$src" "$dest" \
+  local dest="$1" deletions=()
+  shift
+  mapfile -t deletions < <(rsync "${RSYNC_OPTS[@]}" --dry-run --itemize-changes "$@" "$dest" \
                            | sed -n 's/^\*deleting  *//p')
   if [[ ${#deletions[@]} -eq 0 ]]; then
     return

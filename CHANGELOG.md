@@ -85,13 +85,14 @@ The main goal of this round was the GUI (`rehab_gui/FMRRMainProgram.py`) that so
 
 #### Changed
 
-- **`fit4med_to_robot_sync.sh` makes the robot sources identical to the local ones**: no `--update`, and `--delete`.
+- **`fit4med_to_robot_sync.sh` makes each local folder identical on the robot**: no `--update`, `--delete`, and contents compared with `--checksum`.
+  - **Only the top-level folders present in the local `src` are synced.** Robot folders the user does not have (e.g. `ethercat_controller` when only `Fit4Med` is checked out) are never touched; `--delete-extra-folders` removes them too, for deleting a whole package.
   - Before copying, it offers a backup of the robot sources (default yes); if the backup fails, it aborts.
   - It lists the files that exist only on the robot and asks before deleting them (default no).
   - `.git` and Python caches on the robot are never sent nor deleted.
-  - New options: `--backup`, `--no-backup`, `--yes`, `--local-path`.
+  - New options: `--backup`, `--no-backup`, `--yes`, `--local-path`, `--delete-extra-folders`.
   - `fit4med_from_robot_sync.sh` keeps `--update`, so pulling does not overwrite newer local files.
-- **The local sources are the workspace `src` containing the repository**, wherever it is, instead of a fixed `~/fit4med_ws/src/`. Override with `--local-path`. The folder must be named `src`: mirroring a plain clone's parent folder would copy unrelated folders and delete robot packages.
+- **The local sources are the workspace `src` containing the repository**, wherever it is, instead of a fixed `~/fit4med_ws/src/`. Override with `--local-path`. The folder must be named `src`: syncing a plain clone's parent folder would copy unrelated folders to the robot.
 - All ssh/rsync calls of a run share one connection: without an ssh key the password is asked once.
 
 #### Added
@@ -99,7 +100,7 @@ The main goal of this round was the GUI (`rehab_gui/FMRRMainProgram.py`) that so
 - **`bash_scripts/fit4med_backup.sh`**: copies the robot sources to `/home/fit4med/bkp/YYYYMMDD/HHMM/` (`HHMM_2`, … for several in the same minute; an incomplete copy is removed).
 - **`bash_scripts/fit4med_restore.sh`**: lists the backups (newest first, with size), restores the chosen one after confirmation, and offers a safety backup of the current state first.
 - Both work on the robot or from the user PC through ssh (the robot needs neither the scripts nor internet); from the PC the backup is named after the PC's clock. `--local` / `--host <ip>` force the mode.
-- **Windows versions:** `ps_scripts/fmrr_to_robot_sync.ps1`, `fmrr_backup.ps1`, `fmrr_restore.ps1`. They use the same bash functions on the robot, so they behave the same, and need only the `ssh`, `scp` and `tar` included in Windows 10/11. Windows has no rsync: the sources are packed, uploaded and mirrored on the robot.
+- **Windows versions:** `ps_scripts/fmrr_to_robot_sync.ps1`, `fmrr_backup.ps1`, `fmrr_restore.ps1`. They use the same bash functions on the robot, so they behave the same, and need only the `ssh`, `scp` and `tar` included in Windows 10/11. Windows has no rsync: the sources are packed, uploaded and mirrored on the robot. `-DeleteExtraFolders` matches `--delete-extra-folders`.
   - The executable bit is restored for scripts starting with `#!`.
   - The sync refuses shell scripts with Windows line endings.
 - **`.gitattributes`**: keeps `*.sh` with Linux line endings in Windows checkouts. With Git's default `core.autocrlf`, shell scripts copied from Windows would not run on the robot.

@@ -136,7 +136,7 @@ fit4med_backup_restore_interactive() {
   echo "[INFO] Rebuild the workspace (colcon build) before the next bring-up."
 }
 
-# fit4med_sync_apply_archive <archive.tar> <folder|.> <dry_run> <assume_yes>
+# fit4med_sync_apply_archive <archive.tar> <folder|.> <dry_run> <assume_yes> [delete_extra]
 # Make the sources (or one folder of them) identical to a tar archive. Used by
 # ps_scripts/fmrr_to_robot_sync.ps1: Windows has no rsync, so the PC uploads a
 # tar and the mirroring (with deletions) is done here. Archive is removed.
@@ -150,8 +150,8 @@ fit4med_sync_apply_archive() {
 }
 
 _fit4med_sync_apply_staged() {
-  local staging="$1" archive="$2" folder="$3" dry_run="$4" assume_yes="$5"
-  local src_dir="$FIT4MED_ROBOT_SRC" stage_dir="$staging" crlf=() deletions=()
+  local staging="$1" archive="$2" folder="$3" dry_run="$4" assume_yes="$5" delete_extra="${6:-false}"
+  local src_dir="$FIT4MED_ROBOT_SRC" stage_dir="$staging" crlf=() deletions=() sources=() names=() name
   [[ "$folder" == . ]] && folder=""  # "." = the whole workspace
 
   if ! tar -x -f "$archive" -C "$staging"; then
@@ -185,15 +185,34 @@ _fit4med_sync_apply_staged() {
   # timestamps from a fresh Windows checkout say nothing about the content.
   local opts=(-rlt --checksum --delete --itemize-changes
               --exclude='.git/' --exclude='.github/' --exclude='__pycache__/' --exclude='*.pyc')
-  echo "[INFO] Source (from PC): ${folder:-whole workspace}   Destination: $src_dir"
+  # What is mirrored: by default each top-level entry of the archive
+  # separately (--relative), so --delete acts only inside them and robot
+  # folders the PC does not have (other repositories) are never touched.
+  if [[ -n "$folder" || "$delete_extra" == true ]]; then
+    sources=("${stage_dir}/")
+    [[ -z "$folder" ]] && echo "[WARN] Robot folders missing on the PC will be deleted (-DeleteExtraFolders)"
+    echo "[INFO] Source (from PC): ${folder:-whole workspace}   Destination: $src_dir"
+  else
+    mapfile -t names < <(find "$staging" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)
+    if [[ ${#names[@]} -eq 0 ]]; then
+      echo "[ERROR] Nothing to sync: the archive is empty"
+      return 1
+    fi
+    for name in "${names[@]}"; do
+      sources+=("${staging}/./${name}")
+    done
+    opts+=(--relative)
+    echo "[INFO] Synced from the PC: ${names[*]}   Destination: $src_dir"
+    echo "[INFO] Other folders on the robot are left untouched (-DeleteExtraFolders to delete them)"
+  fi
 
   if [[ "$dry_run" == true ]]; then
     echo "[INFO] DRY-RUN: nothing is changed on the robot"
-    rsync "${opts[@]}" --dry-run "${stage_dir}/" "${src_dir}/" | grep -v '^\.[fd]\.\.t\.'
+    rsync "${opts[@]}" --dry-run "${sources[@]}" "${src_dir}/" | grep -v '^\.[fd]\.\.t\.'
     return 0
   fi
 
-  mapfile -t deletions < <(rsync "${opts[@]}" --dry-run "${stage_dir}/" "${src_dir}/" \
+  mapfile -t deletions < <(rsync "${opts[@]}" --dry-run "${sources[@]}" "${src_dir}/" \
                            | sed -n 's/^\*deleting  *//p')
   if [[ ${#deletions[@]} -gt 0 ]]; then
     echo "[WARN] ${#deletions[@]} file(s)/folder(s) exist only on the robot and will be DELETED:"
@@ -209,7 +228,7 @@ _fit4med_sync_apply_staged() {
 
   mkdir -p "$src_dir" || return 1
   local output
-  if ! output="$(rsync "${opts[@]}" "${stage_dir}/" "${src_dir}/")"; then
+  if ! output="$(rsync "${opts[@]}" "${sources[@]}" "${src_dir}/")"; then
     printf '%s\n' "$output"
     echo "[ERROR] rsync failed"
     return 1

@@ -20,7 +20,7 @@ Il robot (`192.168.1.1`) non è collegato a internet. Il software aggiornato si 
 
 **Il tuo workspace può stare dove vuoi.** Lo script usa la cartella `src` che contiene la copia del repository da cui lo lanci. Per esempio, se il repository è in `/home/mario/lavoro/fit4med_ws/src/Fit4Med`, copia `/home/mario/lavoro/fit4med_ws/src/`. Per usare un'altra cartella: `--local-path <percorso della cartella src>`.
 
-Per sicurezza la cartella deve chiamarsi `src`. Se hai clonato il repository fuori da un workspace (per esempio in `~/codice/Fit4Med`), lo script si ferma: altrimenti copierebbe sul robot tutto il contenuto di `~/codice` e cancellerebbe dal robot i pacchetti che lì non ci sono.
+Per sicurezza la cartella deve chiamarsi `src`. Se hai clonato il repository fuori da un workspace (per esempio in `~/codice/Fit4Med`), lo script si ferma: altrimenti copierebbe sul robot tutto il contenuto di `~/codice`.
 
 ## Prima di iniziare
 
@@ -41,7 +41,9 @@ Per sicurezza la cartella deve chiamarsi `src`. Se hai clonato il repository fuo
 ./fit4med_to_robot_sync.sh
 ```
 
-Il robot diventa **identico** alla copia sul tuo PC. Le modifiche fatte direttamente sul robot vengono sovrascritte.
+Ogni cartella che hai nel tuo `src` diventa **identica** sul robot: le modifiche fatte direttamente sul robot vengono sovrascritte, e i file che dentro quella cartella esistono solo sul robot vengono cancellati (con conferma).
+
+**Le cartelle del robot che tu non hai non vengono toccate.** Per esempio, se nel tuo `src` c'è solo `Fit4Med` e sul robot ci sono anche `ethercat_controller` e altri pacchetti, viene aggiornata solo `Fit4Med` e gli altri pacchetti restano come sono. Chi ha in locale tutto il workspace aggiorna invece tutto.
 
 Lo script:
 1. controlla che il robot risponda e che ssh funzioni;
@@ -68,8 +70,9 @@ Le righe `*deleting` sono i file che verrebbero cancellati dal robot, le altre q
 | `--yes` | Cancella i file presenti solo sul robot senza chiedere conferma. |
 | `--host <ip>` | Usa un altro indirizzo del robot. |
 | `--local-path <cartella>` | Usa un'altra cartella `src` del tuo PC. |
+| `--delete-extra-folders` | Cancella dal robot anche le cartelle che nel tuo `src` non esistono (con conferma). Serve solo per eliminare dal robot un intero pacchetto. |
 
-> **Attenzione:** senza `--folder` viene copiata tutta la cartella `src` del tuo PC. Se sul robot c'è un pacchetto che tu non hai, comparirà nell'elenco dei file da cancellare. In quel caso rispondi **no** e verifica prima di procedere.
+> **Attenzione:** con `--delete-extra-folders` tutti i pacchetti del robot che tu non hai compaiono nell'elenco dei file da cancellare. Leggi l'elenco prima di rispondere sì, e non usare insieme `--yes`.
 
 Dopo la copia, sul robot va ricompilato il workspace (`colcon build`) prima di riavviare il sistema.
 
@@ -143,6 +146,7 @@ Le opzioni hanno la forma di PowerShell:
 | `--yes` | `-Yes` |
 | `--host <ip>` | `-RobotHost <ip>` |
 | `--local-path <cartella>` | `-LocalPath <cartella>` |
+| `--delete-extra-folders` | `-DeleteExtraFolders` |
 
 Servono Windows 10 o 11, che includono già `ssh`, `scp` e `tar`. Su Windows non esiste `rsync`, quindi lo script impacchetta il software in un unico file, lo carica sul robot e lo allinea lì.
 

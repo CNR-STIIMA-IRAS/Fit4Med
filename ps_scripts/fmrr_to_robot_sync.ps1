@@ -15,7 +15,10 @@ param(
     [switch]$DryRun,
     [switch]$Backup,    # back up the robot sources first, without asking
     [switch]$NoBackup,  # no backup, no question
-    [switch]$Yes        # delete robot-only files without asking
+    [switch]$Yes,       # delete robot-only files without asking
+    # Also delete the robot folders that are not in the local src. By default
+    # only the local folders are synced and the others are left untouched.
+    [switch]$DeleteExtraFolders
 )
 
 . (Join-Path $PSScriptRoot "fmrr_robot_common.ps1")
@@ -83,9 +86,10 @@ try {
     # --- mirror on the robot -----------------------------------------------
     $dry = if ($DryRun) { "true" } else { "false" }
     $assumeYes = if ($Yes) { "true" } else { "false" }
+    $deleteExtra = if ($DeleteExtraFolders) { "true" } else { "false" }
     # "." = whole workspace (an empty argument would not survive the remote shell).
     $remoteFolder = if ($Folder) { $Folder } else { "." }
-    Invoke-FmrrRobotFunction $RobotHost "fit4med_sync_apply_archive" @($remoteArchive, $remoteFolder, $dry, $assumeYes)
+    Invoke-FmrrRobotFunction $RobotHost "fit4med_sync_apply_archive" @($remoteArchive, $remoteFolder, $dry, $assumeYes, $deleteExtra)
     exit $LASTEXITCODE
 }
 catch {

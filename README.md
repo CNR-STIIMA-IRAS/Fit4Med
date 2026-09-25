@@ -70,7 +70,7 @@ kill_ros_apps.sh<br>
  - Coordinate with PLC manager for clean shutdown
 
 fit4med_to_robot_sync.sh / fit4med_from_robot_sync.sh<br>
- - To robot: make the robot's `~/fit4med_ws/src` identical to the workspace `src` containing your checkout (robot 192.168.1.1, `--dry-run` to preview). It first offers a backup, and asks before deleting files that exist only on the robot.
+ - To robot: make each folder of the workspace `src` containing your checkout identical on the robot (robot 192.168.1.1, `--dry-run` to preview). Robot folders you don't have locally are left untouched. It first offers a backup, and asks before deleting files that exist only on the robot.
  - From robot: pull the robot's changes, keeping local files that are newer.
 
 fit4med_backup.sh / fit4med_restore.sh<br>
