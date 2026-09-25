@@ -170,6 +170,7 @@ class AsyncTests(unittest.TestCase):
         view=scope['Harness'](); m=self.manager(); view.ROS=m
         view._stop_pending=False; view.Training_ON=True
         view.ui=Mock(); view._stop_bag_recording=Mock(); view._set_training_buttons_idle=Mock()
+        view._update_total_training_time_display=Mock()
         view.progressBarPhases=[Mock()]; view.spinBoxSpeedOvr=[Mock()]; view.spinBoxDuration=[Mock()]
         m.ROS.stop_movement.return_value=True
         m.ROS.soft_movement_stop_client.call.return_value=UserDict({'success':True})

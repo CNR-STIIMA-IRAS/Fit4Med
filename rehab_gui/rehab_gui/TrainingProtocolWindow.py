@@ -546,6 +546,11 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         self.Training_ON = False
         self._near_zero_triggered = False
         self.ROS.setExerciseInSuspension(False)
+        # A stopped or completed protocol starts again from phase 1: only a
+        # suspension (tracking error, _handle_exercise_suspension) resumes
+        # from the interrupted phase.
+        self._iPhase_0 = 0
+        self._update_total_training_time_display(force=True)
         self._stop_pending = True
         self.ui.pushButton_STARTtrainig.setText("STOPPING...")
         self.ui.pushButton_STARTtrainig.setEnabled(False)
