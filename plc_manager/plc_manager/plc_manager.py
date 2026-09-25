@@ -36,6 +36,9 @@ from plc_manager.plc_commands import PlcCommandPublisher
 from plc_manager.plc_types import EStopState, Event, State
 from plc_manager.udp_client import UdpClient
 
+GUI_UDP_PORT = 5005          # rehab_gui listens here
+PLC_MANAGER_UDP_PORT = 5006  # our source port, where the GUI replies
+
 
 DEFAULT_EEG_DELAY_MS = 4000
 
@@ -122,8 +125,10 @@ class PLCControllerInterface(Node):
 
 
         # ========== UDP Status Client ==========#  
-        # Coordinates with rehab_gui for emergency stop and status
-        self.client = UdpClient(target_ip, 5005)
+        # Coordinates with rehab_gui for emergency stop and status.
+        # Fixed local port: the GUI replies to the source address of our
+        # packets, so after a restart it must still be the same one.
+        self.client = UdpClient(target_ip, GUI_UDP_PORT, local_port=PLC_MANAGER_UDP_PORT)
         self.gui_status = GuiStatusPublisher(self.client, self.get_logger())
         self.send_running_cnt = 0
         self.send_running_dec = 10  # Send status every 10*50ms = 500ms at 50 Hz

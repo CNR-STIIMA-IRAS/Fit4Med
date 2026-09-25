@@ -106,6 +106,32 @@ class RosilibpyServiceHandler(object):
                        self.namespace, elapsed, threading.current_thread().name,
                        result is not None)
 
+def call_in_parallel(calls, timeout: float) -> list:
+    """Issue [(handler, request), ...] together and wait for all of them.
+
+    A cycle costs the slowest call instead of the sum. A call that fails or
+    does not answer within `timeout` yields None (a late answer is dropped).
+    """
+    results = [None] * len(calls)
+    events = [threading.Event() for _ in calls]
+    for idx, (handler, req) in enumerate(calls):
+        def done(response, idx=idx):
+            results[idx] = response
+            events[idx].set()
+
+        def failed(error, idx=idx, namespace=handler.namespace):
+            logging.getLogger(__name__).warning("ROS service %s failed: %s", namespace, error)
+            events[idx].set()
+
+        handler.call_async(req, on_done_callback=done, on_error_callback=failed)
+
+    deadline = time.monotonic() + timeout
+    for idx, event in enumerate(events):
+        if not event.wait(max(0.0, deadline - time.monotonic())):
+            logging.getLogger(__name__).warning("ROS service %s: no answer within %.1fs",
+                                                calls[idx][0].namespace, timeout)
+    return list(results)
+
 class ConstRequestServiceHandler(RosilibpyServiceHandler):
     def __init__(self, ros_client: roslibpy.Ros, namespace: str, msg_type: str, req: dict = None): #type: ignore
         super().__init__(ros_client, namespace, msg_type)
@@ -167,6 +193,9 @@ class SyncRosManager:
     def __init__(self, expected_number_of_slaves: int, joint_names: List[str], ros_client: roslibpy.Ros):
         self._ros_period = 1
         self._controller_list_period = 50  # milliseconds
+        # Status poll timeout. Not lower: a missed drive-state answer shows the
+        # drives as 'n/a' + fault in the GUI until the next poll.
+        self._poll_timeout_s : float = 1.0
         self.trajectory_controller_name : str = 'joint_trajectory_controller'
         self.go_to_start_controller_name : str = 'go_to_start_controller'
         self.forward_command_controller_name : str = 'forward_velocity_controller'
@@ -418,17 +447,19 @@ class SyncRosManager:
     def update_controller_and_driver_states(self) -> None:
         
         if not self.destroy_clients_init:
-            
-            msg_drive_states = self.get_drive_states()
+
+            # Both queries go out together (was: one after the other, 3 s timeout each).
+            msg_drive_states, list_controllers_response = call_in_parallel(
+                [(self.get_drive_state_client, None), (self.current_controller_client, None)],
+                timeout=self._poll_timeout_s)
             self.coe_drive_states.from_dict(msg_drive_states['states']\
                                             if msg_drive_states is not None and 'states' in msg_drive_states \
                                                 else None) #type: ignore
-            
+
             if len(self.coe_drive_states.dof_names) != len(self._joint_names):
                 print(f'Warning! Get an incomplete list of states (received the data for the axes: {self.coe_drive_states.dof_names}, expected: {self._joint_names}')
-                return 
-            
-            list_controllers_response : dict = self.get_list_controllers()
+                return
+
             if list_controllers_response is None or 'controller' not in list_controllers_response:
                 return
             

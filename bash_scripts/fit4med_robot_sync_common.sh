@@ -1,15 +1,21 @@
 #!/usr/bin/env bash
 
-FIT4MED_DEFAULT_HOST="10.2.15.217"
-FIT4MED_REMOTE_USER="fit4med"
-FIT4MED_LOCAL_PATH="$HOME/fit4med_ws/src/"
-FIT4MED_REMOTE_PATH="/home/fit4med/fit4med_ws/src/"
+# shellcheck source=fit4med_backup_common.sh
+source "$(dirname -- "${BASH_SOURCE[0]}")/fit4med_backup_common.sh"
+
+FIT4MED_DEFAULT_HOST="$FIT4MED_ROBOT_HOST"
+FIT4MED_REMOTE_USER="$FIT4MED_ROBOT_USER"
+# Local workspace sources: by default the "src" folder that contains this
+# repository (bash_scripts/../..), wherever it is. --local-path overrides it.
+FIT4MED_LOCAL_PATH="${FIT4MED_LOCAL_PATH:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)/}"
+FIT4MED_REMOTE_PATH="${FIT4MED_ROBOT_SRC}/"
 
 fit4med_robot_sync_usage() {
   local script_name="$1"
 
   cat <<USAGE
 Usage: ${script_name} [--dry-run] [--host <ip>] [--folder <relative/path>] [--skip-ssh-check]
+       [--backup | --no-backup] [--yes] [--local-path <dir>]
 
 Options:
   --dry-run            Show what would change without applying it.
@@ -19,6 +25,10 @@ Options:
   --skip-ssh-check     Skip the SSH preflight check.
   --no-ssh-check       Alias for --skip-ssh-check.
   --ssh-check          Run the SSH preflight check (default).
+  --backup             (to robot) Back up the robot sources first, without asking.
+  --no-backup          (to robot) Do not back up and do not ask.
+  --yes                (to robot) Do not ask before deleting robot files missing locally.
+  --local-path <dir>   Local workspace "src" folder (default: ${FIT4MED_LOCAL_PATH}).
   -h, --help           Show this help message.
 USAGE
 }
@@ -31,6 +41,8 @@ fit4med_robot_sync_parse_args() {
   CHECK_SSH=true
   REMOTE_HOST="$FIT4MED_DEFAULT_HOST"
   SELECTED_FOLDER=""
+  BACKUP_MODE=ask
+  ASSUME_YES=false
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -75,6 +87,31 @@ fit4med_robot_sync_parse_args() {
         ;;
       --ssh-check)
         CHECK_SSH=true
+        shift
+        ;;
+      --backup)
+        BACKUP_MODE=yes
+        shift
+        ;;
+      --no-backup)
+        BACKUP_MODE=no
+        shift
+        ;;
+      --yes|-y)
+        ASSUME_YES=true
+        shift
+        ;;
+      --local-path)
+        if [[ $# -lt 2 || -z "$2" ]]; then
+          echo "[ERROR] --local-path requires a folder"
+          exit 1
+        fi
+        FIT4MED_LOCAL_PATH="${2%/}/"
+        shift 2
+        ;;
+      --local-path=*)
+        FIT4MED_LOCAL_PATH="${1#*=}"
+        FIT4MED_LOCAL_PATH="${FIT4MED_LOCAL_PATH%/}/"
         shift
         ;;
       -h|--help)
@@ -125,7 +162,8 @@ fit4med_robot_sync_set_selected_folder() {
 fit4med_robot_sync_set_base_rsync_options() {
   RSYNC_OPTS=(
     -av
-    --update
+    # rsync splits -e on spaces and honours quotes, not backslashes.
+    -e "ssh $(printf "'%s' " "${FIT4MED_SSH_OPTS[@]}")"
     --exclude='.git/'
     --exclude='.github/'
   )
@@ -159,11 +197,11 @@ fit4med_robot_sync_preflight() {
   fi
 
   echo "[INFO] Checking SSH access..."
-  if ssh -o BatchMode=yes -o ConnectTimeout=5 "${FIT4MED_REMOTE_USER}@${REMOTE_HOST}" "exit" >/dev/null 2>&1; then
+  if ssh "${FIT4MED_SSH_OPTS[@]}" -o BatchMode=yes -o ConnectTimeout=5 "${FIT4MED_REMOTE_USER}@${REMOTE_HOST}" "exit" >/dev/null 2>&1; then
     echo "[OK] SSH key authentication works"
   else
     echo "[WARN] Key auth failed, trying password login..."
-    if ssh -o ConnectTimeout=5 "${FIT4MED_REMOTE_USER}@${REMOTE_HOST}" "exit"; then
+    if ssh "${FIT4MED_SSH_OPTS[@]}" -o ConnectTimeout=5 "${FIT4MED_REMOTE_USER}@${REMOTE_HOST}" "exit"; then
       echo "[OK] SSH access via password verified"
     else
       echo "[ERROR] SSH connection failed"
@@ -204,6 +242,21 @@ fit4med_robot_sync_source_path() {
   fi
 }
 
+fit4med_robot_sync_check_local_path() {
+  if [[ ! -d "$FIT4MED_LOCAL_PATH" ]]; then
+    echo "[ERROR] Local folder not found: $FIT4MED_LOCAL_PATH"
+    exit 1
+  fi
+  # Mirroring a folder that is not a workspace "src" (e.g. a plain clone in
+  # ~/code) would copy its unrelated siblings and delete the robot packages.
+  if [[ "$(basename -- "$FIT4MED_LOCAL_PATH")" != src ]]; then
+    echo "[ERROR] $FIT4MED_LOCAL_PATH is not a workspace 'src' folder."
+    echo "        Pass it explicitly with --local-path <.../src>."
+    exit 1
+  fi
+  echo "[INFO] Local workspace sources: $FIT4MED_LOCAL_PATH"
+}
+
 fit4med_robot_sync_check_local_selected_folder() {
   if [[ -n "$SELECTED_FOLDER" && ! -d "${FIT4MED_LOCAL_PATH}${SELECTED_FOLDER}" ]]; then
     echo "[ERROR] Local folder does not exist: ${FIT4MED_LOCAL_PATH}${SELECTED_FOLDER}"
@@ -214,11 +267,14 @@ fit4med_robot_sync_check_local_selected_folder() {
 fit4med_sync_from_robot() {
   fit4med_robot_sync_parse_args "$@"
 
+  fit4med_robot_sync_check_local_path
   local src="${FIT4MED_REMOTE_USER}@${REMOTE_HOST}:$(fit4med_robot_sync_source_path "$FIT4MED_REMOTE_PATH")"
   local dest="$FIT4MED_LOCAL_PATH"
 
   fit4med_robot_sync_set_base_rsync_options
+  # Pulling keeps local files that are newer than the robot's copy.
   RSYNC_OPTS+=(
+    --update
     --exclude='__pycache__/'
     --exclude='*.pyc'
     --exclude='*.zip'
@@ -232,13 +288,66 @@ fit4med_sync_from_robot() {
 fit4med_sync_to_robot() {
   fit4med_robot_sync_parse_args "$@"
 
+  fit4med_robot_sync_check_local_path
   local src
   src="$(fit4med_robot_sync_source_path "$FIT4MED_LOCAL_PATH")"
   local dest="${FIT4MED_REMOTE_USER}@${REMOTE_HOST}:${FIT4MED_REMOTE_PATH}"
 
   fit4med_robot_sync_check_local_selected_folder
   fit4med_robot_sync_set_base_rsync_options
-  fit4med_robot_sync_apply_dry_run_options
+  # The robot copy must become identical to the local one: no --update (the
+  # offline robot clock makes timestamps unreliable, and edits made on the
+  # robot would win), and --delete for files that exist only on the robot.
+  # Excluded paths (.git, caches) are neither sent nor deleted.
+  RSYNC_OPTS+=(
+    --delete
+    --exclude='__pycache__/'
+    --exclude='*.pyc'
+  )
+  fit4med_robot_sync_apply_dry_run_options --itemize-changes
   fit4med_robot_sync_preflight
+
+  if [[ "$DRY_RUN" != true ]]; then
+    fit4med_robot_sync_maybe_backup
+    fit4med_robot_sync_confirm_deletions "$src" "$dest"
+  fi
   fit4med_robot_sync_run_rsync "$src" "$dest"
+}
+
+fit4med_robot_sync_maybe_backup() {
+  local do_backup=false
+  case "$BACKUP_MODE" in
+    yes) do_backup=true ;;
+    ask) fit4med_ask_yes_no "Create a backup of the robot sources (${FIT4MED_REMOTE_PATH}) before the sync?" y \
+           && do_backup=true ;;
+  esac
+  if [[ "$do_backup" != true ]]; then
+    echo "[INFO] No backup of the robot sources"
+    return
+  fi
+  if ! fit4med_backup_run_on_robot "$REMOTE_HOST" fit4med_backup_create "$(date +%Y%m%d/%H%M)"; then
+    echo "[ERROR] Backup failed: sync aborted"
+    exit 1
+  fi
+}
+
+fit4med_robot_sync_confirm_deletions() {
+  local src="$1" dest="$2" deletions=()
+  mapfile -t deletions < <(rsync "${RSYNC_OPTS[@]}" --dry-run --itemize-changes "$src" "$dest" \
+                           | sed -n 's/^\*deleting  *//p')
+  if [[ ${#deletions[@]} -eq 0 ]]; then
+    return
+  fi
+  echo "[WARN] ${#deletions[@]} file(s)/folder(s) exist only on the robot and will be DELETED:"
+  printf '         %s\n' "${deletions[@]:0:50}"
+  if [[ ${#deletions[@]} -gt 50 ]]; then
+    echo "         ... and $(( ${#deletions[@]} - 50 )) more"
+  fi
+  if [[ "$ASSUME_YES" == true ]]; then
+    return
+  fi
+  if ! fit4med_ask_yes_no "Delete them and continue with the sync?" n; then
+    echo "[INFO] Sync aborted, nothing changed on the robot"
+    exit 1
+  fi
 }

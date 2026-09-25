@@ -11,6 +11,14 @@ from std_srvs.srv import Trigger
 
 from plc_manager.plc_types import EthercatCheckState, State
 
+LAST_ERROR_MAX_CHARS = 300
+
+
+def _truncate(text: str | None, max_chars: int) -> str | None:
+    if text is None or len(text) <= max_chars:
+        return text
+    return text[:max_chars - 3] + '...'
+
 
 class EthercatMonitor:
     def __init__(
@@ -422,5 +430,6 @@ class EthercatMonitor:
                     {"name": slave_name, "state": slave_state}
                     for slave_name, slave_state in visible_pairs
                 ],
-                "last_error": self._last_error,
+                # Bounded: the GUI reads status datagrams into a 4096-byte buffer.
+                "last_error": _truncate(self._last_error, LAST_ERROR_MAX_CHARS),
             }

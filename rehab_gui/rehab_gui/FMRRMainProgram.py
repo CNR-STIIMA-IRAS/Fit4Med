@@ -1,7 +1,6 @@
 # Copyright 2026 CNR-STIIMA
 # SPDX-License-Identifier: Apache-2.0
 
-import faulthandler
 import os
 import sys
 import signal
@@ -10,12 +9,11 @@ from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import QAbstractButton, QAbstractSpinBox, QComboBox, QLineEdit, QWidget, QApplication, QMainWindow, QMessageBox, QLabel, QDialog, QVBoxLayout
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot
 from GuiRosTasks import Call, CallThread
+from session_log import setup_session_logs
+setup_session_logs()  # before the other imports, so their output is logged too
 
 # mathematics
 import numpy as np
-
-from rich.traceback import install
-install(show_locals=True)
 
 #MC Classes/methods
 from ui.uiFMRRMainWindow import Ui_FMRRMainWindow # import from file ui the class Ui_ui
@@ -34,9 +32,6 @@ JOINT_NAMES = [
     'joint_y',
     'joint_z'
 ]
-log = open(r"C:\\temp\\pyqt_hang.log", "a", buffering=1)
-faulthandler.enable(file=log)
-faulthandler.dump_traceback_later(10,repeat=True,file=log)
 
 #########################################################################
 ##

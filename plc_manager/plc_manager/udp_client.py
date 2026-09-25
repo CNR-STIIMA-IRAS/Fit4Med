@@ -146,15 +146,24 @@ class UdpClient:
         )
 
     def _receive_loop(self, bufsize: int = 4096) -> None:
+        last_logged: tuple[bytes, Any] | None = None
         while not self._stop_event.is_set():
             try:
                 data, addr = self.sock.recvfrom(bufsize)
             except socket.timeout:
                 continue
-            except OSError:
-                break
+            except OSError as exc:
+                if self._stop_event.is_set():
+                    break  # socket closed by close()
+                # Leaving here would silently stop reception for good.
+                print(f"[UdpClient] Receive error (ignored): {exc}")
+                time.sleep(0.2)
+                continue
 
-            print(f"[UdpClient] Received message from {addr}: {data}")
+            # The GUI repeats its state on every status packet: log changes only.
+            if (data, addr) != last_logged:
+                print(f"[UdpClient] Received message from {addr}: {data}")
+                last_logged = (data, addr)
 
             with self._condition:
                 self._last_message = (data, addr)

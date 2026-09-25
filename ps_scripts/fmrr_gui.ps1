@@ -14,6 +14,18 @@ $GuiScript = Join-Path $RepoRoot "rehab_gui\rehab_gui\FMRRMainProgram.py"
 $VenvPython = Join-Path $RepoRoot ".venv\Scripts\python.exe"
 $Python = if (Test-Path $VenvPython) { $VenvPython } else { "python" }
 
+# Clean boot: kill leftovers of a previous GUI (crashed python, Windows Error
+# Reporting holding it alive, stale launcher windows, anything on UDP 5005).
+$UdpPort = 5005
+& (Join-Path $ScriptDir "fmrr_cleanup.ps1") -Target gui -UdpPort $UdpPort
+if (Get-NetUDPEndpoint -LocalPort $UdpPort -ErrorAction SilentlyContinue) {
+    Write-Host ""
+    Write-Host "UDP port $UdpPort is still in use: the GUI would not receive the controller status." -ForegroundColor Red
+    Write-Host "Run ps_scripts\fmrr_cleanup.ps1 -Target gui from an elevated PowerShell, or reboot this PC." -ForegroundColor Yellow
+    Read-Host "Press Enter to close"
+    exit 1
+}
+
 try {
     & $Python $GuiScript --remote-ip 192.168.1.1 --maximise-window
     $exitCode = $LASTEXITCODE

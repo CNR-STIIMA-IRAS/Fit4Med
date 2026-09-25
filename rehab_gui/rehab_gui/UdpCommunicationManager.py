@@ -13,61 +13,34 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 #
 ################################################
 import os
+import sys
 import time
-import psutil
 
+def _disable_udp_connreset(sock: socket.socket) -> None:
+    """Windows: stop ICMP port-unreachable surfacing as recvfrom() errors.
 
-def free_udp_port(port: int, force: bool = False, timeout: float = 3.0):
+    socket.ioctl() only accepts a few SIO_* codes, so go through WSAIoctl.
     """
-    Terminate processes currently bound to the given UDP port.
-
-    force=False: send terminate()
-    force=True: send kill() after terminate timeout
-    """
-    current_pid = os.getpid()
-    victims = []
-
-    for conn in psutil.net_connections(kind="udp"):
-        if not conn.laddr:
-            continue
-
-        if conn.laddr.port == port and conn.pid is not None:
-            if conn.pid == current_pid:
-                print(f"Port {port} is used by this same process PID={current_pid}. Not killing self.")
-                continue
-
-            try:
-                proc = psutil.Process(conn.pid)
-                victims.append(proc)
-            except psutil.NoSuchProcess:
-                pass
-
-    if not victims:
-        print(f"No external process found using UDP port {port}.")
+    if sys.platform != "win32":
         return
-
-    for proc in victims:
-        try:
-            print(f"Terminating PID={proc.pid}: {' '.join(proc.cmdline())}")
-            proc.terminate()
-        except psutil.NoSuchProcess:
-            pass
-
-    gone, alive = psutil.wait_procs(victims, timeout=timeout)
-
-    if alive and force:
-        for proc in alive:
-            try:
-                print(f"Killing PID={proc.pid}")
-                proc.kill()
-            except psutil.NoSuchProcess:
-                pass
-
-    print(f"Freed UDP port {port}, if no protected process remained.")
+    import ctypes
+    from ctypes import wintypes
+    SIO_UDP_CONNRESET = 0x9800000C
+    wsa_ioctl = ctypes.windll.ws2_32.WSAIoctl
+    wsa_ioctl.argtypes = [ctypes.c_size_t, wintypes.DWORD, ctypes.c_void_p, wintypes.DWORD,
+                          ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD),
+                          ctypes.c_void_p, ctypes.c_void_p]
+    flag = wintypes.BOOL(False)
+    returned = wintypes.DWORD(0)
+    if wsa_ioctl(sock.fileno(), SIO_UDP_CONNRESET, ctypes.byref(flag), ctypes.sizeof(flag),
+                 None, 0, ctypes.byref(returned), None, None) != 0:
+        print(f"[UdpServer] SIO_UDP_CONNRESET failed (WSA error {ctypes.windll.ws2_32.WSAGetLastError()})")
 
 class UdpServer(QObject):
     message_received = pyqtSignal(bytes, tuple)  # data, addr
     bind_failed = pyqtSignal(str)
+
+    MIN_EMIT_PERIOD_S = 0.1  # repeats of an unchanged status reach the GUI at most at 10 Hz
 
     def __init__(self, host:str="0.0.0.0", port:int=5005, parent:Any=None):
         super().__init__(parent)
@@ -85,7 +58,7 @@ class UdpServer(QObject):
             return
         
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        free_udp_port(5005, force=True)
+        # Leftovers holding the port are killed by ps_scripts/fmrr_gui.ps1 before launch.
         try:
             self.sock.bind((self.host, self.port))
         except OSError as e:
@@ -102,19 +75,70 @@ class UdpServer(QObject):
             self.sock = None
             self.bind_failed.emit(str(e))
             return
-        self.sock.settimeout(0.2)
+        _disable_udp_connreset(self.sock)
         self._running = True
         sock = self.sock
-        while self._running:
+        # Signal-rate limit: every packet is read here, but the GUI thread is
+        # handed a new one only when the FSM state/pending changes (at once)
+        # or, for repeats of the same state, the latest one every
+        # MIN_EMIT_PERIOD_S. A busy GUI thread thus never accumulates a queue.
+        last_emit = 0.0
+        last_key = None
+        held = None  # newest not-yet-emitted repeat
+        try:
+            while self._running:
+                now = time.monotonic()
+                wait = max(0.01, self.MIN_EMIT_PERIOD_S - (now - last_emit)) if held else 0.2
+                sock.settimeout(wait)
+                try:
+                    data, addr = sock.recvfrom(4096)
+                except socket.timeout:
+                    data = None
+                except ConnectionResetError as e:
+                    # Windows reports an ICMP "port unreachable" for one of our
+                    # earlier sendto() here; the socket is still fine. Leaving
+                    # the loop used to keep 5005 bound with nobody reading it.
+                    print(f"[UdpServer] Ignoring UDP connection reset: {e}")
+                    continue
+                except OSError as e:
+                    if not self._running:
+                        break  # socket closed by stop()
+                    print(f"[UdpServer] OSError: {e}")
+                    time.sleep(0.2)
+                    continue
+
+                now = time.monotonic()
+                if data is not None:
+                    self._last_addr = addr
+                    key = self._status_key(data)
+                    if key != last_key or now - last_emit >= self.MIN_EMIT_PERIOD_S:
+                        self.message_received.emit(data, addr)
+                        last_emit, last_key, held = now, key, None
+                    else:
+                        held = (data, addr)
+                elif held is not None and now - last_emit >= self.MIN_EMIT_PERIOD_S:
+                    self.message_received.emit(*held)
+                    last_emit, held = now, None
+        finally:
+            self._running = False
             try:
-                data, addr = sock.recvfrom(4096)
-                self._last_addr = addr
-                self.message_received.emit(data, addr)
-            except socket.timeout:
-                continue
-            except OSError as e:
-                print(f"[UdpServer] OSError: {e}")
-                break
+                sock.close()
+            except OSError:
+                pass
+
+    @staticmethod
+    def _status_key(data: bytes) -> Any:
+        """What makes a status 'new' (same key as plc_manager's UdpClient)."""
+        try:
+            payload = json.loads(data.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return data  # legacy plain-text status
+        if not isinstance(payload, dict):
+            return data
+        pending = payload.get("pending")
+        if not isinstance(pending, dict):
+            return (payload.get("state"), None, None, None)
+        return (payload.get("state"), pending.get("event"), pending.get("source"), pending.get("target"))
 
     def stop(self):
         """Stop the server."""
@@ -129,12 +153,17 @@ class UdpServer(QObject):
 
     def send_response(self, message: bytes, addr: Optional[Tuple[Any, ...]] =None):
         """Send response to client."""
-        if not self._running or not self.sock:
+        sock = self.sock  # stop() may clear self.sock from another thread
+        if not self._running or sock is None:
             return
         if addr is None:
             addr = self._last_addr
         if addr:
-            self.sock.sendto(message, addr)
+            try:
+                sock.sendto(message, addr)
+            except OSError as e:
+                # Called from GUI slots: an uncaught exception there aborts the process.
+                print(f"[UdpServer] sendto {addr} failed: {e}")
             # print("[UdpServer] Sent response to {}: {}".format(addr, message))
 
 ################################################
@@ -149,6 +178,14 @@ class UdpCommunicationManager(QObject):
     udp_message_received : pyqtSignal = pyqtSignal(bytes, tuple)
     plc_status_payload_received : pyqtSignal = pyqtSignal(dict)
     udp_bind_failed : pyqtSignal = pyqtSignal(str)
+
+    # Replies to plc_manager. They describe the GUI's ROS state and are
+    # repeated on every status packet, so a lost or misdirected reply is
+    # corrected by the next one (plc_manager keeps only the last received).
+    ROS_CONNECTED = b"ROS_CONNECTED"
+    ROS_DISCONNECTED = b"ROS_DISCONNECTED"
+    ROS_CONNECTION_FAILED = b"ROS_CONNECTION_FAILED"
+    PLC_RUNNING_STATES = ('RUNNING', 'RUNNING_RECOVERY')
 
     DEFAULT_PLC_STATES: Dict[str, Any] = {
         's_input.0': False,
@@ -167,6 +204,7 @@ class UdpCommunicationManager(QObject):
         self.start_ros_communication_emitted  : bool = False
         self.stop_ros_communication_emitted  : bool = False
         self._ros_communication_active_checker: Optional[Callable[[], bool]] = None
+        self._ros_reply: bytes = self.ROS_DISCONNECTED
 
         self.remote_ip = remote_ip
         self.remote_port = remote_port
@@ -214,6 +252,7 @@ class UdpCommunicationManager(QObject):
     def onUdpMessageReceived(self, data: bytes, addr: str) -> None:
         self._cache_udp_received_time()
         self.udpMessageReceived(data)
+        self.server.send_response(self._ros_reply)
         self.udp_message_received.emit(data, addr)
 
     @pyqtSlot(str)
@@ -228,20 +267,33 @@ class UdpCommunicationManager(QObject):
     def getUdpBindFailureReason(self) -> Optional[str]:
         return self._udp_bind_failure_reason
 
+    def _set_ros_reply(self, reply: bytes) -> None:
+        self._ros_reply = reply
+        self.server.send_response(reply)
+
+    def _is_plc_running(self) -> bool:
+        return self._last_plc_state in self.PLC_RUNNING_STATES
+
     def onResetRosCommunication(self) -> None:
-        self.server.send_response(b"ROS_DISCONNECTED")
+        if self._ros_reply == self.ROS_CONNECTION_FAILED and self._is_plc_running():
+            # plc_manager has not acted on the failure yet (FAIL leaves
+            # RUNNING): a DISCONNECTED now could hide it. udpMessageReceived
+            # switches to DISCONNECTED once the PLC has left RUNNING.
+            self.server.send_response(self._ros_reply)
+        else:
+            self._set_ros_reply(self.ROS_DISCONNECTED)
         self.start_ros_communication_emitted = False
         # self.stop_ros_communication_emitted = False
 
     @pyqtSlot()
     def onRosCommunicationEstablished(self) -> None:
         print("[UdpServer] PLC Communication Established.")
-        self.server.send_response(b"ROS_CONNECTED")
+        self._set_ros_reply(self.ROS_CONNECTED)
 
     @pyqtSlot()
     def onRosCommunicationFailed(self) -> None:
         print("[UdpServer] ROS communication failed.")
-        self.server.send_response(b"ROS_CONNECTION_FAILED")
+        self._set_ros_reply(self.ROS_CONNECTION_FAILED)
         self.start_ros_communication_emitted = False
 
     def requestRosCommunicationStop(self, reason: str) -> None:
@@ -470,6 +522,12 @@ class UdpCommunicationManager(QObject):
             self._cache_legacy_udp_message(state)
         pending_event = pending.get("event") if pending is not None else None
 
+        if self._ros_reply == self.ROS_CONNECTION_FAILED and not self._is_plc_running():
+            # The failure has been handled (the PLC left RUNNING). Keeping
+            # FAILED would make plc_manager's START guard refuse the next start.
+            print("[UdpServer] PLC left RUNNING after ROS failure: reporting ROS_DISCONNECTED.")
+            self._ros_reply = self.ROS_DISCONNECTED
+
         #print(f"[UdpServer] {data.decode(errors='replace')} received from UDP client.")
 
         if pending_event in ("STOP", "FAIL"):
@@ -488,8 +546,13 @@ class UdpCommunicationManager(QObject):
             if not self.stop_ros_communication_emitted:
                 self.requestRosCommunicationStop("Request from PLC via UDP to stop the ROS communication received.")
 
-        elif state in ('RUNNING', 'RUNNING_RECOVERY') and pending is None:
+        elif state in self.PLC_RUNNING_STATES and pending is None:
             self.stop_ros_communication_emitted = False
+
+            if self._ros_reply == self.ROS_CONNECTION_FAILED:
+                # plc_manager answers the failure with FAIL: no reconnection
+                # attempts until it has left RUNNING.
+                return
 
             if (
                 self.start_ros_communication_emitted

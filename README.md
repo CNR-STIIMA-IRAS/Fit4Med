@@ -69,11 +69,20 @@ kill_ros_apps.sh<br>
  - Unload inactive controllers
  - Coordinate with PLC manager for clean shutdown
 
+fit4med_to_robot_sync.sh / fit4med_from_robot_sync.sh<br>
+ - To robot: make the robot's `~/fit4med_ws/src` identical to the workspace `src` containing your checkout (robot 192.168.1.1, `--dry-run` to preview). It first offers a backup, and asks before deleting files that exist only on the robot.
+ - From robot: pull the robot's changes, keeping local files that are newer.
+
+fit4med_backup.sh / fit4med_restore.sh<br>
+ - Back up the robot sources to `/home/fit4med/bkp/YYYYMMDD/HHMM/`, or list the backups and restore one.
+ - Run them on the robot, or from your PC (they work through ssh; `--host <ip>` / `--local` to force).
+
 #### 7. ps_scripts - PowerShell Remote Execution (Windows GUI)
  - fmrr_gui.ps1 - launch GUI
  - fmrr_bringup.ps1 - SSH into Linux, start ROS2 stack via PLC launcher
- - fmrr_cleanup.ps1 - SSH into Linux, gracefully shut down all nodes
+ - fmrr_cleanup.ps1 - kill the local GUI (and whatever holds UDP 5005), then SSH into Linux and shut down all nodes (`-Target gui|remote` to do only one side)
  - fmrr_scp.ps1 - Transfer files remotely between Windows & Linux
+ - fmrr_to_robot_sync.ps1 / fmrr_backup.ps1 / fmrr_restore.ps1 - Windows versions of the robot sync, backup and restore scripts (see bash_scripts/README.md)
 
 #### 8. tecnobody_msgs - Custom Message and Services Types
  - PlcController.msg - Command messages to PLC
@@ -85,7 +94,8 @@ kill_ros_apps.sh<br>
 ## Setting up a GUI PC from scratch (Windows)
 
 The GUI is a plain Python/PyQt5 application: it never uses `rclpy`, it talks to
-the platform over **rosbridge (TCP 9090)** and receives status over **UDP 5005**.
+the platform over **rosbridge (TCP 9090)** and receives status over **UDP 5005**
+(sent by `plc_manager` from UDP 5006, where the GUI replies with its ROS state).
 No ROS 2 installation is required on the Windows PC.
 
 Two addresses matter and only one of them ever changes:
