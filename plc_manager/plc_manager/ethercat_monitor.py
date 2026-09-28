@@ -430,6 +430,6 @@ class EthercatMonitor:
                     {"name": slave_name, "state": slave_state}
                     for slave_name, slave_state in visible_pairs
                 ],
-                # Bounded: the GUI reads status datagrams into a 4096-byte buffer.
+                # Bounded: sent to the GUI in every status datagram.
                 "last_error": _truncate(self._last_error, LAST_ERROR_MAX_CHARS),
             }
