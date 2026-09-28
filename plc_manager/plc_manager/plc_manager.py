@@ -128,7 +128,14 @@ class PLCControllerInterface(Node):
         # Coordinates with rehab_gui for emergency stop and status.
         # Fixed local port: the GUI replies to the source address of our
         # packets, so after a restart it must still be the same one.
-        self.client = UdpClient(target_ip, GUI_UDP_PORT, local_port=PLC_MANAGER_UDP_PORT)
+        try:
+            self.client = UdpClient(target_ip, GUI_UDP_PORT, local_port=PLC_MANAGER_UDP_PORT)
+        except OSError as exc:
+            self.get_logger().fatal( #type: ignore
+                f"Cannot bind UDP port {PLC_MANAGER_UDP_PORT} ({exc}): is another "
+                "plc_manager still running? Run fmrr_cleanup.ps1 and restart the bring-up."
+            )
+            raise
         self.gui_status = GuiStatusPublisher(self.client, self.get_logger())
         self.send_running_cnt = 0
         self.send_running_dec = 10  # Send status every 10*50ms = 500ms at 50 Hz
