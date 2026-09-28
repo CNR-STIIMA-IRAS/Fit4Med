@@ -515,8 +515,14 @@ class PLCControllerInterface(Node):
                 self.estop_cached = estop_value
             self.sw_estop_cached = sw_estop
             # ========== FSM States info ==========
-            self.gui_status.notify(self._fsm_status_payload())
-            self.lock.release()
+            try:
+                self.gui_status.notify(self._fsm_status_payload())
+            except Exception as exc:
+                self.get_logger().error(
+                    f"Cannot build or publish GUI status: {exc}"
+                )
+            finally:
+                self.lock.release()
 
 
     def _fsm_status_payload(self) -> bytes:
