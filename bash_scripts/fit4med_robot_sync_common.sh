@@ -27,7 +27,7 @@ Options:
   --ssh-check          Run the SSH preflight check (default).
   --backup             (to robot) Back up the robot sources first, without asking.
   --no-backup          (to robot) Do not back up and do not ask.
-  --yes                (to robot) Do not ask before deleting robot files missing locally.
+  --yes                (to robot) Do not ask before applying updates or deleting robot-only files.
   --local-path <dir>   Local workspace "src" folder (default: ${FIT4MED_LOCAL_PATH}).
   --delete-extra-folders
                        (to robot) Also delete the robot folders that are not in the
@@ -320,7 +320,7 @@ fit4med_sync_to_robot() {
 
   if [[ "$DRY_RUN" != true ]]; then
     fit4med_robot_sync_maybe_backup
-    fit4med_robot_sync_confirm_deletions "$dest" "${SYNC_SOURCES[@]}"
+    fit4med_robot_sync_confirm_changes "$dest" "${SYNC_SOURCES[@]}"
   fi
   fit4med_robot_sync_run_rsync false "$dest" "${SYNC_SOURCES[@]}"
 }
@@ -373,24 +373,39 @@ fit4med_robot_sync_maybe_backup() {
   fi
 }
 
-# fit4med_robot_sync_confirm_deletions <dest> <src>...
-fit4med_robot_sync_confirm_deletions() {
-  local dest="$1" deletions=()
+# fit4med_robot_sync_confirm_changes <dest> <src>...
+fit4med_robot_sync_confirm_changes() {
+  local dest="$1" preview changes=() deletions=()
   shift
-  mapfile -t deletions < <(rsync "${RSYNC_OPTS[@]}" --dry-run --itemize-changes "$@" "$dest" \
-                           | sed -n 's/^\*deleting  *//p')
-  if [[ ${#deletions[@]} -eq 0 ]]; then
+  if ! preview="$(rsync "${RSYNC_OPTS[@]}" --dry-run --itemize-changes "$@" "$dest" 2>&1)"; then
+    printf '%s\n' "$preview"
+    echo "[ERROR] rsync preflight failed; nothing was changed"
+    exit 1
+  fi
+  mapfile -t deletions < <(printf '%s\n' "$preview" | sed -n 's/^\*deleting  *//p')
+  mapfile -t changes < <(printf '%s\n' "$preview" | sed -n -E '/^[.<>ch*][fdLDS][^ ]{9} /p' \
+                         | sed '/^\.[fd]\.\.t\./d')
+  if [[ ${#deletions[@]} -gt 0 ]]; then
+    echo "[WARN] ${#deletions[@]} file(s)/folder(s) exist only on the robot and will be DELETED:"
+    printf '         %s\n' "${deletions[@]:0:50}"
+    if [[ ${#deletions[@]} -gt 50 ]]; then
+      echo "         ... and $(( ${#deletions[@]} - 50 )) more"
+    fi
+    if [[ "$ASSUME_YES" != true ]] && ! fit4med_ask_yes_no "Delete them and apply the sync?" n; then
+      echo "[INFO] Sync aborted, nothing changed on the robot"
+      exit 1
+    fi
     return
   fi
-  echo "[WARN] ${#deletions[@]} file(s)/folder(s) exist only on the robot and will be DELETED:"
-  printf '         %s\n' "${deletions[@]:0:50}"
-  if [[ ${#deletions[@]} -gt 50 ]]; then
-    echo "         ... and $(( ${#deletions[@]} - 50 )) more"
-  fi
-  if [[ "$ASSUME_YES" == true ]]; then
+  if [[ ${#changes[@]} -eq 0 || "$ASSUME_YES" == true ]]; then
     return
   fi
-  if ! fit4med_ask_yes_no "Delete them and continue with the sync?" n; then
+  echo "[INFO] ${#changes[@]} file(s) will be added or updated:"
+  printf '         %s\n' "${changes[@]:0:50}"
+  if [[ ${#changes[@]} -gt 50 ]]; then
+    echo "         ... and $(( ${#changes[@]} - 50 )) more"
+  fi
+  if ! fit4med_ask_yes_no "Apply these changes?" n; then
     echo "[INFO] Sync aborted, nothing changed on the robot"
     exit 1
   fi

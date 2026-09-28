@@ -56,9 +56,15 @@ fit4med_backup_create() {
     n=$((n + 1))
   done
 
-  echo "[INFO] Backing up $FIT4MED_ROBOT_SRC -> $dest"
+  if ! command -v rsync >/dev/null 2>&1; then
+    echo "[ERROR] rsync is not installed on this machine"
+    return 1
+  fi
+
+  # No .git: the history is on the PCs and on GitHub, and it is most of the size.
+  echo "[INFO] Backing up $FIT4MED_ROBOT_SRC -> $dest (without .git)"
   mkdir -p "$dest" || return 1
-  if ! cp -a "${FIT4MED_ROBOT_SRC}/." "$dest/"; then
+  if ! rsync -a --exclude='.git' "${FIT4MED_ROBOT_SRC}/" "$dest/"; then
     echo "[ERROR] Backup failed, removing the incomplete copy $dest"
     rm -rf -- "$dest"
     return 1
@@ -71,7 +77,7 @@ fit4med_backup_entries() {
   [[ -d "$FIT4MED_BKP_ROOT" ]] || return 0
   (cd "$FIT4MED_BKP_ROOT" && find . -mindepth 2 -maxdepth 2 -type d \
      -regextype posix-extended -regex '\./[0-9]{8}/[0-9]{4}(_[0-9]+)?' \
-     | sed 's|^\./||' | sort -r)
+      | sed 's|^\./||' | sort -t '_' -k1,1r -k2,2nr)
 }
 
 # fit4med_backup_list: numbered list of the backups (1 = newest).
@@ -94,7 +100,11 @@ fit4med_backup_list() {
 # fit4med_backup_restore_interactive [YYYYMMDD/HHMM]: choose a backup and make
 # the sources identical to it. The optional stamp names the safety backup.
 fit4med_backup_restore_interactive() {
-  local stamp="${1:-}" entries=() choice selected
+  local stamp="${1:-}" entries=() choice choice_num selected
+  if ! command -v rsync >/dev/null 2>&1; then
+    echo "[ERROR] rsync is not installed on this machine"
+    return 1
+  fi
   mapfile -t entries < <(fit4med_backup_entries)
   fit4med_backup_list || return 1
 
@@ -107,15 +117,21 @@ fit4med_backup_restore_interactive() {
     echo "[INFO] Nothing restored"
     return 0
   fi
-  if ! [[ "$choice" =~ ^[0-9]+$ ]] || (( choice < 1 || choice > ${#entries[@]} )); then
+  if ! [[ "$choice" =~ ^[0-9]+$ ]]; then
     echo "[ERROR] Invalid choice: $choice"
     return 1
   fi
-  selected="${FIT4MED_BKP_ROOT}/${entries[$((choice - 1))]}"
+  choice_num=$((10#$choice))
+  if (( choice_num < 1 || choice_num > ${#entries[@]} )); then
+    echo "[ERROR] Invalid choice: $choice"
+    return 1
+  fi
+  selected="${FIT4MED_BKP_ROOT}/${entries[$((choice_num - 1))]}"
 
   echo
   echo "[WARN] $FIT4MED_ROBOT_SRC will become identical to $selected:"
-  echo "       files not in that backup are deleted, modified files are overwritten."
+  echo "       files not in that backup are deleted, modified files are overwritten"
+  echo "       (.git folders are kept as they are)."
   if ! fit4med_ask_yes_no "Continue?" n; then
     echo "[INFO] Nothing restored"
     return 0
@@ -126,12 +142,9 @@ fit4med_backup_restore_interactive() {
 
   echo "[INFO] Restoring $selected -> $FIT4MED_ROBOT_SRC"
   mkdir -p "$FIT4MED_ROBOT_SRC" || return 1
-  if command -v rsync >/dev/null 2>&1; then
-    rsync -a --delete "${selected}/" "${FIT4MED_ROBOT_SRC}/" || return 1
-  else
-    find "$FIT4MED_ROBOT_SRC" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + || return 1
-    cp -a "${selected}/." "${FIT4MED_ROBOT_SRC}/" || return 1
-  fi
+  # Excluded .git is neither restored nor deleted: backups have none (older
+  # ones may), the robot keeps its own.
+  rsync -a --delete --exclude='.git' "${selected}/" "${FIT4MED_ROBOT_SRC}/" || return 1
   echo "[OK] Restored $selected"
   echo "[INFO] Rebuild the workspace (colcon build) before the next bring-up."
 }
@@ -149,9 +162,14 @@ fit4med_sync_apply_archive() {
   return $rc
 }
 
+_fit4med_sync_executable_paths() {
+  find "$1" \( -type d \( -name .git -o -name .github -o -name __pycache__ \) -prune \) -o \
+       \( -type f ! -name '*.pyc' -perm /111 -print0 \)
+}
+
 _fit4med_sync_apply_staged() {
   local staging="$1" archive="$2" folder="$3" dry_run="$4" assume_yes="$5" delete_extra="${6:-false}"
-  local src_dir="$FIT4MED_ROBOT_SRC" stage_dir="$staging" crlf=() deletions=() sources=() names=() name
+  local src_dir="$FIT4MED_ROBOT_SRC" stage_dir="$staging" crlf=() deletions=() changes=() sources=() names=() name path relative target preview output
   [[ "$folder" == . ]] && folder=""  # "." = the whole workspace
 
   if ! tar -x -f "$archive" -C "$staging"; then
@@ -212,19 +230,56 @@ _fit4med_sync_apply_staged() {
 
   if [[ "$dry_run" == true ]]; then
     echo "[INFO] DRY-RUN: nothing is changed on the robot"
-    rsync "${opts[@]}" --dry-run "${sources[@]}" "${src_dir}/" | grep -v '^\.[fd]\.\.t\.'
+    if ! output="$(rsync "${opts[@]}" --dry-run "${sources[@]}" "${src_dir}/" 2>&1)"; then
+      printf '%s\n' "$output"
+      echo "[ERROR] rsync dry-run failed"
+      return 1
+    fi
+    if [[ -n "$output" ]]; then
+      printf '%s\n' "$output" | sed '/^\.[fd]\.\.t\./d'
+    fi
+    while IFS= read -r -d '' path; do
+      relative="${path#"$stage_dir"/}"
+      target="${src_dir}/${relative}"
+      if [[ -f "$target" && ! -x "$target" ]]; then
+        echo "[INFO] Would restore executable permission: $relative"
+      fi
+    done < <(_fit4med_sync_executable_paths "$stage_dir")
     return 0
   fi
 
-  mapfile -t deletions < <(rsync "${opts[@]}" --dry-run "${sources[@]}" "${src_dir}/" \
-                           | sed -n 's/^\*deleting  *//p')
+  if ! preview="$(rsync "${opts[@]}" --dry-run "${sources[@]}" "${src_dir}/" 2>&1)"; then
+    printf '%s\n' "$preview"
+    echo "[ERROR] rsync preflight failed; nothing was changed"
+    return 1
+  fi
+  mapfile -t deletions < <(printf '%s\n' "$preview" | sed -n 's/^\*deleting  *//p')
+  mapfile -t changes < <(printf '%s\n' "$preview" | sed -e '/^\.[fd]\.\.t\./d' -e '/^$/d')
+  while IFS= read -r -d '' path; do
+    relative="${path#"$stage_dir"/}"
+    target="${src_dir}/${relative}"
+    if [[ -f "$target" && ! -x "$target" ]]; then
+      changes+=("mode +x $relative")
+    fi
+  done < <(_fit4med_sync_executable_paths "$stage_dir")
+
   if [[ ${#deletions[@]} -gt 0 ]]; then
     echo "[WARN] ${#deletions[@]} file(s)/folder(s) exist only on the robot and will be DELETED:"
     printf '         %s\n' "${deletions[@]:0:50}"
     if [[ ${#deletions[@]} -gt 50 ]]; then
       echo "         ... and $(( ${#deletions[@]} - 50 )) more"
     fi
-    if [[ "$assume_yes" != true ]] && ! fit4med_ask_yes_no "Delete them and continue with the sync?" n; then
+    if [[ "$assume_yes" != true ]] && ! fit4med_ask_yes_no "Delete them and apply the sync?" n; then
+      echo "[INFO] Sync aborted, nothing changed on the robot"
+      return 1
+    fi
+  elif [[ ${#changes[@]} -gt 0 && "$assume_yes" != true ]]; then
+    echo "[INFO] ${#changes[@]} file(s) will be added or updated:"
+    printf '         %s\n' "${changes[@]:0:50}"
+    if [[ ${#changes[@]} -gt 50 ]]; then
+      echo "         ... and $(( ${#changes[@]} - 50 )) more"
+    fi
+    if ! fit4med_ask_yes_no "Apply these changes?" n; then
       echo "[INFO] Sync aborted, nothing changed on the robot"
       return 1
     fi
@@ -237,7 +292,17 @@ _fit4med_sync_apply_staged() {
     echo "[ERROR] rsync failed"
     return 1
   fi
-  printf '%s\n' "$output" | grep -v '^\.[fd]\.\.t\.'
+  while IFS= read -r -d '' path; do
+    relative="${path#"$stage_dir"/}"
+    target="${src_dir}/${relative}"
+    if [[ -f "$target" ]] && ! chmod +x -- "$target"; then
+      echo "[ERROR] Cannot restore executable permission: $target"
+      return 1
+    fi
+  done < <(_fit4med_sync_executable_paths "$stage_dir")
+  if [[ -n "$output" ]]; then
+    printf '%s\n' "$output" | sed '/^\.[fd]\.\.t\./d'
+  fi
   echo "[OK] Robot sources updated: $src_dir"
   echo "[INFO] Rebuild the workspace (colcon build) before the next bring-up."
 }

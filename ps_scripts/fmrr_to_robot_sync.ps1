@@ -15,7 +15,7 @@ param(
     [switch]$DryRun,
     [switch]$Backup,    # back up the robot sources first, without asking
     [switch]$NoBackup,  # no backup, no question
-    [switch]$Yes,       # delete robot-only files without asking
+    [switch]$Yes,       # apply updates and delete robot-only files without asking
     # Also delete the robot folders that are not in the local src. By default
     # only the local folders are synced and the others are left untouched.
     [switch]$DeleteExtraFolders

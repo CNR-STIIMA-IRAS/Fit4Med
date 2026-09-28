@@ -48,8 +48,9 @@ Ogni cartella che hai nel tuo `src` diventa **identica** sul robot: le modifiche
 Lo script:
 1. controlla che il robot risponda e che ssh funzioni;
 2. chiede se fare un backup del software attuale del robot (risposta predefinita: sì). Se il backup fallisce, si ferma senza toccare nulla;
-3. se sul robot ci sono file che sul tuo PC non esistono, li elenca e chiede se cancellarli (risposta predefinita: no). Se rispondi no, si ferma e il robot resta com'era;
-4. copia i file.
+3. se sul robot ci sono file che sul tuo PC non esistono, li elenca e chiede se cancellarli (risposta predefinita: no). Confermare autorizza l'intera sync; se rispondi no, il robot resta com'era;
+4. se non ci sono cancellazioni ma ci sono file da aggiungere o aggiornare, li elenca e chiede conferma prima di applicarli (risposta predefinita: no). Se rispondi no, il robot resta com'era;
+5. copia i file.
 
 Le cartelle `.git` e le cache di Python (`__pycache__`, `*.pyc`) sul robot non vengono né sovrascritte né cancellate.
 
@@ -67,7 +68,7 @@ Le righe `*deleting` sono i file che verrebbero cancellati dal robot, le altre q
 | `--folder <cartella>` | Copia solo una cartella, relativa a `~/fit4med_ws/src/`, per esempio `--folder Fit4Med/rehab_gui`. Anche le cancellazioni restano dentro quella cartella. |
 | `--backup` | Fa il backup senza chiedere. |
 | `--no-backup` | Non fa il backup e non chiede. |
-| `--yes` | Cancella i file presenti solo sul robot senza chiedere conferma. |
+| `--yes` | Applica gli aggiornamenti e cancella i file presenti solo sul robot senza chiedere conferma. |
 | `--host <ip>` | Usa un altro indirizzo del robot. |
 | `--local-path <cartella>` | Usa un'altra cartella `src` del tuo PC. |
 | `--delete-extra-folders` | Cancella dal robot anche le cartelle che nel tuo `src` non esistono (con conferma). Serve solo per eliminare dal robot un intero pacchetto. |
