@@ -91,7 +91,8 @@ class UdpServer(QObject):
                 wait = max(0.01, self.MIN_EMIT_PERIOD_S - (now - last_emit)) if held else 0.2
                 sock.settimeout(wait)
                 try:
-                    data, addr = sock.recvfrom(4096)
+                    # Largest UDP datagram: a status never gets cut, whatever its size.
+                    data, addr = sock.recvfrom(65535)
                 except socket.timeout:
                     data = None
                 except ConnectionResetError as e:
