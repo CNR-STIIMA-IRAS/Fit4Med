@@ -82,7 +82,7 @@ Dopo la copia, sul robot va ricompilato il workspace (`colcon build`) prima di r
 ./fit4med_backup.sh
 ```
 
-Salva una copia completa di `/home/fit4med/fit4med_ws/src/` in `/home/fit4med/bkp/AAAAMMGG/HHMM/`.
+Salva una copia di `/home/fit4med/fit4med_ws/src/` in `/home/fit4med/bkp/AAAAMMGG/HHMM/`. Le cartelle `.git` non vengono salvate: la storia dei repository è già sui PC e su GitHub.
 
 - Se fai due backup nello stesso minuto, il secondo si chiama `HHMM_2`.
 - Se la copia fallisce, la cartella incompleta viene cancellata, così nell'elenco compaiono solo backup completi.
@@ -104,7 +104,7 @@ Lo script:
 2. chiede il numero del backup da ripristinare (`q` per uscire senza fare nulla);
 3. chiede conferma (risposta predefinita: no);
 4. chiede se salvare prima lo stato attuale (risposta predefinita: sì). Conviene sempre dire sì, così puoi tornare indietro;
-5. rende `/home/fit4med/fit4med_ws/src/` **identica** al backup scelto: i file che non sono nel backup vengono cancellati, quelli modificati vengono sovrascritti.
+5. rende `/home/fit4med/fit4med_ws/src/` **identica** al backup scelto: i file che non sono nel backup vengono cancellati, quelli modificati vengono sovrascritti. Le cartelle `.git` del robot restano come sono.
 
 Dopo il ripristino va ricompilato il workspace (`colcon build`) prima di riavviare il sistema.
 
@@ -157,13 +157,15 @@ type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh fit4med@192.168.1.1 "mkdir -p ~/
 ```
 Senza chiave, su Windows la password viene chiesta a ogni passaggio (fino a 4-5 volte).
 
-**Fine riga Windows.** Git per Windows di solito converte la fine delle righe in formato Windows (CRLF). Uno script `.sh` convertito così non funziona sul robot. Il repository ora lo impedisce per i `.sh` (file `.gitattributes`), ma una copia scaricata prima va sistemata una volta, dalla cartella del repository:
+**Fine riga Windows.** Git per Windows di solito converte la fine delle righe in formato Windows (CRLF), che sul robot non va bene (gli script non partono). Il repository ora tiene la fine riga Linux (LF) per tutti i file (file `.gitattributes`). In ogni caso lo script di sincronizzazione converte in LF i file di testo con CRLF prima di copiarli sul robot, e lo segnala con `text file(s) with Windows line endings (CRLF): converted to LF`. Fanno eccezione gli script Windows (`.ps1`, `.bat`, `.cmd`).
+
+Per mettere a posto una volta per tutte una copia del repository scaricata prima, dalla cartella del repository:
 ```powershell
 git pull
 git rm --cached -r -q .
 git reset --hard
 ```
-Attenzione: `git reset --hard` cancella le modifiche locali non salvate con commit. Se il problema è presente, lo script di sincronizzazione se ne accorge, elenca i file e si ferma senza toccare il robot.
+Attenzione: `git reset --hard` cancella le modifiche locali non salvate con commit.
 
 ## Esempio completo di aggiornamento
 
@@ -196,4 +198,4 @@ Se dopo l'aggiornamento qualcosa non funziona, torna alla versione precedente co
 | `No backups in /home/fit4med/bkp` | Non è ancora stato fatto nessun backup. |
 | La password viene chiesta più volte | Su Linux è normale se passano più di 2 minuti tra un passaggio e l'altro; su Windows viene chiesta a ogni passaggio. Con una chiave ssh non viene più chiesta. |
 | `is not a workspace 'src' folder` | La cartella da copiare non si chiama `src`. Indica quella giusta con `--local-path` (`-LocalPath` su Windows). |
-| `shell script(s) have Windows line endings (CRLF)` | Copia del repository fatta su Windows con la conversione della fine riga. Vedi [Da Windows](#da-windows). |
+| `text file(s) with Windows line endings (CRLF): converted to LF` | Non è un errore: la copia del repository sul PC Windows ha la fine riga Windows e lo script l'ha convertita. Per eliminare il messaggio vedi [Da Windows](#da-windows). |

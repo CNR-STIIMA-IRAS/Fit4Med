@@ -1,3 +1,8 @@
-# Shell scripts run on the robot (Linux): keep Linux line endings even in a
-# Windows checkout, whatever core.autocrlf says.
-*.sh text eol=lf
+# Everything runs on the robot (Linux): keep Linux line endings even in a
+# Windows checkout, whatever core.autocrlf says. Binary files are detected
+# automatically and left alone.
+* text=auto eol=lf
+
+# Windows-only scripts.
+*.bat text eol=crlf
+*.cmd text eol=crlf

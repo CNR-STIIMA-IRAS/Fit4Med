@@ -111,6 +111,9 @@ def generate_launch_description():
             LaunchConfiguration('eeg_delay_ms', default='4000'),
         ],
         condition=UnlessCondition(debug_delta),
+        # Without plc_manager the rest of the bring-up looks alive but nothing
+        # drives the PLC: stop everything (systemd then shows the unit down).
+        on_exit=[EmitEvent(event=Shutdown(reason='plc_manager_node exited'))],
     )
 
     ethercat_slaves_status_check_node = Node(

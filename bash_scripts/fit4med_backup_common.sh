@@ -167,14 +167,18 @@ _fit4med_sync_apply_staged() {
     fi
   fi
 
-  # A Windows checkout with core.autocrlf converts line endings: such shell
-  # scripts fail on the robot with "$'\r': command not found".
-  mapfile -t crlf < <(cd "$staging" && grep -rlI --include='*.sh' $'\r$' . 2>/dev/null)
+  # A Windows checkout with core.autocrlf has CRLF line endings: scripts fail
+  # on the robot ("$'\r': command not found") and every other text file would
+  # differ from the robot copy. Convert them to LF, as git does with
+  # "text=auto eol=lf" (see .gitattributes); Windows-only scripts are kept.
+  mapfile -t crlf < <(cd "$stage_dir" && grep -rlI --exclude='*.ps1' --exclude='*.bat' \
+                        --exclude='*.cmd' $'\r$' . 2>/dev/null)
   if [[ ${#crlf[@]} -gt 0 ]]; then
-    echo "[ERROR] ${#crlf[@]} shell script(s) have Windows line endings (CRLF) and would not run:"
-    printf '         %s\n' "${crlf[@]:0:20}"
-    echo "        Fix the checkout on the PC (see bash_scripts/README.md), nothing was changed."
-    return 1
+    echo "[INFO] ${#crlf[@]} text file(s) with Windows line endings (CRLF): converted to LF"
+    if ! (cd "$stage_dir" && printf '%s\0' "${crlf[@]}" | xargs -0 sed -i 's/\r$//'); then
+      echo "[ERROR] Line ending conversion failed, nothing was changed"
+      return 1
+    fi
   fi
 
   # Files coming from Windows have no executable bit: give it back to scripts.
