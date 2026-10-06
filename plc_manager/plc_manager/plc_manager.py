@@ -354,8 +354,10 @@ class PLCControllerInterface(Node):
         self.get_logger().warning( #type: ignore
             "Shutdown requested: opening PLC safety chain."
         )
-        self.plc_commands.raise_sw_estop()
+        # Brake first: opening the safety chain takes the torque away, and the
+        # Z axis falls by gravity if the brake is still released.
         self.plc_commands.close_brake()
+        self.plc_commands.raise_sw_estop()
         self.plc_commands.set_automatic_mode()
         self.plc_commands.wire_endstroke_to_emergency_chain()
 

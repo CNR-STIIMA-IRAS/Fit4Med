@@ -15,6 +15,12 @@ The node performs the following operations:
 3. Handles motor startup and shutdown with timeout protection
 4. Automatic fault detection and optional auto-reset
 5. PLC command publishing for brake control
+6. Brake supervision: the Z axis falls by gravity without torque, and the
+   brake is a PLC output, not driven by the drives. After start_motors has
+   released the brake, the node closes it as soon as the drives lose torque
+   without stop_motors (drive fault: the state controller then disables every
+   drive; drives no longer all enabled), when the drive states stop arriving
+   (ros2_control_node crashed or stalled), and when the node exits.
 
 Typical usage:
     ros2 run tecnobody_workbench_utils ethercat_checker_nodes
@@ -27,9 +33,13 @@ Services provided:
     - /ethercat_checker/request_shutdown: Gracefully shutdown the node
 """
 
-import rclpy
+import signal
+import threading
 import time
+
+import rclpy
 from rclpy.node import Node
+from rclpy.signals import SignalHandlerOptions
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from std_srvs.srv import Trigger
@@ -40,6 +50,14 @@ from tecnobody_msgs.msg import PlcController
 
 # Global flag for coordinating node shutdown across threads
 _shutdown_request = False
+
+# PLC_controller applies only the last message received in each 2 ms cycle:
+# brake commands are sent a few times, spaced, instead of one message.
+BRAKE_COMMAND_REPEATS = 3
+BRAKE_COMMAND_SPACING_S = 0.02
+# Drive states arrive at 250 Hz: without them for this long while the brake
+# is released, the EtherCAT loop is considered lost and the brake is closed.
+DRIVE_STATES_TIMEOUT_S = 0.2
 
 
 class DriverStates:
@@ -195,6 +213,12 @@ class EthercatCheckerNode(Node):
         # Current drive feedback container
         self.feedback : DriverStates = DriverStates(self.dof_names)
 
+        # Brake supervision (see module docstring). The lock serialises
+        # start/stop_motors, the drive-state callback, the watchdog and exit.
+        self._brake_lock = threading.Lock()
+        self._brake_released = False
+        self._last_drive_states_monotonic : float | None = None
+
     ########################################################################
     # Service Callbacks
     ########################################################################
@@ -230,6 +254,7 @@ class EthercatCheckerNode(Node):
             msg (Cia402DriveStates): Message containing current drive states,
                                      modes, and status words for all DOFs
         """
+        self._last_drive_states_monotonic = time.monotonic()
         for dof in self.dof_names:
             try:
                 index = msg.dof_names.index(dof) #type: ignore
@@ -240,6 +265,13 @@ class EthercatCheckerNode(Node):
                 self.feedback.drives_on = msg.drives_on
             except ValueError:
                 self.get_logger().error(f'DoF {dof} not found in received message')
+
+        if self._brake_released and (msg.fault_present or not msg.drives_on):
+            self._close_brake(
+                'drives lost torque without stop_motors '
+                f'(fault_present={msg.fault_present}, states={list(msg.drive_states)})',
+                only_if_released=True,
+            )
     
 
     def get_drive_states_callback(self, request: GetDriveStates.Request, response: GetDriveStates.Response):
@@ -292,7 +324,7 @@ class EthercatCheckerNode(Node):
             if self.feedback.drives_on:
                 # Disable brake only if not in homing mode (homing disables brake)
                 if not any([self.feedback.mode_of_operations[dof] == 'MODE_HOMING' for dof in self.dof_names]):
-                    self._publish_plc_command(['PLC_node/brake_disable'], [1])
+                    self._release_brake()
                 response.success = True
     
             current_time = time.time()
@@ -325,7 +357,7 @@ class EthercatCheckerNode(Node):
         Returns:
             Trigger.Response: Response indicating success or timeout failure
         """
-        self._publish_plc_command(['PLC_node/brake_disable'], [0])
+        self._close_brake('stop_motors')
         time.sleep(0.4)  # Allow brake to engage before turning off drives
         self.try_turn_off()
         timeout_s : float = 5.0
@@ -400,7 +432,11 @@ class EthercatCheckerNode(Node):
         Publish a command to the PLC controller for hardware control.
         
         Sends commands to the PLC controller (typically for brake control).
-        The message is published repeatedly for 1 second to ensure reliable delivery.
+        The message is published BRAKE_COMMAND_REPEATS times, spaced, so it
+        survives a best-effort drop or another publisher in the same cycle.
+        It used to be published in a tight loop for 1 s: that loaded a CPU
+        and, as PLC_controller keeps only the last message per cycle, undid
+        for that whole second any brake close sent by plc_manager.
         
         Args:
             name (list): List of interface names to control (e.g., ['PLC_node/brake_disable'])
@@ -410,10 +446,39 @@ class EthercatCheckerNode(Node):
         command_msg.interface_names = name
         command_msg.values = value
 
-        # Publish repeatedly for 1 second to ensure delivery
-        timeout = time.time() + 1
-        while time.time() < timeout:
+        for i in range(BRAKE_COMMAND_REPEATS):
+            if i:
+                time.sleep(BRAKE_COMMAND_SPACING_S)
             self.plc_command_publisher.publish(command_msg)
+
+    def _release_brake(self):
+        """Release the brake (brake_disable=1) and start supervising it."""
+        with self._brake_lock:
+            self._brake_released = True
+            self._publish_plc_command(['PLC_node/brake_disable'], [1])
+
+    def _close_brake(self, reason: str, only_if_released: bool = False):
+        """
+        Close the brake (brake_disable=0).
+
+        Args:
+            reason (str): Why, for the log
+            only_if_released (bool): Skip it when this node has not released
+                the brake (automatic closes: drive states, watchdog, exit)
+        """
+        with self._brake_lock:
+            if only_if_released and not self._brake_released:
+                return
+            self._brake_released = False
+            self._publish_plc_command(['PLC_node/brake_disable'], [0])
+        if only_if_released:
+            self.get_logger().error(f'Brake closed: {reason}')
+        else:
+            self.get_logger().info(f'Brake closed: {reason}')
+
+    def close_brake_on_exit(self):
+        """Close the brake if this node released it (called at exit)."""
+        self._close_brake('ethercat_checker node exiting', only_if_released=True)
         
 
     def check_states(self):
@@ -426,6 +491,18 @@ class EthercatCheckerNode(Node):
         This method runs in a separate callback group to avoid blocking
         other node operations.
         """
+        last = self._last_drive_states_monotonic
+        if (
+            self._brake_released
+            and last is not None
+            and time.monotonic() - last > DRIVE_STATES_TIMEOUT_S
+        ):
+            self._close_brake(
+                f'no drive states for more than {DRIVE_STATES_TIMEOUT_S:.1f} s '
+                '(EtherCAT loop or ros2_control_node lost)',
+                only_if_released=True,
+            )
+
         if self.feedback.fault_present and self.error_auto_reset_enabled:
             self.get_logger().error(
                 "Detected FAULT state - Trying to resetting faults...", 
@@ -507,6 +584,10 @@ class EthercatCheckerNode(Node):
         return op_mode_dict.get(mode, 0)
 
 
+def _raise_keyboard_interrupt(signum, frame):
+    raise KeyboardInterrupt
+
+
 def main(args=None):
     """
     Main entry point for the EtherCAT Checker Node.
@@ -518,7 +599,13 @@ def main(args=None):
     Args:
         args: Command-line arguments passed to rclpy.init()
     """
-    rclpy.init(args=args)
+    # No rclpy signal handlers: they would shut the context down on SIGINT
+    # before the finally below, and the brake could not be closed. SIGINT
+    # (launch shutdown) and SIGTERM (launch escalation) end the loop with
+    # KeyboardInterrupt instead.
+    rclpy.init(args=args, signal_handler_options=SignalHandlerOptions.NO)
+    signal.signal(signal.SIGINT, _raise_keyboard_interrupt)
+    signal.signal(signal.SIGTERM, _raise_keyboard_interrupt)
 
     # Set CPU affinity to core 6 for deterministic timing
     import os
@@ -535,13 +622,19 @@ def main(args=None):
         while not _shutdown_request:
             executor.spin_once()
     except KeyboardInterrupt:
-        import signal as _signal
-        _signal.signal(_signal.SIGINT, _signal.SIG_IGN)
         try:
             node.get_logger().info('Keyboard interrupt, shutting down.\n')
         except Exception:
             print('[ethercat_checker_node] Keyboard interrupt, shutting down.')
     finally:
+        # A second signal must not interrupt closing the brake.
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        try:
+            node.close_brake_on_exit()
+            time.sleep(0.1)  # let DDS deliver it before the process exits
+        except Exception as exc:  # noqa: BLE001
+            print(f'[ethercat_checker_node] Cannot close the brake at exit: {exc}')
         # Cleanup: shutdown executor and destroy node
         try:
             executor.shutdown()

@@ -13,7 +13,8 @@ from launch.substitutions import Command, FindExecutable, PathJoinSubstitution, 
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch.event_handlers import OnProcessExit, OnShutdown
-from launch.actions import RegisterEventHandler, LogInfo, IncludeLaunchDescription, DeclareLaunchArgument
+from launch.actions import RegisterEventHandler, LogInfo, IncludeLaunchDescription, DeclareLaunchArgument, EmitEvent
+from launch.events import Shutdown
 from launch.conditions import IfCondition
 from launch.launch_description_sources import AnyLaunchDescriptionSource
 
@@ -183,6 +184,21 @@ def generate_launch_description():
     #     AnyLaunchDescriptionSource(xml_launch)
     # )
 
+    # If ros2_control_node dies (crash, kill) the drives lose the EtherCAT
+    # loop and torque, while the launch would keep running: plc_manager only
+    # watches the launch process, so it would not stop the platform and close
+    # the brake. Shut the whole launch down instead (ethercat_checker closes
+    # the brake on exit, plc_manager sees the launch gone and runs its STOP).
+    shutdown_on_control_node_exit = RegisterEventHandler(
+        event_handler=OnProcessExit(
+            target_action=ros2_control_node,
+            on_exit=[
+                LogInfo(msg='ros2_control_node exited: shutting the launch down.'),
+                EmitEvent(event=Shutdown(reason='ros2_control_node exited')),
+            ],
+        )
+    )
+
     ld = LaunchDescription()
     ld.add_action(declare_auto_recover)
     ld.add_action(ros2_control_node)
@@ -192,5 +208,6 @@ def generate_launch_description():
     ld.add_action(after_forward_vel)
     ld.add_action(after_fsb)
     ld.add_action(controller_unspawner)
+    ld.add_action(shutdown_on_control_node_exit)
     #ld.add_action(rosbridge_launch)
     return ld

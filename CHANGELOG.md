@@ -2,6 +2,34 @@
 
 Notable changes to the Fit4Med platform software. Newest first.
 
+## 2026-10-07 — Brake closed whenever the drives lose torque
+
+The Z axis falls by gravity when the drives have no torque and the brake is released. The brake is a safety-PLC output (`PLC_node/brake_disable`); the drives do not control it. It was released by `ethercat_checker` `start_motors` and closed only by `stop_motors` and by plc_manager state transitions, so several paths left the drives without torque and the brake released. This is the software side; the PLC/drive side (drive-controlled brake, or brake release interlocked with the drive state in the Flexi Soft) is still to be checked.
+
+### Before deploying
+
+- Rebuild `tecnobody_workbench_utils`, `tecnobody_workbench` and `plc_manager` on the robot.
+- On the robot, with the motors on and the brake released, check that the brake closes (log `Brake closed: ...` of `ethercat_checker`):
+  - on a drive fault (e.g. following error on X or Y);
+  - when `ros2_control_node` of the platform is killed (`pkill -f ros2_control_node` is too broad: kill the platform one by PID); the platform launch must also shut down and plc_manager go to ESTOP;
+  - at a normal stop of the environment.
+- Check there is no false close during normal use, in particular when the GUI switches controller (mode of operation 8 ↔ 9): `drives_on` must stay true.
+- Not tested with the real `ros2_control_node`: the launch shutdown on its exit is checked only by loading the launch description. The `OnShutdown` unspawners may wait for the dead controller manager and delay the end of the launch (the brake does not depend on it: `ethercat_checker` closes it as soon as it receives SIGINT).
+
+### Fixed
+
+- **`ethercat_checker` supervises the brake it released** (`eth_checker.py`). It closes it:
+  - when the drives are no longer all enabled or report a fault: on a fault of any axis, the CiA402 state controller disables every enabled drive at once, Z included;
+  - when the drive states (250 Hz) stop arriving for 0.2 s: `ros2_control_node` crashed or its loop stalled;
+  - when the node exits (SIGINT/SIGTERM handled by the node, not by rclpy, so it can still publish).
+- **Brake commands are sent 3 times, 20 ms apart**, instead of in a busy loop for 1 s. `PLC_controller` keeps only the last message per cycle: for that whole second the loop undid any brake close sent by plc_manager (an emergency right after `start_motors` reopened the brake at every cycle), and it loaded a CPU.
+- **The platform and Z-recovery launches shut down when `ros2_control_node` exits** (`run_platform_control`, `run_z_recovery_control`). plc_manager watches only the launch process: before, a dead `ros2_control_node` left the launch, and the FSM, running.
+- **`force_shutdown_stop()` closes the brake before opening the safety chain** (`plc_manager.py`).
+
+### Tests
+
+- `tecnobody_workbench_utils/test/test_eth_checker_brake.py`: 3 brake messages instead of the flood; close on drives off and on fault, only once; nothing when the node did not release the brake; close when the drive states stop; `stop_motors` always closes; the real `main()` closes the released brake on SIGINT and SIGTERM while the drive states keep arriving.
+
 ## 2026-10-07 — Z recovery always re-enables the end-stroke sensor
 
 `PLC_node/estop_bypass` (GETC100 output 0x2001:4) bypasses the Z end-stroke safety sensor in the safety PLC, so the machine can be moved back into the workspace. `auto_z_recovery_node` set it to 1 and back to 0 only when the jog reached its target distance: after a jog timeout, a safety reclosure, or plc_manager stopping the recovery environment, the end-stroke sensor stayed bypassed until the PLC `ros2_control_node` restarted.
