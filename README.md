@@ -2,94 +2,106 @@
 <!--  SPDX-License-Identifier: CC0-1.0 -->
 
 # FMRREHAB: Functional Movement Robotic Rehabilitation platform (a Fit4Med project)
+
 [![ROS 2 Jazzy](https://img.shields.io/badge/ROS%202-Jazzy-brightgreen)](https://docs.ros.org/en/jazzy/)
-[![C++ Standard](https://img.shields.io/badge/C%2B%2B-17-blue)]()
-[![Python Version](https://img.shields.io/badge/Python-3.12-blue)]()
 [![ROS 2 Build](https://github.com/CNR-STIIMA-IRAS/Fit4Med/actions/workflows/ros2.yml/badge.svg)](https://github.com/CNR-STIIMA-IRAS/Fit4Med/actions/workflows/ros2.yml)
 [![License check (REUSE)](https://github.com/CNR-STIIMA-IRAS/Fit4Med/actions/workflows/reuse.yml/badge.svg)](https://github.com/CNR-STIIMA-IRAS/Fit4Med/actions/workflows/reuse.yml)
 
 **Fmrrehab** is a comprehensive rehabilitation robotics platform built on ROS 2 with advanced motion control, force-torque sensing, and safety-critical PLC integration. The system coordinates a 3-DOF rehabilitation arm through a real-time control architecture with emergency stop chains and sensor-based impedance control.
 
-
 ## System Architecture
+
 Dual Controller Manager Setup
 The system uses two separate controller-manager instances for safety isolation:
 
-### Safety control stack (always running)      
+### Safety control stack (always running)
+
 The safety PLC module installed in the FMRREHAB platform is managed by the following ros2 nodes at a 500 Hz control loop:
-PLC Controller Manager<br>
+PLC Controller Manager
 └─ PLC Controller
-    - Reads/writes 8 GPIO command outputs   
-    - Reads 8 GPIO state inputs          
-    - Publishes PlcStates for subscribers        
+    - Reads/writes 8 GPIO command outputs
+    - Reads 8 GPIO state inputs
+    - Publishes PlcStates for subscribers
 
 ### Motion control stack (started by the user)
+
 The following controllers are automathically loaded and will run at 250 Hz:
+
 - Joint Trajectory Controller
-- Forward Velocity Controller 
+- Forward Velocity Controller
 - Impedance Controller
-- Force/Torque Sensor Broadcaster   
+- Force/Torque Sensor Broadcaster
 
-### Rehabilitation GUI       
-(PyQt5 Interface with SSH Remote Access)<br>
-High-Level user interface with SSH connection for remote launching and UDP 
+### Rehabilitation GUI
+
+(PyQt5 Interface with SSH Remote Access)
+High-Level user interface with SSH connection for remote launching and UDP
 client for status monitoring
-
 
 ## Repository Structure
 
 ### Core Packages
 
 #### 1. **tecnobody_workbench** - Central Configuration Package
+
 Master configuration package containing all URDF definitions, controller YAML configs, and launch files.
 
 #### 2. **plc_manager** - Safety State Machine
+
 ROS 2 node managing system lifecycle through PLC state transitions.
 
 #### 3. **plc_controller** - ROS 2 Control Plugin
+
 C++ controller plugin implementing GPIO bridge between ROS 2 and Safety PLC.
 
 #### 4. **tecnobody_workbench_utils** - Core Control Nodes
+
 This package provides the primary motion control and sensor management modules needed by the motion control stack.
 
 #### 5. **rehab_gui** - User Interface
+
 Multi-Platform user interface developed with QT managing robot high-level control by the user and rehabilitation exercise configuration.
 
 ### Supporting Packages
 
 #### 6. bash_scripts - ROS 2 Environment Management
 
-launch_ros2_env.sh<br>
-Launches ros2 control framework and default controllers, managing two cases:<br>
- - first launch: homing process performed 
- - launch after an emergency stop by the user: no homing needed
+launch_ros2_env.sh
+Launches ros2 control framework and default controllers, managing two cases:
 
-kill_ros_apps.sh<br>
- - Gracefully unspawn all active controllers
- - Unload inactive controllers
- - Coordinate with PLC manager for clean shutdown
+- first launch: homing process performed
+- launch after an emergency stop by the user: no homing needed
 
-fit4med_to_robot_sync.sh / fit4med_from_robot_sync.sh<br>
- - To robot: make each folder of the workspace `src` containing your checkout identical on the robot (robot 192.168.1.1, `--dry-run` to preview). Robot folders you don't have locally are left untouched. It first offers a backup, and asks before deleting files that exist only on the robot.
- - From robot: pull the robot's changes, keeping local files that are newer.
+kill_ros_apps.sh
 
-fit4med_backup.sh / fit4med_restore.sh<br>
- - Back up the robot sources to `/home/fit4med/bkp/YYYYMMDD/HHMM/`, or list the backups and restore one.
- - Run them on the robot, or from your PC (they work through ssh; `--host <ip>` / `--local` to force).
+- Gracefully unspawn all active controllers
+- Unload inactive controllers
+- Coordinate with PLC manager for clean shutdown
+
+fit4med_to_robot_sync.sh / fit4med_from_robot_sync.sh
+
+- To robot: make each folder of the workspace `src` containing your checkout identical on the robot (robot 192.168.1.1, `--dry-run` to preview). Robot folders you don't have locally are left untouched. It first offers a backup, and asks before deleting files that exist only on the robot.
+- From robot: pull the robot's changes, keeping local files that are newer.
+
+fit4med_backup.sh / fit4med_restore.sh
+
+- Back up the robot sources to `/home/fit4med/bkp/YYYYMMDD/HHMM/`, or list the backups and restore one.
+- Run them on the robot, or from your PC (they work through ssh; `--host <ip>` / `--local` to force).
 
 #### 7. ps_scripts - PowerShell Remote Execution (Windows GUI)
- - fmrr_gui.ps1 - launch GUI
- - fmrr_bringup.ps1 - SSH into Linux, start ROS2 stack via PLC launcher
- - fmrr_cleanup.ps1 - kill the local GUI (and whatever holds UDP 5005), then SSH into Linux and shut down all nodes (`-Target gui|remote` to do only one side)
- - fmrr_scp.ps1 - Transfer files remotely between Windows & Linux
- - fmrr_to_robot_sync.ps1 / fmrr_backup.ps1 / fmrr_restore.ps1 - Windows versions of the robot sync, backup and restore scripts (see bash_scripts/README.md)
+
+- fmrr_gui.ps1 - launch GUI
+- fmrr_bringup.ps1 - SSH into Linux, start ROS2 stack via PLC launcher
+- fmrr_cleanup.ps1 - kill the local GUI (and whatever holds UDP 5005), then SSH into Linux and shut down all nodes (`-Target gui|remote` to do only one side)
+- fmrr_scp.ps1 - Transfer files remotely between Windows & Linux
+- fmrr_to_robot_sync.ps1 / fmrr_backup.ps1 / fmrr_restore.ps1 - Windows versions of the robot sync, backup and restore scripts (see bash_scripts/README.md)
 
 #### 8. tecnobody_msgs - Custom Message and Services Types
- - PlcController.msg - Command messages to PLC
- - PlcStates.msg - State feedback from PLC
- - SetExercise.srv - Exercise execution request
- - SetTrajectory.srv - Tajectory execution request
 
+- PlcController.msg - Command messages to PLC
+- PlcStates.msg - State feedback from PLC
+- SetExercise.srv - Exercise execution request
+- SetTrajectory.srv - Tajectory execution request
 
 ## One-time setup on the robot PC (Linux, 192.168.1.1)
 
@@ -100,13 +112,15 @@ fit4med_backup.sh / fit4med_restore.sh<br>
 > sudo usermod -aG systemd-journal fit4med
 > ```
 >
-> It takes effect at the next login (for ssh: the next connection). Without it,
-> `ps_scripts/fmrr_retrieve_logs.ps1` still runs but misses the EtherCAT side
-> (the timeline file only starts with a warning): `ethercat.service` and the EtherCAT master kernel messages are
-> system logs, readable only by root or members of `systemd-journal`. The
-> `[ETHERCAT]` and `[KERNEL]` lines of the merged timeline
-> (`fit4med_ethercat_timeline.log`) would then be empty, and it would no longer
-> show whether a failure starts on the EtherCAT network or in the controller.
+> It takes effect for processes started after the next login (for ssh: the
+> next connection; for the bring-up service: after a reboot, see the end of
+> `bash_scripts/README.md`). Without it, the log archive of each bring-up
+> misses the EtherCAT side (the timeline file only starts with a warning):
+> `ethercat.service` and the EtherCAT master kernel messages are system logs,
+> readable only by root or members of `systemd-journal`. The `[ETHERCAT]` and
+> `[KERNEL]` lines of the merged timeline (`journal/fit4med_ethercat_timeline.log`)
+> would then be empty, and it would no longer show whether a failure starts on
+> the EtherCAT network or in the controller.
 >
 > Check: `id fit4med` must list `systemd-journal`.
 
@@ -120,7 +134,7 @@ No ROS 2 installation is required on the Windows PC.
 Two addresses matter and only one of them ever changes:
 
 | Setting | Value | Where |
-|---|---|---|
+| --- | --- | --- |
 | `--remote-ip` | `192.168.1.1` (ROS 2 PC) — never changes | `ps_scripts/fmrr_gui.ps1` |
 | `gui_ip` | the static IP of *this* Windows PC | `-GuiIp` argument of `ps_scripts/fmrr_bringup.ps1` |
 
@@ -222,15 +236,49 @@ uv run python rehab_gui\rehab_gui\FMRRMainProgram.py --remote-ip 192.168.1.1 --m
 
 ### 9. Collect the logs after a problem
 
+Every bring-up is archived on the robot by itself, nothing has to be run:
+when `run_sickPLC.launch.py` exits (cleanup script, `systemctl stop`, Ctrl-C,
+`plc_manager` exit), it writes
+`/home/fit4med/.ros/fit4med_log/run_NNNN_YYYYMMDD-HHMMSS.zip`. `NNNN` grows by
+one at each bring-up; the robot clock may be wrong, the number is not. The zip
+contains:
+
+| Path in the zip | Content |
+| --- | --- |
+| `session.txt` | start/end time, systemd unit, GUI IP, why the launch stopped |
+| `sickPLC/` | ROS logs of `run_sickPLC.launch.py` and its nodes (`plc_manager`, ...) |
+| `starts/NNN_<label>_HHMMSS/` | one folder per start of `launch_ros2_env.sh` (`platform`), `launch_ros2_env_z_recovery.sh` (`z_recovery`) and `launch_ros2_bridge.sh` (`rosbridge`), numbered in order, so each restart after an e-stop is separate: `console.log` (whole output of the script, EtherCAT checks included), `run.txt` (start/end, exit code) and the ROS logs of that start |
+| `journal/fit4med_bringup.log` | `journalctl --user -u fit4med-bringup@<ip>.service`, this bring-up only |
+| `journal/ethercat_service.log` | `ethercat.service` status and journal, EtherCAT kernel messages |
+| `journal/fit4med_ethercat_timeline.log` | the two above merged in one timeline |
+| `ethercat_start.txt`, `ethercat_end.txt` | `ethercat master` and `ethercat slaves -v` at start and end |
+| `ros_home_log/` | what was left in `~/.ros/log` (what `log.sh` used to archive) |
+
+If the launch is killed without closing (SIGKILL, power loss), its folder stays
+open and is zipped at the next bring-up, with the journal up to its last log
+write. Disable the archive with `FIT4MED_SESSION_LOG=0`; the script is
+`bash_scripts/fit4med_session_log.sh`.
+
+To copy the archives to the GUI PC:
+
 ```powershell
-.\ps_scripts\fmrr_retrieve_logs.ps1
+.\ps_scripts\fmrr_retrieve_logs.ps1             # the last 3 bring-ups
+.\ps_scripts\fmrr_retrieve_logs.ps1 -Last 10    # the last 10
+.\ps_scripts\fmrr_retrieve_logs.ps1 -All        # all of them
 ```
 
-Everything lands in `Desktop\fit4med_logs\`: the bring-up and `ethercat.service`
-journals, a merged timeline of both (`fit4med_ethercat_timeline.log`), the
-robot and PC clocks (`clocks.txt`), the ROS log archives and the GUI logs
-(`gui\`). The EtherCAT part needs the one-time step in
+The archives land in `Desktop\fit4med_logs\`; those already there are not
+copied again. The script lists what it copied, with start time and how each
+bring-up ended. The last archive is often not the one with the problem: after a
+failure the platform is usually restarted, so look at the one before. A
+bring-up still running is copied as `run_NNNN_..._partial.zip` (its logs and
+journals up to now), replaced by the full archive at a later retrieve. Also
+copied: the robot and PC clocks (`clocks.txt`) and the GUI logs (`gui\`). The
+EtherCAT part of the journals needs the one-time step in
 [One-time setup on the robot PC](#one-time-setup-on-the-robot-pc-linux-19216811).
+
+Nothing deletes the archives on the robot. To empty the log folders, see
+"Svuotare le cartelle dei log del robot" at the end of `bash_scripts/README.md`.
 
 ### If the GUI opens but shows no status
 
@@ -239,32 +287,36 @@ fields are fed by the UDP stream. An empty status panel therefore almost always
 means the `gui_ip` given at step 6 is not this PC's address, or the firewall
 rule of step 1 is missing.
 
-
 ## Troubleshooting
 
 Common Issues
+
 1. EtherCAT PLC Not Operational
-Check EtherCAT slaves:
-ethercat slaves # Expected: "FLX0-GETC100 OP"
-ethercat master # If not OP, check ethercat master
+
+    - Check EtherCAT slaves: ethercat slaves # Expected: "FLX0-GETC100 OP" | ethercat master # If not OP, check ethercat master
 
 2. Homing Timeout
-- Check motor connection (ESTOP signal must be active)
-- Verify safe movement zone (no mechanical obstructions)
-- Increase timeout in boot_hw.py if needed
+
+    - Check motor connection (ESTOP signal must be active)
+    - Verify safe movement zone (no mechanical obstructions)
+    - Increase timeout in boot_hw.py if needed
 
 3. GUI Not Receiving Status
-- Verify UDP port 5005 is open
-- Check network connectivity (SSH must work)
-- Verify GUI IP in plc_manager launch: gui_ip:=<windows_ip>
+
+    - Verify UDP port 5005 is open
+    - Check network connectivity (SSH must work)
+    - Verify GUI IP in plc_manager launch: gui_ip:=<windows_ip>
 
 4. Trajectory Execution Hangs
-- Check joint_trajectory_controller state: ros2 control list_controllers
-- Verify all joints in "active" state
-- Check for controller timeouts in /tmp/launch logs
+
+    - Check joint_trajectory_controller state: ros2 control list_controllers
+    - Verify all joints in "active" state
+    - Check for controller timeouts in /tmp/launch logs
 
 ## License
+
 This project is licensed under the Apache-2.0 License. See LICENSE file for details.
 
 ## Contact
+
 For questions about this rehabilitation platform, contact [Nicola Pedrocchi](mailto:nicola.pedrocchi@cnr.it?subject=[GITHUB%20Fit4Med]%20Request%20of%20information) and [Adriano Scibilia](mailto:adriano.scibilia@cnr.it?subject=[GITHUB%20Fit4Med]%20Request%20of%20information)

@@ -307,23 +307,31 @@ _fit4med_sync_apply_staged() {
   echo "[INFO] Rebuild the workspace (colcon build) before the next bring-up."
 }
 
-# fit4med_merged_journal <bringup_user_unit>: one timeline (current boot) of
-# the bring-up service, ethercat.service and the EtherCAT kernel messages, to
-# see which side reports a problem first. Used by fmrr_retrieve_logs.ps1.
+# fit4med_merged_journal <bringup_user_unit> [journalctl range...]: one
+# timeline of the bring-up service, ethercat.service and the EtherCAT kernel
+# messages, to see which side reports a problem first. Range: journalctl
+# options such as --since @EPOCH --until @EPOCH, the current boot (-b) by
+# default. An empty unit leaves the bring-up service out. Used by
+# fit4med_session_log.sh.
 fit4med_merged_journal() {
   local unit="$1"
-  echo "# Timeline of this boot: [FIT4MED] $unit, [ETHERCAT] ethercat.service,"
+  shift
+  local range=("$@")
+  [[ ${#range[@]} -gt 0 ]] || range=(-b)
+  echo "# Timeline (${range[*]}): [FIT4MED] ${unit:-no bring-up unit}, [ETHERCAT] ethercat.service,"
   echo "# [KERNEL] EtherCAT master kernel messages. Times are this robot's clock."
   if [[ $EUID -ne 0 ]] && ! id -nG | grep -qwE 'systemd-journal|adm'; then
     echo "# WARNING: $(id -un) cannot read the system journal: [ETHERCAT] and [KERNEL] lines are missing."
     echo "#          Once, on the robot: sudo usermod -aG systemd-journal $(id -un)"
   fi
   {
-    journalctl --user -u "$unit" -b -o short-iso-precise --no-pager 2>/dev/null \
-      | _fit4med_tag_journal FIT4MED
-    journalctl -u ethercat.service -b -o short-iso-precise --no-pager 2>/dev/null \
+    if [[ -n "$unit" ]]; then
+      journalctl --user -u "$unit" "${range[@]}" -o short-iso-precise --no-pager 2>/dev/null \
+        | _fit4med_tag_journal FIT4MED
+    fi
+    journalctl -u ethercat.service "${range[@]}" -o short-iso-precise --no-pager 2>/dev/null \
       | _fit4med_tag_journal ETHERCAT
-    journalctl -k -b -o short-iso-precise --no-pager 2>/dev/null | grep -i 'ethercat' \
+    journalctl -k "${range[@]}" -o short-iso-precise --no-pager 2>/dev/null | grep -i 'ethercat' \
       | _fit4med_tag_journal KERNEL
   } | LC_ALL=C sort -s -k1,1  # ISO timestamps sort chronologically; -s keeps multi-line messages in order
 }

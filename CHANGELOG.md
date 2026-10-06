@@ -2,6 +2,53 @@
 
 Notable changes to the Fit4Med platform software. Newest first.
 
+## 2026-10-06 — One log archive per bring-up, written by the launch itself
+
+The logs were collected only by `fmrr_retrieve_logs.ps1`, run by hand on the GUI PC, often late (journal of another boot) or not at all. Now `run_sickPLC.launch.py` archives each run when it exits, however it was started (systemd unit, `fmrr_bringup.ps1`, by hand) and stopped (cleanup script, `systemctl stop`, Ctrl-C, `plc_manager` exit).
+
+### Before deploying
+
+- **Reinstall the systemd unit**: `TimeoutStopSec` goes from 15 to 60 s, so systemd does not kill the archiving. Copy `systemctl_services/fit4med-bringup@.service` to `~/.config/systemd/user/` (if it is a copy, not a link), then `systemctl --user daemon-reload`.
+- **`fit4med` must be in the `systemd-journal` group** (or `adm`), or the EtherCAT lines are missing from the archive. Check with `id fit4med`; the procedure, including restarting the `systemd --user` of `fit4med` so the service sees the new group, is at the end of `bash_scripts/README.md`.
+- Tested on a development PC with stand-in nodes (e-stop restart, Ctrl-C, launch killed with SIGKILL) and, for the retrieve, with `ssh`/`scp` replaced by local commands; not yet on the robot with the systemd unit and EtherCAT, nor from the GUI PC.
+
+### Added
+
+- **Run archive** (`bash_scripts/fit4med_session_log.sh`): `~/.ros/fit4med_log/run_NNNN_YYYYMMDD-HHMMSS.zip`. `NNNN` grows by one at each bring-up, so the order is right even when the robot clock is not. The archive contains:
+  - `session.txt`: start/end time, systemd unit, GUI IP, why the launch stopped;
+  - `sickPLC/`: ROS logs of `run_sickPLC.launch.py` and its nodes, with its `launch.log`;
+  - `starts/NNN_<label>_HHMMSS/`: see below;
+  - `journal/`: `journalctl --user -u fit4med-bringup@<ip>.service`, `ethercat.service` status and journal, EtherCAT kernel messages, and the merged timeline of both, limited to this run (not the whole boot);
+  - `ethercat_start.txt`, `ethercat_end.txt`: `ethercat master` and `ethercat slaves -v` at start and end;
+  - `ros_home_log/`: what was left in `~/.ros/log`, which is then emptied (what `log.sh` did, now also when the launch is started by hand).
+- **One folder per start of the motion stack**: each start of `launch_ros2_env.sh` (`platform`), `launch_ros2_env_z_recovery.sh` (`z_recovery`) and `launch_ros2_bridge.sh` (`rosbridge`), e.g. the restart after each e-stop, gets `starts/NNN_<label>_HHMMSS/` in the run, numbered in order, with `console.log` (whole script output, EtherCAT checks and CoE fault reset included), `run.txt` (start, end, exit code) and the ROS logs of that start. When `plc_manager` stops a start, or the whole group gets SIGINT, the script waits for its `ros2 launch` to finish before closing the folder, and the archiving waits (up to 10 s) for the starts still shutting down.
+- **Runs left open are recovered**: a run whose launch was killed without closing (SIGKILL, crash, power loss) is archived at the next bring-up, with the journal up to its last log write. A lock prevents archiving the same run twice.
+- `FIT4MED_SESSION_LOG=0` disables the archive; `FIT4MED_LOG_ROOT` and `FIT4MED_SESSION_LOG_SCRIPT` change where it goes and which script is used.
+
+### Changed
+
+- `run_sickPLC.launch.py`: opens the run before starting any process (`FIT4MED_SESSION_DIR` and `ROS_LOG_DIR` are inherited by all nodes and, through `plc_manager`, by the `launch_ros2_*.sh` scripts) and archives it once every process has exited. During the archiving SIGINT/SIGTERM are ignored, so a second Ctrl-C or a cleanup script does not cut it short. The shutdown reason is recorded in `session.txt`.
+- `launch_ros2_env.sh`, `launch_ros2_env_z_recovery.sh`, `launch_ros2_bridge.sh`: two lines each to open their start folder; outside a run (launched by hand) they behave as before.
+- `systemctl_services/fit4med-bringup@.service`: `TimeoutStopSec=60` (was 15).
+- **`fmrr_retrieve_logs.ps1` copies the run archives, not the whole boot journal.**
+  - Copies the last 3 archives (`-Last N`, `-All`), chosen by run number, not by date; those already on the PC are not copied again. It lists what it copied, with start time and how each run ended.
+  - A run still going on is zipped on the robot (`fit4med_session_log.sh snapshot`: logs and journals up to now, the run is left untouched) and copied as `run_NNNN_..._partial.zip`; the temporary copy on the robot is removed, and the partial zip on the PC is deleted once the full archive of that run is there. Runs left open by a killed launch are archived first, so they are copied too.
+  - No longer writes `fit4med_combined.log`, `ethercat_service.log` and `fit4med_ethercat_timeline.log` for the current boot: they duplicated the `journal/` folder of the archives, for the wrong span (whole boot, possibly not the boot of the problem). `clocks.txt` and the GUI logs are still copied. `-GuiIp` is accepted and ignored.
+- `fit4med_session_log.sh` also has `snapshot` and `list [N]`, used by the retrieve.
+- `fit4med_merged_journal` (`fit4med_backup_common.sh`) takes an optional journalctl time range and an empty unit; without a range, the current boot as before.
+
+### Documentation
+
+- `README.md`, step 9 "Collect the logs after a problem": the run archive, its content and the new retrieve; one-time setup note on the `systemd-journal` group updated.
+- `bash_scripts/README.md`, new last section: how to check and grant the `systemd-journal` group and how to tell from an archive whether it was active.
+- `bash_scripts/README.md`, new section "Svuotare le cartelle dei log del robot": where the logs are on the robot and how to empty them all or keep the last N archives, keeping the run counter; optional journal vacuum. Linked from `README.md`, step 9.
+
+### Not changed
+
+- `fit4med_bringup_service.sh` still calls `log.sh` before the launch; no longer needed, harmless.
+- No automatic deletion: the archives accumulate in `~/.ros/fit4med_log/` (the retrieve copies only the last ones). The `log_*.zip` written by `log.sh` before this change are not copied by the retrieve.
+- In legacy mode, `kill_fmrr_apps.sh` kills whatever matches `fit4med_ws` after 10 s: an archiving still running then is interrupted, and the run is recovered at the next bring-up.
+
 ## 2026-09-25 — `rehab_gui` audit: crashes, motion safety, training resume
 
 Second audit of the GUI. Every fix comes with regression tests that fail on the previous code; the GUI test suite grows from 24 to 56 tests.

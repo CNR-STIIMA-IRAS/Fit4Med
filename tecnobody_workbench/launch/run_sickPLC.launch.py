@@ -2,16 +2,19 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from typing import List
+import atexit
+import signal
 import subprocess
 
 from launch import LaunchDescription
 from launch.substitutions import PathJoinSubstitution, Command, FindExecutable, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
-from launch.actions import RegisterEventHandler, DeclareLaunchArgument, IncludeLaunchDescription, ExecuteProcess, EmitEvent, RegisterEventHandler, LogInfo, OpaqueFunction
+from launch.actions import RegisterEventHandler, DeclareLaunchArgument, IncludeLaunchDescription, ExecuteProcess, EmitEvent, RegisterEventHandler, LogInfo, OpaqueFunction, SetEnvironmentVariable
 from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessExit, OnShutdown
 from launch.events import Shutdown
+import launch.logging
 
 
 
@@ -22,8 +25,64 @@ os.sched_setaffinity(0, {2})
 
 plc_controller_manager_node_name="plc_controller_manager"
 
+# Per-run log archive (see bash_scripts/fit4med_session_log.sh). Disable with
+# FIT4MED_SESSION_LOG=0.
+SESSION_LOG_SCRIPT = os.environ.get(
+    'FIT4MED_SESSION_LOG_SCRIPT',
+    '/home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/fit4med_session_log.sh')
+_shutdown_reason = ['launch exited (all processes ended)']
+
+
+def start_session_log(context):
+    """Open the log session of this run and point every process to it.
+
+    The environment set here is inherited by all the nodes and, through
+    plc_manager, by launch_ros2_env*.sh / launch_ros2_bridge.sh, which put
+    the logs of each of their starts in a numbered folder of the session.
+    """
+    if os.environ.get('FIT4MED_SESSION_LOG', '1') == '0':
+        return [LogInfo(msg='Session log disabled (FIT4MED_SESSION_LOG=0)')]
+    if not os.access(SESSION_LOG_SCRIPT, os.X_OK):
+        return [LogInfo(msg=f'Session log disabled: {SESSION_LOG_SCRIPT} not found')]
+    gui_ip = LaunchConfiguration('gui_ip').perform(context)
+    try:
+        result = subprocess.run(
+            [SESSION_LOG_SCRIPT, 'start', str(os.getpid()), gui_ip],
+            capture_output=True, text=True, timeout=20, check=True)
+        session_dir = result.stdout.strip().splitlines()[-1]
+    except (subprocess.SubprocessError, OSError, IndexError) as exc:
+        return [LogInfo(msg=f'Session log not started: {exc}')]
+    # atexit: runs once every launched process has exited, also when the
+    # launch is stopped with Ctrl-C or by systemd (SIGINT/SIGTERM).
+    atexit.register(finalize_session_log, session_dir)
+    return [
+        SetEnvironmentVariable('FIT4MED_SESSION_DIR', session_dir),
+        SetEnvironmentVariable('ROS_LOG_DIR', os.path.join(session_dir, 'sickPLC')),
+        LogInfo(msg=f'Session logs: {session_dir}'),
+    ]
+
+
+def finalize_session_log(session_dir):
+    # A second Ctrl-C (or the SIGTERM of a cleanup script) must not cut the
+    # archiving short: ignored here, and so in the child too.
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    try:
+        launch_log_dir = launch.logging.launch_config.log_dir
+    except Exception:
+        launch_log_dir = ''
+    print(f'[fit4med] Archiving the logs of this run: {session_dir} ...', flush=True)
+    try:
+        subprocess.run(
+            [SESSION_LOG_SCRIPT, 'finalize', session_dir, launch_log_dir, _shutdown_reason[0]],
+            timeout=90)
+    except (subprocess.SubprocessError, OSError) as exc:
+        print(f'[fit4med] Session log not archived: {exc}', flush=True)
+
+
 def clean_shutdown(event, context):
     import os
+    _shutdown_reason[0] = event.reason
     # ros2_control_node is excluded: it handles SIGINT correctly on its own.
     # Using -f matches the full command line to avoid hitting other ros2_control_node instances.
     nodes_names = ['robot_state_publisher', 'plc_manager_node', 'sonar_teach_node']
@@ -160,6 +219,9 @@ def generate_launch_description():
     ld.add_action(declare_gui_ip)
     ld.add_action(declare_eeg_delay_ms)
     ld.add_action(declare_debug_delta)
+
+    # before any process: they inherit the session environment
+    ld.add_action(OpaqueFunction(function=start_session_log))
 
     # nodes_to_start
     ld.add_action(ros2_control_node)

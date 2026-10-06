@@ -8,6 +8,11 @@
 
 source /home/fit4med/fit4med_ws/install/setup.bash
 
+# Inside a bring-up session: logs of this start in their own numbered folder
+# (see fit4med_session_log.sh).
+source "$(dirname "$0")/fit4med_session_log.sh"
+fit4med_log_begin_run z_recovery
+
 RESET_BINARY="/home/fit4med/fit4med_ws/build/reset_coe_faults/reset_coe_faults"
 RESET_TIMEOUT=30
 

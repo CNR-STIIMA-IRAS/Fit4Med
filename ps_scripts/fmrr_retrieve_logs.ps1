@@ -1,87 +1,116 @@
 # Copyright 2026 CNR-STIIMA
 # SPDX-License-Identifier: Apache-2.0
 
-# ####################################### #######################################
-# About ethercat.service being root: retrieving its logs doesn't need root. 
-# It only needs fit4med to be allowed to read the system journal. 
-# Run this once on the Linux PC:
-# sudo usermod -aG systemd-journal fit4med 
-# ####################################### #######################################
+# Copy to this PC the log archives of the last bring-ups and the GUI logs.
+#
+#   .\fmrr_retrieve_logs.ps1             the last 3 bring-ups, plus the one running
+#   .\fmrr_retrieve_logs.ps1 -Last 10    the last 10
+#   .\fmrr_retrieve_logs.ps1 -All        all of them
+#
+# The robot writes one zip per bring-up when run_sickPLC.launch.py exits
+# (~/.ros/fit4med_log/run_NNNN_YYYYMMDD-HHMMSS.zip, NNNN growing at each
+# bring-up), with the ROS logs and the bring-up / ethercat.service journals of
+# that bring-up only (bash_scripts/fit4med_session_log.sh). The bring-up still
+# running, if any, is copied as run_NNNN_..._partial.zip, its logs up to now.
+# Archives already on this PC are not copied again.
+#
+# The EtherCAT part of the journals needs fit4med in the systemd-journal group
+# (see the end of bash_scripts/README.md).
 
 param(
-    [string]$GuiIp = "192.168.1.2",
+    # Not used any more (the journals are in the archives); kept so existing
+    # shortcuts that pass it keep working.
+    [string]$GuiIp = "",
     # Where FMRRMainProgram.py writes its session logs and their backups (see rehab_gui/session_log.py)
-    [string]$GuiLogDir = "C:\temp"
+    [string]$GuiLogDir = "C:\temp",
+    [ValidateRange(1, 100000)]
+    [int]$Last = 3,
+    [switch]$All
 )
 
-# Define variables
 $remoteUser = "fit4med"
 $remoteHost = "192.168.1.1"
-$scpPathFiles = "/home/fit4med/.ros/fit4med_log/*"
-$localDestination = Join-Path $env:USERPROFILE "Desktop\fit4med_logs\"
-$remoteTarget = "${remoteUser}@${remoteHost}:$scpPathFiles"
+$robot = "${remoteUser}@${remoteHost}"
+$robotScript = "/home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/fit4med_session_log.sh"
+$localDestination = Join-Path $env:USERPROFILE "Desktop\fit4med_logs"
 
-# Ensure local destination exists
 if (!(Test-Path $localDestination)) {
     New-Item -ItemType Directory -Path $localDestination | Out-Null
 }
 
-$combinedLog = Join-Path $localDestination "fit4med_combined.log"
-$unit = "fit4med-bringup@$GuiIp.service"
-
-ssh -T "${remoteUser}@${remoteHost}" `
-    "journalctl --user -u $unit -b -o short-precise --no-pager" `
-    | Out-File -FilePath $combinedLog -Encoding utf8
-
-# EtherCAT master: ethercat.service is a system (root) unit, but reading its
-# journal needs no root, only membership of the 'systemd-journal' (or 'adm')
-# group. Without it journalctl prints a "Hint: ... not seeing messages" line.
-# The IgH master itself logs to the kernel log, hence the journalctl -k part.
-$ethercatLog = Join-Path $localDestination "ethercat_service.log"
-$ethercatCmd = @(
-    "echo '===== systemctl status ethercat.service ====='",
-    "systemctl status ethercat.service --no-pager -l",
-    "echo; echo '===== journalctl -u ethercat.service (this boot) ====='",
-    "journalctl -u ethercat.service -b -o short-precise --no-pager",
-    "echo; echo '===== kernel log, EtherCAT lines (this boot) ====='",
-    "journalctl -k -b -o short-precise --no-pager | grep -i ethercat",
-    "echo; echo '===== ethercat master ====='",
-    "ethercat master",
-    "echo; echo '===== ethercat slaves -v ====='",
-    "ethercat slaves -v"
-) -join "; "
-Write-Output "Retrieve ethercat.service status/journal to $ethercatLog"
-ssh -T "${remoteUser}@${remoteHost}" "$ethercatCmd" 2>&1 | Out-File -FilePath $ethercatLog -Encoding utf8
-
-# Single timeline of the bring-up service, ethercat.service and the EtherCAT
-# kernel messages, sorted by time: shows whether the EtherCAT network or the
-# controller reports a problem first. Built on the robot by
-# fit4med_merged_journal (bash_scripts/fit4med_backup_common.sh).
-. (Join-Path $PSScriptRoot "fmrr_robot_common.ps1")
-$ErrorActionPreference = "Continue"  # the common file sets Stop; keep this script best-effort
-$timelineLog = Join-Path $localDestination "fit4med_ethercat_timeline.log"
-Write-Output "Build the merged fit4med + EtherCAT timeline in $timelineLog"
-try {
-    Send-FmrrLibrary $remoteHost
-    ssh -T "${remoteUser}@${remoteHost}" "bash -c '. $FmrrRemoteLibrary && fit4med_merged_journal $unit'" `
-        | Out-File -FilePath $timelineLog -Encoding utf8
-}
-catch {
-    Write-Output "Merged timeline not available: $_"
+# "path<TAB>start time<TAB>end reason", as printed by fit4med_session_log.sh
+function ConvertFrom-FmrrArchiveLine([string]$Line) {
+    $fields = $Line -split "`t"
+    [pscustomobject]@{
+        Path   = $fields[0]
+        Name   = ($fields[0] -split '/')[-1]
+        Start  = if ($fields.Count -gt 1) { $fields[1] } else { "" }
+        Reason = if ($fields.Count -gt 2) { $fields[2] } else { "" }
+    }
 }
 
 # The robot logs use the robot clock (offline, may drift), the GUI logs this
 # PC's clock: record both now, to line the two sets of logs up.
 $clocksFile = Join-Path $localDestination "clocks.txt"
-$robotNow = ssh -T "${remoteUser}@${remoteHost}" "date --iso-8601=ns"
+$robotNow = ssh -T $robot "date --iso-8601=ns"
 @(
     "Clocks at log retrieval (compare to align robot and GUI logs):",
     "  robot   : $robotNow",
     "  this PC : $(Get-Date -Format o)"
 ) | Out-File -FilePath $clocksFile -Encoding utf8
 
-Write-Output "Copy remote ROS log archives from $remoteTarget to $localDestination"
-scp -r $remoteTarget $localDestination
+# Bring-up still running: zipped on the robot in a temporary folder. This also
+# archives the bring-ups left open by a launch that was killed.
+Write-Output "Pack the bring-up still running (if any) on the robot ..."
+$partials = @(ssh -T $robot "bash $robotScript snapshot" | Where-Object { $_ } |
+              ForEach-Object { ConvertFrom-FmrrArchiveLine $_ })
+if ($LASTEXITCODE -ne 0) {
+    Write-Warning "Robot side failed (exit code $LASTEXITCODE). Is $robotScript on the robot? Update the robot software with fmrr_to_robot_sync.ps1."
+}
+
+$count = if ($All) { 0 } else { $Last }
+$archives = @(ssh -T $robot "bash $robotScript list $count" | Where-Object { $_ } |
+              ForEach-Object { ConvertFrom-FmrrArchiveLine $_ })
+
+$copied = @()
+$present = @()
+foreach ($archive in $archives) {
+    if (Test-Path (Join-Path $localDestination $archive.Name)) {
+        $present += $archive
+        continue
+    }
+    scp -q "${robot}:$($archive.Path)" "$localDestination"
+    if ($LASTEXITCODE -eq 0) { $copied += $archive }
+    else { Write-Warning "Copy failed: $($archive.Path)" }
+}
+foreach ($partial in $partials) {
+    # always copied again: it is a picture of a bring-up still going on
+    scp -q "${robot}:$($partial.Path)" "$localDestination"
+    if ($LASTEXITCODE -eq 0) { $copied += $partial }
+    else { Write-Warning "Copy failed: $($partial.Path)" }
+    if ($partial.Path -match '^(/tmp/fit4med_snapshot\.[A-Za-z0-9]+)/[^/]+\.zip$') {
+        $remoteTmp = $Matches[1]
+        ssh -T $robot "rm -rf -- '$remoteTmp'"
+    }
+}
+
+# A partial copy is outdated once the archive of the same bring-up is here.
+Get-ChildItem -Path $localDestination -Filter "run_*_partial.zip" -ErrorAction SilentlyContinue | ForEach-Object {
+    if (Test-Path (Join-Path $localDestination ($_.Name -replace '_partial\.zip$', '.zip'))) {
+        Remove-Item $_.FullName
+    }
+}
+
+if ($archives.Count -eq 0 -and $partials.Count -eq 0) {
+    Write-Output "No bring-up archive on the robot."
+}
+if ($copied.Count -gt 0) {
+    Write-Output "`nCopied to ${localDestination}:"
+    $copied | Format-Table -AutoSize -Wrap Name, Start, @{ Label = "How it ended"; Expression = { $_.Reason } } | Out-String | Write-Output
+}
+if ($present.Count -gt 0) {
+    Write-Output "Already on this PC: $(($present | ForEach-Object { $_.Name }) -join ', ')"
+}
 
 # Local GUI logs (current session + rotated backups).
 $guiLogDestination = Join-Path $localDestination "gui"

@@ -7,7 +7,9 @@ WorkingDirectory=/home/fit4med/fit4med_ws
 ExecStart=/home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/fit4med_bringup_service.sh %I
 KillMode=control-group
 KillSignal=SIGINT
-TimeoutStopSec=15
+# Room for the nodes to stop and for run_sickPLC.launch.py to archive the
+# logs of the run (journal + zip, see bash_scripts/fit4med_session_log.sh).
+TimeoutStopSec=60
 SendSIGKILL=yes
 Restart=no
 StandardOutput=journal

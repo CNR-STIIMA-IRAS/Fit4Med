@@ -35,6 +35,11 @@ if ! [[ "$eeg_delay_ms" =~ ^[0-9]+$ ]]; then
     exit 1
 fi
 
+# Inside a bring-up session: logs of this start in their own numbered folder
+# (see fit4med_session_log.sh).
+source "$(dirname "$0")/fit4med_session_log.sh"
+fit4med_log_begin_run platform
+
 RESET_BINARY="/home/fit4med/fit4med_ws/build/reset_coe_faults/reset_coe_faults"
 RESET_TIMEOUT=30
 
