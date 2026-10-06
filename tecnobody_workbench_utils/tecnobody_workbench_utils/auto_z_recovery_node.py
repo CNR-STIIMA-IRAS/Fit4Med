@@ -5,10 +5,13 @@
 
 Replicates what plc_manager + rehab_gui do together during z_recovery:
 
-1. Publishes PLC_node/z_recovery=0 so the PLC safety relay bypasses the
-   z_limit interlock, allowing the estop key to be turned even with the
-   limit switch active.  (plc_manager did this to the OLD ros2_control_node;
-   we must repeat it to the NEW one that just started in the recovery env.)
+1. Publishes PLC_node/z_recovery=0, so the PLC safety relay lets the estop
+   key be turned even with the z_limit switch active, and
+   PLC_node/estop_bypass=1, which bypasses the Z end-stroke safety sensor in
+   the safety PLC for the controlled move out of the end stroke. Both go to
+   PLC_controller in the run_sickPLC ros2_control_node, which keeps running
+   during the recovery; plc_manager has already sent z_recovery=0 when it
+   entered recovery mode.
 2. Waits until ALL drives reach STATE_SWITCH_ON_DISABLED ← key has been turned,
    emergency cleared.
 3. Self-healing check loop (never aborts):
@@ -18,6 +21,10 @@ Replicates what plc_manager + rehab_gui do together during z_recovery:
      all OK         →  jog Z+ by RECOVERY_DISTANCE_M, or until the
                        expected safety reclosure raises emergency
 4. After jogging: stops jog + stops motors.
+5. Restores the PLC safety outputs: estop_bypass=0 (end-stroke sensor active
+   again) and z_recovery=1. On EVERY exit: target reached, jog timeout,
+   safety reclosure, SIGINT/SIGTERM (plc_manager stopping the recovery env),
+   exceptions. A bypass left at 1 would leave the end-stroke sensor disabled.
 
 State flow:
   WAITING → SETTLING → INIT_RECOVERY → WAIT_FOR_POWER →
@@ -33,8 +40,12 @@ State flow:
 """
 
 import enum
+import signal
+import time
+
 import rclpy
 from rclpy.node import Node
+from rclpy.signals import SignalHandlerOptions
 from sensor_msgs.msg import JointState
 from std_srvs.srv import Trigger
 from tecnobody_msgs.srv import SoftMovement
@@ -57,6 +68,11 @@ JOG_EMERGENCY_ARM_S   = 0.3
 JOG_MOTION_CONFIRM_M  = 0.001
 JOG_TIMEOUT_S         = 10.0
 STOP_TIMEOUT_S        = 5.0
+# PLC_controller keeps only the last message it received in a cycle (2 ms):
+# the safety restore is sent a few times, spaced, so it is not overwritten by
+# another publisher and survives a best-effort drop.
+RESTORE_REPEATS       = 3
+RESTORE_SPACING_S     = 0.02
 
 
 class _S(enum.Enum):
@@ -97,7 +113,7 @@ class AutoZRecoveryNode(Node):
         self._jog_stop_reason = ''
         self._stop_start = None
         self._shutdown_timer = None
-        self._cleanup_done = False
+        self._safety_restored = False
 
         plc_qos = rclpy.qos.QoSProfile(
             depth=10, reliability=rclpy.qos.ReliabilityPolicy.RELIABLE)
@@ -151,17 +167,26 @@ class AutoZRecoveryNode(Node):
             getattr(self.get_logger(), level)(msg)
             self._last_log[key] = now
 
-    def _publish_plc(self, interface_name: str, value: int):
+    def _publish_plc(self, values: dict[str, int]):
+        # One message for all the interfaces: PLC_controller applies only the
+        # last message of each cycle, so two messages sent back to back could
+        # lose the first one.
         msg = PlcController()
-        msg.interface_names = [interface_name]
-        msg.values = [value]
+        msg.interface_names = list(values)
+        msg.values = list(values.values())
         self._plc_pub.publish(msg)
 
-    def _restore_z_recovery(self):
-        if self._cleanup_done:
+    def _restore_plc_safety(self):
+        """End-stroke sensor active again (estop_bypass=0), z_recovery=1."""
+        if self._safety_restored:
             return
-        self._publish_plc('PLC_node/z_recovery', 1)
-        self._cleanup_done = True
+        for i in range(RESTORE_REPEATS):
+            if i:
+                time.sleep(RESTORE_SPACING_S)
+            self._publish_plc({'PLC_node/estop_bypass': 0, 'PLC_node/z_recovery': 1})
+        self._safety_restored = True
+        self.get_logger().info(
+            'PLC safety restored: estop_bypass=0 (end-stroke sensor active), z_recovery=1.')
 
     def _take_future_result(self, future, label: str):
         try:
@@ -271,14 +296,13 @@ class AutoZRecoveryNode(Node):
             if elapsed >= SETTLE_S:
                 self._state = _S.INIT_RECOVERY
 
-        # ── 3. Publish z_recovery=0 to bypass z_limit in safety relay ───
-        #       (plc_manager set it on the OLD ros2_control_node;
-        #        the NEW node in the recovery env needs it again)
+        # ── 3. z_recovery=0 (key can clear the emergency on z_limit) and ──
+        #       estop_bypass=1 (end-stroke sensor bypassed for the move)
         elif s == _S.INIT_RECOVERY:
             self.get_logger().info(
-                'Publishing PLC_node/z_recovery=0 — bypassing z_limit safety interlock.')
-            self._publish_plc('PLC_node/z_recovery', 0)
-            self._publish_plc('PLC_node/estop_bypass', 1)
+                'Publishing PLC_node/z_recovery=0 and PLC_node/estop_bypass=1 — '
+                'bypassing the end-stroke safety sensor.')
+            self._publish_plc({'PLC_node/z_recovery': 0, 'PLC_node/estop_bypass': 1})
             self.get_logger().info(
                 'Waiting for operator to turn the recovery key to clear the emergency...')
             self._active_future = self._get_states_cli.call_async(GetDriveStates.Request())
@@ -295,7 +319,7 @@ class AutoZRecoveryNode(Node):
                 self._active_future, 'wait_for_power get_drive_states')
             self._active_future = None
             if response is None:
-                self._publish_plc('PLC_node/z_recovery', 0)
+                self._publish_plc({'PLC_node/z_recovery': 0})
                 self._active_future = self._get_states_cli.call_async(
                     GetDriveStates.Request())
                 return
@@ -320,7 +344,7 @@ class AutoZRecoveryNode(Node):
                     'power',
                     f'Emergency active (states={dstates}).')
                 # Re-publish z_recovery=0 each poll cycle so it is never lost
-                self._publish_plc('PLC_node/z_recovery', 0)
+                self._publish_plc({'PLC_node/z_recovery': 0})
                 self._active_future = self._get_states_cli.call_async(GetDriveStates.Request())
 
         # ── 5. Central check: read hardware, route to correct fix ────────
@@ -472,7 +496,9 @@ class AutoZRecoveryNode(Node):
                 self.get_logger().info(
                     f'Moved {distance*100:.1f} cm — stopping.')
                 self._begin_stop(f'target distance reached ({distance*100:.1f} cm)')
-                self._publish_plc('PLC_node/estop_bypass', 0)
+                # Back in the workspace: end-stroke sensor active again now,
+                # not only after the stop acknowledgements.
+                self._publish_plc({'PLC_node/estop_bypass': 0})
                 return
 
             if self._seconds_since(self._jog_started_at) >= JOG_TIMEOUT_S:
@@ -531,7 +557,9 @@ class AutoZRecoveryNode(Node):
 
             self._pending_jog_stop = None
             self._pending_stop = None
-            self._restore_z_recovery()
+            # Every way out of the jog (target reached, timeout, safety
+            # reclosure) ends here, with the motion stopped.
+            self._restore_plc_safety()
             self.get_logger().info(
                 f'Recovery complete — {self._jog_stop_reason}; '
                 'jog stopped, motors off.')
@@ -541,15 +569,25 @@ class AutoZRecoveryNode(Node):
     # ------------------------------------------------------------------ #
 
     def _shutdown(self):
-        self._restore_z_recovery()
+        self._restore_plc_safety()
         self.get_logger().info('AutoZRecoveryNode shutting down.')
         self.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
 
 
+def _raise_keyboard_interrupt(signum, frame):
+    raise KeyboardInterrupt
+
+
 def main(args=None):
-    rclpy.init(args=args)
+    # No rclpy signal handlers: they would shut the context down on SIGINT
+    # before the finally below, and the safety restore could not be published.
+    # SIGINT (launch shutdown, plc_manager) and SIGTERM (launch escalation)
+    # both end spin() with KeyboardInterrupt instead.
+    rclpy.init(args=args, signal_handler_options=SignalHandlerOptions.NO)
+    signal.signal(signal.SIGINT, _raise_keyboard_interrupt)
+    signal.signal(signal.SIGTERM, _raise_keyboard_interrupt)
     node = None
     try:
         node = AutoZRecoveryNode()
@@ -557,11 +595,15 @@ def main(args=None):
     except (KeyboardInterrupt, SystemExit):
         pass
     finally:
+        # A second signal must not interrupt the restore.
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
         if node is not None and rclpy.ok():
             try:
-                node._restore_z_recovery()
-            except Exception:
-                pass
+                node._restore_plc_safety()
+            except Exception as exc:  # noqa: BLE001
+                node.get_logger().error(f'Cannot restore the PLC safety outputs: {exc}')
+            time.sleep(0.1)  # let DDS deliver it before the process exits
         if rclpy.ok():
             rclpy.shutdown()
 

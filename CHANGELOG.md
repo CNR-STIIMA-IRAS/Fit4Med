@@ -2,6 +2,27 @@
 
 Notable changes to the Fit4Med platform software. Newest first.
 
+## 2026-10-07 — Z recovery always re-enables the end-stroke sensor
+
+`PLC_node/estop_bypass` (GETC100 output 0x2001:4) bypasses the Z end-stroke safety sensor in the safety PLC, so the machine can be moved back into the workspace. `auto_z_recovery_node` set it to 1 and back to 0 only when the jog reached its target distance: after a jog timeout, a safety reclosure, or plc_manager stopping the recovery environment, the end-stroke sensor stayed bypassed until the PLC `ros2_control_node` restarted.
+
+### Before deploying
+
+- Rebuild `tecnobody_workbench_utils` on the robot.
+- Test a Z recovery on the robot and check in the log `PLC safety restored: estop_bypass=0` at the end, and `estop_bypass: 0` in the PLC outputs shown by the GUI.
+- Independently of this fix, check in the Flexi Soft program whether the bypass is limited (maximum time, only with `z_recovery=0` or the key, reduced speed): a process killed with SIGKILL or a frozen PC cannot restore it from ROS.
+
+### Fixed
+
+- **`auto_z_recovery_node` restores `estop_bypass=0` and `z_recovery=1` on every exit** (`_restore_plc_safety()`, was `_restore_z_recovery()`): at the end of the stop of the jog (target reached, jog timeout, safety reclosure), at shutdown, and in `main()`. The restore is sent 3 times, 20 ms apart.
+- **SIGINT/SIGTERM are handled by the node**, not by rclpy: rclpy's handler shut the context down first, so on `kill_recovery_env()` nothing was restored, not even `z_recovery=1`. A second signal no longer interrupts the restore.
+- **Commands for several interfaces go in one message**: `PLC_controller` applies only the last message of each 2 ms cycle, so `z_recovery=0` and `estop_bypass=1`, sent back to back, could lose the first one.
+- Docstring: the PLC stays on the `run_sickPLC` `ros2_control_node` during the recovery; the recovery environment does not start a new one.
+
+### Tests
+
+- `tecnobody_workbench_utils/test/test_auto_z_recovery_safety.py`: one message for `z_recovery`/`estop_bypass`; restore repeated and sent once; restore after target reached, jog timeout and safety reclosure; restore received by a subscriber when the real `main()` gets SIGINT or SIGTERM.
+
 ## 2026-10-07 — Real-time diagnostics and unbuffered EtherCAT driver output
 
 ### Added
