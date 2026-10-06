@@ -73,6 +73,9 @@ class TrainingResumeTest(unittest.TestCase):
         """Tracking error reported by ROS after some repetitions of this run."""
         self.ros.getExerciseRepetitionCounter.return_value = repetitions_done
         self.ros.getExerciseSuspended.return_value = True
+        self.ros.getExerciseSuspensionInfo.return_value = {
+            'success': False, 'action_status': 6, 'error_code': -4,
+            'message': 'path tolerance violated', 'movement_kind': 'exercise'}
         self.window.updateWindow()
         self.ros.getExerciseSuspended.return_value = False
         self.assertFalse(self.window.Training_ON)

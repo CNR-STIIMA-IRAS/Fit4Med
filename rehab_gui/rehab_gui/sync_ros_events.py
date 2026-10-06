@@ -207,6 +207,10 @@ class SyncRosManager:
         self.exercise_completed = False
         self.movement_stopped = False
         self.exercise_suspended = False
+        # Why the robot suspended the exercise / how the last single trajectory
+        # ended: result_info() of the tecnobody_msgs/TrajectoryResult received.
+        self.exercise_suspension : dict = None #type: ignore
+        self.trajectory_result : dict = None #type: ignore
         self.cancel_movement = False
         self.execution_time_percentage : int = 0
         self.repetition_cnt : int = 0
@@ -347,10 +351,10 @@ class SyncRosManager:
         self.bag_recorder_stop_client : ConstRequestServiceHandler = ConstRequestServiceHandler(self.ros_client, '/bag_recorder/stop',
                                                                                                  'std_srvs/srv/Trigger', roslibpy.ServiceRequest())
 
-        self.on_trajectory_finished_server : roslibpy.Service = roslibpy.Service(self.ros_client, "/rehab_gui/trajectory_finished", "std_srvs/Trigger")
+        self.on_trajectory_finished_server : roslibpy.Service = roslibpy.Service(self.ros_client, "/rehab_gui/trajectory_finished", "tecnobody_msgs/TrajectoryResult")
         self.on_trajectory_finished_server.advertise(self.on_trajectory_finished)
 
-        self.on_exercise_finished_server : roslibpy.Service = roslibpy.Service(self.ros_client, "/rehab_gui/exercise_finished", "std_srvs/Trigger")
+        self.on_exercise_finished_server : roslibpy.Service = roslibpy.Service(self.ros_client, "/rehab_gui/exercise_finished", "tecnobody_msgs/TrajectoryResult")
         self.on_exercise_finished_server.advertise(self.on_exercise_finished)
         
         self.on_exercise_progress_server : roslibpy.Service = roslibpy.Service(self.ros_client, "/rehab_gui/exercise_progress", "tecnobody_msgs/MovementProgress")
@@ -360,7 +364,7 @@ class SyncRosManager:
         self.on_movement_stopped_server : roslibpy.Service  = roslibpy.Service(self.ros_client, "/rehab_gui/movement_stopped", "std_srvs/Trigger")        
         self.on_movement_stopped_server.advertise(self.on_movement_stopped)
 
-        self.on_exercise_suspended_server : roslibpy.Service  = roslibpy.Service(self.ros_client, "/rehab_gui/exercise_suspended", "std_srvs/Trigger")        
+        self.on_exercise_suspended_server : roslibpy.Service  = roslibpy.Service(self.ros_client, "/rehab_gui/exercise_suspended", "tecnobody_msgs/TrajectoryResult")        
         self.on_exercise_suspended_server.advertise(self.on_exercise_suspended)
 
         print('All service clients correctly initialized.')
@@ -774,7 +778,14 @@ class SyncRosManager:
         else:
             self.enable_ethercat_error_checking(True)
 
+    def _forget_last_trajectory(self) -> None:
+        # A "completed" left over from an earlier (e.g. stopped) trajectory
+        # would end the new one as soon as the motors are on.
+        self.trajectory_completed = False
+        self.trajectory_result = None
+
     def send_ptp_trajectory(self, target_point: list, end_time: list) -> bool:
+        self._forget_last_trajectory()
         try:
             _ = self.reset_speed_over_client.call()
 
@@ -803,6 +814,7 @@ class SyncRosManager:
         return False
 
     def send_go_to_start_ptp_trajectory(self, target_point: list, end_time: float) -> bool:
+        self._forget_last_trajectory()
         try:
             _ = self.reset_speed_over_client.call()
             points = [self.RobotJointPosition, target_point]
@@ -828,6 +840,8 @@ class SyncRosManager:
         self.repetition_cnt = 0
         self.exercise_completed = False
         self.exercise_suspended = False
+        self.exercise_suspension = None
+        self.execution_time_percentage = 0  # not the last value of the previous exercise
         response : dict = None #type: ignore
         if len(ovrs) != len(durations):
             print(f"[Set Trajectory] mismatching input dimension!")
@@ -882,11 +896,34 @@ class SyncRosManager:
         print(f"{GREEN}<<<<{NC} Motor Off Request [{GREEN+'OK'+NC if ok else RED+'FAILED'+NC}]")
         return stop_accepted and ok and self.movement_stopped
 
+    # /rehab_gui/{trajectory_finished,exercise_finished,exercise_suspended} are
+    # tecnobody_msgs/TrajectoryResult: the robot tells how the movement ended,
+    # the GUI answers `accepted` (checked and logged by the robot side).
+    # They run in the rosbridge thread: only flags/values are set here.
+
+    @staticmethod
+    def result_info(request) -> dict:
+        return {
+            'success': bool(request.get('success', False)),
+            'action_status': int(request.get('action_status', 0)),
+            'error_code': int(request.get('error_code', 0)),
+            'message': str(request.get('message', '')),
+            'movement_kind': str(request.get('movement_kind', '')),
+        }
+
     def on_trajectory_finished(self, request, response):
-        print(f"[on_trajectory_finished] The Trajectory Execution's just finished {request}")
+        try:
+            info = self.result_info(request)
+        except (TypeError, ValueError, AttributeError) as exc:
+            print(f"[on_trajectory_finished] Malformed request {request}: {exc}")
+            info = {'success': False, 'action_status': 0, 'error_code': 999,
+                    'message': f'malformed result: {request}', 'movement_kind': ''}
+        print(f"[on_trajectory_finished] {info}")
+        self.trajectory_result = info
+        # Also on failure: the windows switch the motors off on it.
         self.trajectory_completed = True
-        response['success'] = True
-        return True       
+        response['accepted'] = True
+        return True
     
     def on_movement_stopped(self, request, response):
         print(f"[on_movement_stopped] Service Call: {request}")
@@ -895,16 +932,23 @@ class SyncRosManager:
         return True     
 
     def on_exercise_suspended(self, request, response):
-        print(f"[on_exercise_suspended] Service Call: {request}")
+        try:
+            info = self.result_info(request)
+        except (TypeError, ValueError, AttributeError) as exc:
+            print(f"[on_exercise_suspended] Malformed request {request}: {exc}")
+            info = {'success': False, 'action_status': 0, 'error_code': 999,
+                    'message': f'malformed result: {request}', 'movement_kind': 'exercise'}
+        print(f"[on_exercise_suspended] {info}")
+        self.exercise_suspension = info  # before the flag: the GUI reads both
         self.exercise_suspended = True
-        response['success'] = True
-        return True       
-    
+        response['accepted'] = True
+        return True
+
     def on_exercise_finished(self, request, response):
         self.repetition_cnt = self.repetition_cnt +1
         self.exercise_completed = True
-        response['success'] = True
-        return True       
+        response['accepted'] = True
+        return True
 
     def on_exercise_progress(self, request, response):
         self.execution_time_percentage = int(request['progress'])  # Get the progress percentage from the worker

@@ -59,6 +59,7 @@ Attributes:
 """
 
 import sys
+import threading
 import time
 import random
 from typing import Callable, List, Optional
@@ -78,7 +79,7 @@ from rclpy.timer import Timer
 from rclpy.service import Service
 from rclpy.publisher import Publisher
 from rclpy.subscription import Subscription
-from rclpy.executors import MultiThreadedExecutor
+from rclpy.executors import ExternalShutdownException, SingleThreadedExecutor
 from builtin_interfaces.msg import Duration
 from rclpy.action import ActionClient
 from rclpy.client import Client
@@ -89,7 +90,7 @@ from control_msgs.action import FollowJointTrajectory
 from control_msgs.msg import SpeedScalingFactor, JointTrajectoryControllerState
 from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectoryPoint
-from tecnobody_msgs.srv import SetExercise, SetTrajectory, MovementProgress
+from tecnobody_msgs.srv import SetExercise, SetTrajectory, MovementProgress, TrajectoryResult
 from action_msgs.msg import GoalStatus
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
@@ -100,6 +101,132 @@ install(show_locals=True)
 
 
 DEFAULT_EEG_DELAY_MS = 4000
+
+# control_msgs/FollowJointTrajectory result code used when the action gives none.
+NO_RESULT_ERROR_CODE = 999
+# Time the controller has to accept or reject a goal before it counts as rejected.
+GOAL_ACCEPTANCE_TIMEOUT_S = 5.0
+# Time a movement request waits for the controller's action server: right after
+# a controller switch its discovery can take a few hundred ms.
+CONTROLLER_WAIT_S = 1.0
+
+
+class GuiNotifier:
+    """Deliver notifications to one GUI service (TrajectoryResult by default).
+
+    The GUI advertises its services through rosbridge, so they can be missing
+    for a while (GUI starting, websocket reconnecting). notify() never blocks
+    the calling callback: a notification waits up to wait_timeout_s for the
+    service, then it is sent exactly once. Resending a request whose reply got
+    lost could make the GUI count a repetition twice. The GUI's `accepted`
+    answer is checked (`success` for std_srvs/Trigger services): refusals and
+    missing replies are logged.
+    """
+
+    def __init__(self, node: Node, service_name: str, srv_type=TrajectoryResult,
+                 wait_timeout_s: float = 10.0, reply_timeout_s: float = 5.0,
+                 poll_period_s: float = 0.2) -> None:
+        self._node = node
+        self._service_name = service_name
+        self._wait_timeout_s = wait_timeout_s
+        self._reply_timeout_s = reply_timeout_s
+        self._client = node.create_client(srv_type, service_name)
+        self._lock = threading.RLock()  # _on_reply may run inside _flush's call_async
+        self._waiting = []   # [(queued_at, request)], oldest first
+        self._in_flight = []  # [(sent_at, future, request, warned)]
+        # Runs only while something waits for the GUI or for its reply: the
+        # node's main loop executes about one callback every 50 ms, an always
+        # running timer per notifier would take a large share of it.
+        self._timer = node.create_timer(poll_period_s, self._flush)
+        self._timer.cancel()
+
+    def notify(self, success: bool, action_status: int, error_code: int,
+               message: str, movement_kind: str) -> None:
+        request = TrajectoryResult.Request()
+        request.success = bool(success)
+        request.action_status = int(action_status)
+        request.error_code = int(error_code)
+        request.message = str(message)
+        request.movement_kind = str(movement_kind)
+        self.send(request)
+
+    def send(self, request) -> None:
+        """Queue any request of this service's type (e.g. Trigger.Request())."""
+        with self._lock:
+            self._waiting.append((time.monotonic(), request))
+        self._flush()
+
+    def _flush(self) -> None:
+        now = time.monotonic()
+        with self._lock:
+            self._check_replies(now)
+            if self._waiting and not self._client.service_is_ready():
+                expired = [r for t, r in self._waiting if now - t > self._wait_timeout_s]
+                self._waiting = [(t, r) for t, r in self._waiting if now - t <= self._wait_timeout_s]
+                for request in expired:
+                    self._node.get_logger().error(
+                        f'{self._service_name} not available for {self._wait_timeout_s:.0f} s: '
+                        f'notification LOST ({self._describe(request)})')
+            elif self._waiting:
+                to_send, self._waiting = [r for _, r in self._waiting], []
+                for request in to_send:
+                    future = self._client.call_async(request)
+                    self._in_flight.append([now, future, request, False])
+                    future.add_done_callback(lambda f, r=request: self._on_reply(f, r))
+            self._update_timer()
+
+    def _update_timer(self) -> None:
+        """Poll only while something is pending (called with the lock held)."""
+        pending = bool(self._waiting) or any(not entry[1].done() for entry in self._in_flight)
+        if pending and self._timer.is_canceled():
+            self._timer.reset()
+        elif not pending and not self._timer.is_canceled():
+            self._timer.cancel()
+
+    def _check_replies(self, now: float) -> None:
+        still_open = []
+        for entry in self._in_flight:
+            sent_at, future, request, warned = entry
+            if future.done():
+                continue
+            if not warned and now - sent_at > self._reply_timeout_s:
+                entry[3] = True
+                self._node.get_logger().warning(
+                    f'{self._service_name}: no reply after {self._reply_timeout_s:.0f} s '
+                    f'({self._describe(request)})')
+            still_open.append(entry)
+        self._in_flight = still_open
+
+    def _on_reply(self, future, request) -> None:
+        with self._lock:
+            self._in_flight = [entry for entry in self._in_flight if entry[1] is not future]
+            self._update_timer()
+        try:
+            response = future.result()
+        except Exception as exc:
+            self._node.get_logger().error(f'{self._service_name} call failed: {exc!r} ({self._describe(request)})')
+            return
+        accepted = getattr(response, 'accepted', getattr(response, 'success', False))
+        if response is None or not accepted:
+            self._node.get_logger().warning(f'{self._service_name}: GUI did NOT accept ({self._describe(request)})')
+        else:
+            self._node.get_logger().debug(f'{self._service_name}: accepted ({self._describe(request)})')
+
+    @staticmethod
+    def _describe(request) -> str:
+        if not hasattr(request, 'movement_kind'):
+            return type(request).__name__
+        return (f'kind={request.movement_kind} success={request.success} '
+                f'status={request.action_status} code={request.error_code} msg="{request.message}"')
+
+
+def goal_result_fields(future) -> tuple:
+    """(action_status, error_code, error_string) of a FollowJointTrajectory result future."""
+    try:
+        result = future.result()
+        return int(result.status), int(result.result.error_code), str(result.result.error_string)
+    except Exception as exc:
+        return int(GoalStatus.STATUS_UNKNOWN), NO_RESULT_ERROR_CODE, f'no result: {exc!r}'
 
 
 class FollowJointTrajectoryActionManager(Node):
@@ -166,7 +293,6 @@ class FollowJointTrajectoryActionManager(Node):
         - Sets up service servers for trajectory and exercise requests from GUI
         - Creates subscription to speed scaling factors for pause detection
         - Initializes action client for FollowJointTrajectory controller
-        - Configures multi-threaded execution for concurrent callback handling
         
         Args:
             controller_name (str): Name of ros2_control joint_trajectory_controller
@@ -213,6 +339,10 @@ class FollowJointTrajectoryActionManager(Node):
         self.subscriber_group = MutuallyExclusiveCallbackGroup()
         self.exercise_progress_client : Client = None #type: ignore
         self.exercise_status_timer : Timer = None #type: ignore
+        self._trajectory_kind : str = 'ptp'  # movement_kind reported for single trajectories
+        self._acceptance_expired : bool = False  # the controller did not answer the last goal in time
+        self._acceptance_timer : Timer = None #type: ignore
+        self._stopped_by_gui : bool = False  # the current goal was cancelled by a GUI stop
 
         ############################# Trajectory Services ##########################
         self.set_trajectory_server : Service = None #type: ignore
@@ -297,10 +427,12 @@ class FollowJointTrajectoryActionManager(Node):
             MovementProgress, 
             "/rehab_gui/exercise_progress"
         )
-        self.exercise_suspended_client = self.create_client(
-            Trigger, 
-            "/rehab_gui/exercise_suspended"
-        )
+        # Results for the GUI (tecnobody_msgs/TrajectoryResult, answered with `accepted`).
+        self.trajectory_finished_notifier = GuiNotifier(self, "/rehab_gui/trajectory_finished")
+        self.exercise_finished_notifier = GuiNotifier(self, "/rehab_gui/exercise_finished")
+        self.exercise_suspended_notifier = GuiNotifier(self, "/rehab_gui/exercise_suspended")
+        # Answer to a stop request: nothing to report but the fact (Trigger).
+        self.movement_stopped_notifier = GuiNotifier(self, "/rehab_gui/movement_stopped", Trigger)
 
 
     def _init_publishers_subscribers(self) -> None:
@@ -425,6 +557,8 @@ class FollowJointTrajectoryActionManager(Node):
             - GUI is freed immediately and receives completion via callback
             - No repetition loop (unlike set_exercise)
         """
+        if self._refuse_without_controller(self.follow_joint_trajectory_action_client, self.controller_name, response):
+            return response
         self.clear(size=1)
 
         # ========== Extract trajectory waypoints and times ==========
@@ -454,6 +588,7 @@ class FollowJointTrajectoryActionManager(Node):
 
         # ========== Apply speed override and submit goal ==========
         self.get_logger().info(f'Set Trajectory -> sending the new FJT Goal')
+        self._trajectory_kind = 'ptp'
         response.success = self.sendFollowJointTrajectoryGoal(self.on_trajectory_goal_accepted)
         self.get_logger().info(f"Trajectory sento to FCT with result: {response.success}")
         response.success = True
@@ -471,6 +606,8 @@ class FollowJointTrajectoryActionManager(Node):
         Called when the GUI "Go To Start" button is pressed and go_to_start_controller
         is the active controller (joint_trajectory_controller is inactive).
         """
+        if self._refuse_without_controller(self.go_to_start_action_client, 'go_to_start_controller', response):
+            return response
         self.clear(size=1)
 
         _P = [r.point for r in request.cartesian_positions]
@@ -489,8 +626,8 @@ class FollowJointTrajectoryActionManager(Node):
         self._total_time_s[0] = t[-1]
 
         self.get_logger().info('Set Go-To-Start Trajectory -> sending FJT goal to go_to_start_controller')
-        self._send_goal_future = self.go_to_start_action_client.send_goal_async(self.goal_fjt[0])
-        self._send_goal_future.add_done_callback(self.on_trajectory_goal_accepted)
+        self._trajectory_kind = 'go_to_start'
+        self.sendFollowJointTrajectoryGoal(self.on_trajectory_goal_accepted, self.go_to_start_action_client)
         response.success = True
         return response
 
@@ -544,6 +681,8 @@ class FollowJointTrajectoryActionManager(Node):
             - Progress is reported via /rehab_gui/exercise_progress service
             - GUI can request stop via /tecnobody_workbench_utils/stop_movement
         """
+        if self._refuse_without_controller(self.follow_joint_trajectory_action_client, self.controller_name, response):
+            return response
         self.number_of_repetition = len(request.repetition_ovrs)
         self.clear(self.number_of_repetition)
 
@@ -628,6 +767,8 @@ class FollowJointTrajectoryActionManager(Node):
             - Progress is reported via /rehab_gui/exercise_progress service
             - GUI can request stop via /tecnobody_workbench_utils/stop_movement
         """
+        if self._refuse_without_controller(self.follow_joint_trajectory_action_client, self.controller_name, response):
+            return response
         self.number_of_repetition = len(request.repetition_ovrs)
         self.clear(self.number_of_repetition)
 
@@ -807,7 +948,85 @@ class FollowJointTrajectoryActionManager(Node):
         self.goal_fjt[trajectory_index].trajectory.header.stamp = self.get_clock().now().to_msg()
 
 
-    def sendFollowJointTrajectoryGoal(self, on_goal_accepted) -> bool:  # type: ignore
+    def _refuse_without_controller(self, action_client: ActionClient, controller: str, response) -> bool:
+        """Answer success=False when the controller's action server is not there.
+
+        The goal would otherwise never be answered and the GUI, told success,
+        would wait forever with the motors on.
+        """
+        # Blocks this callback only when the controller is really missing
+        # (wait_for_server polls the graph, it does not need the executor).
+        if action_client.server_is_ready() or action_client.wait_for_server(timeout_sec=CONTROLLER_WAIT_S):
+            return False
+        self.get_logger().error(
+            f'Movement refused: {controller}/follow_joint_trajectory not available after '
+            f'{CONTROLLER_WAIT_S:.1f} s (controller not active?)')
+        response.success = False
+        return True
+
+    def _report_goal_not_started(self, on_goal_accepted, error_code: int, reason: str) -> None:
+        """Tell the GUI that the goal sent with on_goal_accepted will not run."""
+        self._goal_handle = None
+        if on_goal_accepted == self.on_exercise_goal_accepted:
+            self.get_logger().error(f'Repetition {self.exercise_cnt}: {reason}. Exercise suspended.')
+            self.exercise_suspended_notifier.notify(
+                False, GoalStatus.STATUS_UNKNOWN, error_code,
+                f'Repetition {self.exercise_cnt}: {reason}', 'exercise')
+        else:
+            self.get_logger().error(f'Trajectory ({self._trajectory_kind}): {reason}.')
+            self.trajectory_finished_notifier.notify(
+                False, GoalStatus.STATUS_UNKNOWN, error_code, reason, self._trajectory_kind)
+
+    def _watch_goal_acceptance(self, send_goal_future, on_goal_accepted) -> None:
+        """Report the goal as not started if the controller does not answer in time."""
+        if self._acceptance_timer is not None:
+            self.destroy_timer(self._acceptance_timer)
+        self._acceptance_expired = False
+
+        def check() -> None:
+            self._acceptance_timer.cancel()
+            if send_goal_future.done() or not self._goal_acceptance_pending:
+                return
+            self._acceptance_expired = True  # a late acceptance is cancelled at once
+            self._goal_acceptance_pending = False
+            self._report_goal_not_started(
+                on_goal_accepted, NO_RESULT_ERROR_CODE,
+                f'the controller did not answer the goal within {GOAL_ACCEPTANCE_TIMEOUT_S:.0f} s')
+        self._acceptance_timer = self.create_timer(GOAL_ACCEPTANCE_TIMEOUT_S, check)
+
+    def _discard_stale_goal(self, future, goal_handle) -> bool:
+        """True (and cancel it if accepted) for an answer that must not run.
+
+        Either the answer to an older goal (a new one was sent meanwhile, e.g.
+        the operator retried after a timeout), or to the current goal after it
+        was already reported to the GUI as not started.
+        """
+        stale = future is not self._send_goal_future
+        if not stale and not self._acceptance_expired:
+            return False
+        if goal_handle.accepted:
+            self.get_logger().warn(
+                f'Goal accepted {"for a superseded request" if stale else "after the acceptance timeout"}: '
+                'cancelling it.')
+            goal_handle.cancel_goal_async()
+        return True
+
+    def _handle_late_or_rejected_goal(self, on_goal_accepted) -> bool:
+        """Common part of the acceptance callbacks; True when the goal must not run."""
+        if not self._goal_handle.accepted:
+            if self.cancel_from_gui:
+                self.get_logger().info('Goal rejected after a stop request.')
+                self._goal_handle = None
+                self._notify_movement_stopped()
+                self.clear(0)
+            else:
+                self._report_goal_not_started(
+                    on_goal_accepted, FollowJointTrajectory.Result.INVALID_GOAL,
+                    'goal rejected by the controller')
+            return True
+        return False
+
+    def sendFollowJointTrajectoryGoal(self, on_goal_accepted, action_client: ActionClient = None) -> bool:  # type: ignore
         """Submit trajectory goal to FollowJointTrajectory action client.
         
         Asynchronous submission of the current goal to the ros2_control
@@ -833,9 +1052,12 @@ class FollowJointTrajectoryActionManager(Node):
               * on_trajectory_goal_accepted(): for set_trajectory requests
               * on_exercise_goal_accepted(): for set_exercise requests
         """
+        action_client = action_client or self.follow_joint_trajectory_action_client
+        self._stopped_by_gui = False
         self.get_logger().info(f'Sending goal number {self.exercise_cnt} to the FJT Controller')
-        self._send_goal_future = self.follow_joint_trajectory_action_client.send_goal_async(self.goal_fjt[self.exercise_cnt])
+        self._send_goal_future = action_client.send_goal_async(self.goal_fjt[self.exercise_cnt])
         self._goal_acceptance_pending = True
+        self._watch_goal_acceptance(self._send_goal_future, on_goal_accepted)
         self._send_goal_future.add_done_callback(on_goal_accepted)
         return True
 
@@ -865,14 +1087,12 @@ class FollowJointTrajectoryActionManager(Node):
             - Logs rejection if goal not accepted by server
             - Does not retry or escalate; caller must handle
         """
+        goal_handle = future.result()
+        if self._discard_stale_goal(future, goal_handle):
+            return
         self._goal_acceptance_pending = False
-        self._goal_handle = future.result()
-        if not self._goal_handle.accepted:
-            self.get_logger().info('Trajectory Goal rejected!!')
-            if self.cancel_from_gui:
-                self._goal_handle = None
-                self._notify_movement_stopped()
-                self.clear(0)
+        self._goal_handle = goal_handle
+        if self._handle_late_or_rejected_goal(self.on_trajectory_goal_accepted):
             return
         self.get_logger().info('Trajectory Goal accepted!!')
         if self.cancel_from_gui:
@@ -907,18 +1127,24 @@ class FollowJointTrajectoryActionManager(Node):
             - Service unavailable logged as info (GUI may not be running)
             - Continues gracefully without state corruption
         """
-        try:
-            self.get_logger().info('Trajectory execution DONE, notifying GUI...')
-            client: Client = self.create_client(Trigger, '/rehab_gui/trajectory_finished')
-            if not client.wait_for_service(timeout_sec=5.0):
-                self.get_logger().info('Trajectory DONE server is not available.')
-
-            req = Trigger.Request()
-            client.call_async(req)
-            self.get_logger().info('Trajectory DONE sent to GUI')
-            self._goal_handle = None
-        except Exception as e:
-            self.get_logger().info(f'Exception in on_trajectory_goal_done: {e}')
+        status, error_code, error_string = goal_result_fields(future)
+        self._goal_handle = None
+        if status == GoalStatus.STATUS_CANCELED and self._stopped_by_gui:
+            # The GUI asked for it and gets movement_stopped (on_cancelled). A
+            # trajectory_finished here would leave its "completed" flag set,
+            # ending the next movement as soon as the motors are on.
+            self.get_logger().info(f'Trajectory ({self._trajectory_kind}) cancelled by the GUI.')
+            return
+        success = (status == GoalStatus.STATUS_SUCCEEDED
+                   and error_code == FollowJointTrajectory.Result.SUCCESSFUL)
+        self.get_logger().info(
+            f'Trajectory ({self._trajectory_kind}) DONE: status={status} code={error_code} '
+            f'"{error_string}", notifying GUI')
+        # Sent whatever the outcome: the GUI switches the motors off on it.
+        self.trajectory_finished_notifier.notify(
+            success, status, error_code,
+            error_string or ('Trajectory completed' if success else 'Trajectory failed'),
+            self._trajectory_kind)
 
     def on_exercise_goal_accepted(self, future) -> None:  # type: ignore
         """Callback for exercise goal acceptance/rejection (EXERCISE mode).
@@ -943,15 +1169,12 @@ class FollowJointTrajectoryActionManager(Node):
         Returns:
             None. Sets up result and progress callbacks if accepted.
         """
+        goal_handle = future.result()
+        if self._discard_stale_goal(future, goal_handle):
+            return
         self._goal_acceptance_pending = False
-        self._goal_handle = future.result()
-        if not self._goal_handle.accepted:
-            self.get_logger().info('Exercise Goal rejected!!')
-            if self.cancel_from_gui:
-                self._goal_handle = None
-                self._notify_movement_stopped()
-                self.clear(0)
-
+        self._goal_handle = goal_handle
+        if self._handle_late_or_rejected_goal(self.on_exercise_goal_accepted):
             return
         self.get_logger().info(f'Exercise Goal accepted!!')
         if self.cancel_from_gui:
@@ -979,10 +1202,10 @@ class FollowJointTrajectoryActionManager(Node):
         if self._goal_handle is None:
             return
 
-        # Notify GUI
-        client = self.create_client(Trigger, '/rehab_gui/exercise_finished')
-        if client.wait_for_service(timeout_sec=0.5):
-            client.call_async(Trigger.Request())
+        # Notify GUI (was dropped when the GUI did not answer within 0.5 s)
+        self.exercise_finished_notifier.notify(
+            True, GoalStatus.STATUS_SUCCEEDED, FollowJointTrajectory.Result.SUCCESSFUL,
+            f'Exercise repetition {self.exercise_cnt} completed', 'exercise')
 
         # Cancel old timer
         self._cancel_exercise_status_timer()
@@ -1000,20 +1223,28 @@ class FollowJointTrajectoryActionManager(Node):
             self.get_logger().info('All repetitions completed!')
 
     def on_exercise_goal_done(self, future):
-        if self._goal_handle is not None:
-            result = future.result()
-            status = result.status
+        if self._goal_handle is None:
+            return
+        status, error_code, error_string = goal_result_fields(future)
 
-            if status == GoalStatus.STATUS_SUCCEEDED:
-                self.get_logger().info(f'Repetition {self.exercise_cnt} completed successfully.')
-                self._advance_exercise()
-            elif status == GoalStatus.STATUS_CANCELED:
-                self.get_logger().info(f'Repetition {self.exercise_cnt} was cancelled.')
-            elif status == GoalStatus.STATUS_ABORTED:
-                self.get_logger().info(f'Repetition {self.exercise_cnt} was aborted.')
-                self.exercise_suspended_client.call_async(Trigger.Request())
-            else:
-                self.get_logger().info(f'Repetition {self.exercise_cnt} ended with status: {status}')
+        if status == GoalStatus.STATUS_SUCCEEDED:
+            self.get_logger().info(f'Repetition {self.exercise_cnt} completed successfully.')
+            self._advance_exercise()
+        elif status == GoalStatus.STATUS_CANCELED:
+            # Stop requested by the GUI: on_cancelled notifies movement_stopped.
+            self.get_logger().info(f'Repetition {self.exercise_cnt} was cancelled.')
+        else:
+            # ABORTED (e.g. tracking error: PATH/GOAL_TOLERANCE_VIOLATED) or no
+            # usable result: the exercise is suspended, the GUI is told why.
+            self.get_logger().error(
+                f'Repetition {self.exercise_cnt} ended with status {status}, '
+                f'code {error_code}: "{error_string}". Exercise suspended.')
+            self._cancel_exercise_status_timer()  # stop time-based progress of a dead goal
+            self._goal_handle = None
+            self.exercise_suspended_notifier.notify(
+                False, status, error_code,
+                f'Repetition {self.exercise_cnt}: {error_string}' if error_string
+                else f'Repetition {self.exercise_cnt} failed', 'exercise')
 
 
     def check_exercise_status(self) -> None:
@@ -1126,12 +1357,9 @@ class FollowJointTrajectoryActionManager(Node):
             self.additional_speed_override = response.additional_speed_override
         
     def _notify_movement_stopped(self) -> None:
-        client : Client = self.create_client(Trigger, '/rehab_gui/movement_stopped')
-        if not client.wait_for_service(timeout_sec=5.0):
-            self.get_logger().info('Movement Stopped Server is not available.')
-            return
-
-        client.call_async(Trigger.Request())
+        # Non-blocking (it used to wait up to 5 s inside the callback, holding
+        # the node's default callback group, and then drop the notification).
+        self.movement_stopped_notifier.send(Trigger.Request())
 
     def on_cancelled(self, future) -> None:  # type: ignore
         """Callback for cancelled exercise goals (emergency stop).
@@ -1176,6 +1404,9 @@ class FollowJointTrajectoryActionManager(Node):
             Trigger.Response: success=True if goal cancelled, False otherwise
         """
         self.cancel_from_gui = True
+        # Unlike cancel_from_gui (reset by on_cancelled's clear(), possibly before
+        # the goal result arrives), this lasts until the next goal is sent.
+        self._stopped_by_gui = True
         
         # Cancel progress timer
         self._cancel_exercise_status_timer()
@@ -1201,12 +1432,11 @@ def main(args=None):
     """Entry point for the trajectory manager node.
     
     Initializes ROS 2 system, creates the FollowJointTrajectoryActionManager node,
-    and runs the multi-threaded executor with 4 threads for concurrent callback handling.
+    and spins it with a single-threaded executor (callbacks run one at a time).
     
     Configuration:
         - CPU affinity: select the core to have deterministic timing for real-time control
-        - Executor: MultiThreadedExecutor with 4 threads
-        - Spin interval: 100 ms (polling frequency)
+        - Executor: SingleThreadedExecutor, spin() (each callback as soon as ready)
         - Controller: specified via command-line argument (default: "joint_trajectory_controller")
     
     Args:
@@ -1229,16 +1459,20 @@ def main(args=None):
     # Create node instance
     fjtam = FollowJointTrajectoryActionManager(controller_name=input_controller)
 
-    # Create multi-threaded executor (4 threads for concurrent callbacks)
-    executor = MultiThreadedExecutor(num_threads=4)
+    # One thread, callbacks strictly one after the other. The process is pinned
+    # to one core and Python runs one thread at a time anyway: more threads
+    # gave no parallelism, only callbacks interleaving (e.g. the progress timer
+    # reading the lists clear() rebuilds). No callback blocks, so nothing waits
+    # for another. spin() runs each callback as soon as it is ready: the former
+    # spin_once() + sleep(0.05) loop ran at most ~20 callbacks/s, dropping most
+    # speed scaling messages (25 Hz). Idle, spin() uses no CPU (it waits in rcl).
+    executor = SingleThreadedExecutor()
     executor.add_node(fjtam)
-    
-    try:
-        while rclpy.ok():
-            executor.spin_once()
-            time.sleep(0.05)
 
-    except KeyboardInterrupt:
+    try:
+        executor.spin()
+
+    except (KeyboardInterrupt, ExternalShutdownException):
         if rclpy.ok():
             try:
                 fjtam.get_logger().info('Keyboard interrupt, shutting down.\n')

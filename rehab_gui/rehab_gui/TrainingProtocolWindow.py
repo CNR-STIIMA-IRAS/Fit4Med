@@ -17,7 +17,7 @@ except ImportError:
 
 from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import QProgressBar, QSpinBox, QLCDNumber, QComboBox, QMessageBox, QWidget, QButtonGroup, QFileDialog, QApplication
-from PyQt5.QtCore import QTimer, pyqtSignal
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 
 # rich tracebacks are installed once by session_log (terminal + gui_errors.log).
 
@@ -25,6 +25,19 @@ from ui.uiTrainingProtocolWindow import Ui_TrainingProtocolWindow
 from RehabilitationMovementWindow import ExerciseType
 from RosCommunicationManager import RosCommunicationManager
 from copy import deepcopy
+
+# Who suspended the exercise.
+SUSPENDED_BY_ROBOT = 'robot'  # the robot side aborted a repetition (e.g. tracking error)
+SUSPENDED_BY_GUI = 'gui'      # the GUI got no progress from the robot for too long
+
+# control_msgs/FollowJointTrajectory result codes -> (state label, explanation)
+_ROBOT_SUSPENSION_REASONS = {
+    -4: ('TRACKING ERROR', 'Tracking error: the robot deviated from the trajectory beyond the allowed tolerance.'),
+    -5: ('TRACKING ERROR', 'Tracking error: the robot did not reach the end of the movement within the allowed tolerance.'),
+    -1: ('ROBOT ERROR', 'The robot controller rejected the movement (invalid goal).'),
+    -2: ('ROBOT ERROR', 'The robot controller rejected the movement (invalid joints).'),
+    -3: ('ROBOT ERROR', 'The robot controller rejected the movement (old header timestamp).'),
+}
 
 #########################################################################
 ##
@@ -156,13 +169,16 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
 
         self._iPhase_0 = 0
 
-        # Stall detection: if execution_time_percentage does not change for
-        # _STALL_TICKS consecutive timer ticks we treat the exercise as suspended.
-        _STALL_TICKS = 50  # 50 × 100 ms = 5 s
-        self._STALL_TICKS = _STALL_TICKS
+        # GUI-side suspension: the robot reports progress at least every ~1 s
+        # while moving (phase durations <= 100 s). No change for
+        # _NO_PROGRESS_TIMEOUT_S (and no PAUSE) means the robot side stopped
+        # talking or moving; then the GUI stops the movement itself. Longer
+        # than the robot's retry window for its own notifications (10 s).
+        self._NO_PROGRESS_TIMEOUT_S = 15.0
         self._exec_pct_prev: int = -1
-        self._exec_pct_stall_count: int = 0
+        self._exec_pct_changed_at: float = time.monotonic()
         self._training_paused: bool = False
+        self._suspension_dialog = None
 
     def _get_pending_phase_durations(self) -> list:
         return [sp.value() for idx, sp in enumerate(self.spinBoxDuration) if idx >= self._iPhase_0]
@@ -188,25 +204,71 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         self.ui.pushButton_PauseTrainig.setEnabled(False)
         self.ui.pushButton_ResumeTraining.setEnabled(False)
 
-    def _handle_exercise_suspension(self, i_phase: int) -> None:
-        # NOTE: do NOT call stopAnyMovement() here — it blocks the Qt main
-        # thread waiting for a ROS service response, which freezes the whole GUI.
-        # The ROS side already stopped the motion when it emitted the suspension
-        # event; we only need to update GUI state and request motor-off asynchronously.
-        print(f"[TrainingProtocol] Suspension at phase {i_phase} — transitioning GUI to idle")
+    def _reset_progress_watch(self) -> None:
+        self._exec_pct_prev = -1
+        self._exec_pct_changed_at = time.monotonic()
+
+    def _handle_exercise_suspension(self, i_phase: int, suspended_by: str, info=None) -> None:
+        """Stop the training, keep i_phase for the resume, tell the operator why.
+
+        suspended_by == SUSPENDED_BY_ROBOT: the robot already stopped the motion
+        (aborted repetition); only the motors are switched off, asynchronously.
+        suspended_by == SUSPENDED_BY_GUI: nothing heard from the robot, which may
+        still be moving: the movement is stopped first (stop + motors off).
+        Never a blocking ROS call here (it would freeze the whole GUI).
+        """
+        phase = i_phase + 1  # as shown to the operator
+        if suspended_by == SUSPENDED_BY_ROBOT:
+            code = info['error_code'] if info else None
+            label, reason = _ROBOT_SUSPENSION_REASONS.get(
+                code, ('ROBOT ERROR', f'The robot controller aborted the movement (code {code}).'))
+            if info is None:
+                label, reason = 'ROBOT STOP', 'The movement was stopped on the robot side.'
+            elif info.get('message'):
+                # Often the most useful part (joint, error size, "controller
+                # deactivated", ...): not only in the details.
+                reason += f"\nRobot controller: {info['message']}"
+        else:
+            label = 'NO PROGRESS'
+            reason = info['reason']
+        print(f"[TrainingProtocol] Suspension at phase {phase} by {suspended_by}: {reason} {info or ''}")
         self.Training_ON = False
         self._near_zero_triggered = False
         self._training_paused = False
-        self._exec_pct_prev = -1
-        self._exec_pct_stall_count = 0
+        self._reset_progress_watch()
         self._iPhase_0 = i_phase
         self._update_total_training_time_display(force=True)
         self._set_training_buttons_idle()
         self.ROS.setExerciseSuspended(False)
         self.ROS.setMovementStopped(False)
-        self.ROS.setExerciseInSuspension(True)  # show orange warning in MotorsWindow
-        self._stop_bag_recording()               # stop bag if Save mode was active
-        self.ROS.turnOffMotorsAsync()            # non-blocking motor stop
+        self.ROS.setExerciseInSuspension(True, label)  # orange warning in MotorsWindow
+        self._stop_bag_recording()                      # stop bag if Save mode was active
+        if suspended_by == SUSPENDED_BY_GUI:
+            # Non-blocking: runs on its own worker, then switches the motors off.
+            if not self.ROS.requestStopAnyMovement():
+                self.ROS.turnOffMotorsAsync()
+        else:
+            self.ROS.turnOffMotorsAsync()               # non-blocking motor stop
+        self._show_suspension_dialog(
+            phase, label, reason,
+            (f"Suspended by: {suspended_by}\nPhase: {phase}\n"
+             + ''.join(f"{key}: {value}\n" for key, value in (info or {}).items())))
+
+    def _show_suspension_dialog(self, phase: int, label: str, reason: str, details: str) -> None:
+        # Not exec_(): a nested event loop would keep running the GUI (and this
+        # window's updates) underneath. The operator closes it when ready.
+        if self._suspension_dialog is not None:
+            self._suspension_dialog.close()
+        box = QMessageBox(QMessageBox.Warning, f"Training suspended - {label.lower()}",
+                          f"Training suspended at phase {phase}.\n\n{reason}\n\n"
+                          f"Press START TRAINING to resume from phase {phase}.",
+                          QMessageBox.Ok, self)
+        box.setDetailedText(details)
+        box.setWindowModality(Qt.NonModal)
+        box.setAttribute(Qt.WA_DeleteOnClose)
+        box.finished.connect(lambda _result: setattr(self, '_suspension_dialog', None))
+        box.show()
+        self._suspension_dialog = box
 
     def connect(self, ROS: RosCommunicationManager, parent_timer: QTimer):
         self.ROS = ROS
@@ -297,26 +359,31 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         if self.Training_ON:
             _iPhase = self.ROS.getExerciseRepetitionCounter() + self._iPhase_0
             if _iPhase <= 19:
-                # --- Suspension detection (explicit flag) ---
-                if self.ROS.getExerciseSuspended() or self.ROS.getMovementStopped():
-                    print(f"[TrainingProtocol] Explicit suspension flag: suspended={self.ROS.getExerciseSuspended()} stopped={self.ROS.getMovementStopped()}")
-                    self._handle_exercise_suspension(_iPhase)
+                # --- Suspension reported by the robot (aborted repetition) ---
+                if self.ROS.getExerciseSuspended():
+                    self._handle_exercise_suspension(_iPhase, SUSPENDED_BY_ROBOT,
+                                                     self.ROS.getExerciseSuspensionInfo())
+                    return
+                # A stop not requested by this GUI (ours clears Training_ON first).
+                if self.ROS.getMovementStopped():
+                    self._handle_exercise_suspension(_iPhase, SUSPENDED_BY_ROBOT, None)
                     return
 
-                # --- Stall-based suspension fallback ---
-                # If the execution percentage has not changed for _STALL_TICKS
-                # consecutive ticks (and we are not manually paused), treat it
-                # as an externally-triggered suspension.
+                # --- Suspension decided by the GUI: no progress from the robot ---
                 _pct = self.ROS.getExecutionTimePercentage()
-                if not self._training_paused and _pct > 0:
-                    if _pct == self._exec_pct_prev:
-                        self._exec_pct_stall_count += 1
-                        if self._exec_pct_stall_count >= self._STALL_TICKS:
-                            print(f"[TrainingProtocol] Stall detected: pct={_pct} frozen for {self._STALL_TICKS} ticks — treating as suspension")
-                            self._handle_exercise_suspension(_iPhase)
-                            return
-                    else:
-                        self._exec_pct_stall_count = 0
+                _now = time.monotonic()
+                if _pct != self._exec_pct_prev or self._training_paused:
+                    self._exec_pct_changed_at = _now
+                elif _now - self._exec_pct_changed_at > self._NO_PROGRESS_TIMEOUT_S:
+                    # Also at 0%: a robot side that never reports is caught too
+                    # (a phase leaves 0% within ~1 s once accepted, <= 5 s).
+                    self._handle_exercise_suspension(_iPhase, SUSPENDED_BY_GUI, {
+                        'reason': (f'No progress received from the robot for '
+                                   f'{_now - self._exec_pct_changed_at:.0f} s (stuck at {_pct}%). '
+                                   'The GUI stopped the movement.'),
+                        'progress_pct': _pct,
+                    })
+                    return
                 self._exec_pct_prev = _pct
 
                 self.progressBarPhases[_iPhase].setValue(_pct)
@@ -325,7 +392,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
                 if self.ROS.getExerciseCompleted():
                     self.ROS.setExerciseCompleted(False)
                     self.ModalityActualValue = self.Modalities[_iPhase] # change here the modality
-                    self._exec_pct_stall_count = 0  # reset stall counter on phase completion
+                    self._exec_pct_changed_at = time.monotonic()  # a new phase starts
                 # set movemnt count lcd number
                 _handle_pos = self.ROS.getHandleFeedbackPosition()
                 _is_near_zero = self.ROS.isRosCommunicationActive() and all(abs(p) < 0.01 for p in _handle_pos)
@@ -508,8 +575,7 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         self.ROS.setExerciseInSuspension(False)
         self._near_zero_triggered = True
         self._training_paused = False
-        self._exec_pct_prev = -1
-        self._exec_pct_stall_count = 0
+        self._reset_progress_watch()
         self.ActualTrainingTime = 0
         if not (yield from self.sendExercise.__wrapped__(self)):
             return False
@@ -527,15 +593,13 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
     @gui_task
     def clbk_PauseTrainig(self):
         self._training_paused = True
-        self._exec_pct_stall_count = 0
         yield Call(self.ROS.triggerSoftMovementStart, amplitude=0.0, time_constant=0.2, target='speed_ovr')
         self.ui.pushButton_ResumeTraining.setEnabled(True)
     
     @gui_task
     def clbk_ResumeTrainig(self):
         self._training_paused = False
-        self._exec_pct_stall_count = 0
-        self._exec_pct_prev = -1
+        self._reset_progress_watch()
         yield Call(self.ROS.triggerSoftMovementStop)
         self.ui.pushButton_PauseTrainig.setEnabled(True)
 
