@@ -41,6 +41,10 @@ PLC_MANAGER_UDP_PORT = 5006  # our source port, where the GUI replies
 
 
 DEFAULT_EEG_DELAY_MS = 4000
+DEFAULT_GUI_STATUS_PERIOD_SEC = 0.1
+DEFAULT_PLC_COMMAND_REPUBLISH_PERIOD_SEC = 0.5
+DEFAULT_CPU_AFFINITY = {7}
+CPU_AFFINITY_ENV = 'PLC_MANAGER_CPU_AFFINITY'
 
 CALLBACK_STATUS_MESSAGE : dict[State,str] = {
     State.IDLE : 'Waiting for ros controllers to start - TURN THE KEY to START!' ,
@@ -109,9 +113,18 @@ class PLCControllerInterface(Node):
         self.last_estop_monotonic: float | None = None
         self.lock = threading.Lock()                            # Protects state_callback() concurrent access
         
+        self.declare_parameter(
+            'plc_command_republish_period_sec',
+            DEFAULT_PLC_COMMAND_REPUBLISH_PERIOD_SEC,
+        )
         self.plc_commands = PlcCommandPublisher(
             self.command_publisher,
             self.get_logger(),
+            republish_period_sec=float(
+                self.get_parameter(
+                    'plc_command_republish_period_sec'
+                ).value  # type: ignore
+            ),
         )
 
         # ========== Launcher Health Monitoring ==========
@@ -137,6 +150,19 @@ class PLCControllerInterface(Node):
             )
             raise
         self.gui_status = GuiStatusPublisher(self.client, self.get_logger())
+        self.declare_parameter(
+            'gui_status_publish_period_sec',
+            DEFAULT_GUI_STATUS_PERIOD_SEC,
+        )
+        self._gui_status_publish_period_sec = max(
+            0.0,
+            float(
+                self.get_parameter(
+                    'gui_status_publish_period_sec'
+                ).value  # type: ignore
+            ),
+        )
+        self._next_gui_status_publish_monotonic = 0.0
         self.send_running_cnt = 0
         self.send_running_dec = 10  # Send status every 10*50ms = 500ms at 50 Hz
         self.shutdown_requested = False
@@ -414,6 +440,7 @@ class PLCControllerInterface(Node):
         estop_value = self.estop_cached
         sw_estop = self.sw_estop_cached
         update_estop_cache = True
+        force_gui_status = False
 
         try:
     
@@ -482,6 +509,7 @@ class PLCControllerInterface(Node):
 
             ## 
             if _event != Event.NONE:
+                force_gui_status = True
                 try:
                     self.fsm.trigger(_event, _msg) #type: ignore
                 except GuardFailed:
@@ -516,7 +544,7 @@ class PLCControllerInterface(Node):
             self.sw_estop_cached = sw_estop
             # ========== FSM States info ==========
             try:
-                self.gui_status.notify(self._fsm_status_payload())
+                self._publish_gui_status_if_due(force=force_gui_status)
             except Exception as exc:
                 self.get_logger().error(
                     f"Cannot build or publish GUI status: {exc}"
@@ -533,6 +561,16 @@ class PLCControllerInterface(Node):
             self.interface_names,
             self.state_values,
         )
+
+    def _publish_gui_status_if_due(self, force: bool = False) -> None:
+        now = time.monotonic()
+        if not force and now < self._next_gui_status_publish_monotonic:
+            return
+
+        self._next_gui_status_publish_monotonic = (
+            now + self._gui_status_publish_period_sec
+        )
+        self.gui_status.notify(self._fsm_status_payload())
 
 
     def signal_handler(self, sig: int, frame: types.FrameType) -> None:
@@ -566,17 +604,85 @@ def _parse_eeg_delay_ms(value: str | None) -> int:
     return eeg_delay_ms
 
 
+def _parse_cpu_affinity(value: str | None) -> set[int] | None:
+    if value is None:
+        return set(DEFAULT_CPU_AFFINITY)
+
+    normalized_value = value.strip().lower()
+    if normalized_value in ('', 'all', 'none', 'off', 'disabled'):
+        return None
+
+    cpus: set[int] = set()
+    for chunk in normalized_value.split(','):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        if '-' in chunk:
+            start_text, end_text = chunk.split('-', 1)
+            try:
+                start_cpu = int(start_text)
+                end_cpu = int(end_text)
+            except ValueError:
+                raise SystemExit(
+                    f"{CPU_AFFINITY_ENV} must be a comma-separated CPU list."
+                )
+            if start_cpu > end_cpu:
+                raise SystemExit(
+                    f"{CPU_AFFINITY_ENV} CPU ranges must be ascending."
+                )
+            cpus.update(range(start_cpu, end_cpu + 1))
+            continue
+
+        try:
+            cpus.add(int(chunk))
+        except ValueError:
+            raise SystemExit(
+                f"{CPU_AFFINITY_ENV} must be a comma-separated CPU list."
+            )
+
+    if any(cpu < 0 for cpu in cpus):
+        raise SystemExit(f"{CPU_AFFINITY_ENV} CPUs must be >= 0.")
+
+    return cpus or None
+
+
 def main(args=None): #type: ignore
 
     # ========== Parse arguments ==========
-    target_ip = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.0"
+    target_ip = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.1"
     eeg_delay_ms = _parse_eeg_delay_ms(sys.argv[2] if len(sys.argv) > 2 else None)
+    cpu_affinity = _parse_cpu_affinity(os.environ.get(CPU_AFFINITY_ENV))
+
+    # ========== CPU affinity ==========
+    # Before rclpy.init: the DDS, UDP and executor threads created afterwards
+    # inherit it, so the whole process stays on these CPUs.
+    affinity_error: OSError | None = None
+    if cpu_affinity is not None:
+        try:
+            os.sched_setaffinity(0, cpu_affinity)
+        except OSError as exc:
+            affinity_error = exc
 
     # Initialize ROS 2 without automatic signal handling
     rclpy.init(args=args, signal_handler_options=SignalHandlerOptions.NO) #type: ignore
 
     # ========== Create node instance ==========
     node = PLCControllerInterface(target_ip, eeg_delay_ms)
+
+    if cpu_affinity is None:
+        node.get_logger().info(  # type: ignore
+            f"CPU affinity disabled by {CPU_AFFINITY_ENV}."
+        )
+    elif affinity_error is not None:
+        node.get_logger().warning(  # type: ignore
+            f"Cannot set CPU affinity to CPUs {sorted(cpu_affinity)} "
+            f"({affinity_error}): running on CPUs {sorted(os.sched_getaffinity(0))}. "
+            f"Check {CPU_AFFINITY_ENV} (this PC has {os.cpu_count()} CPUs)."
+        )
+    else:
+        node.get_logger().info(  # type: ignore
+            f"CPU affinity set to CPUs {sorted(cpu_affinity)}."
+        )
     
     # ========== Create multi-threaded executor ==========
     # Thread 1: PLC state subscription callback (state_callback)
@@ -584,11 +690,6 @@ def main(args=None): #type: ignore
     mt_executor = MultiThreadedExecutor(num_threads=2)
     mt_executor.add_node(node)
 
-    # ========== Set CPU affinity to core 2 ==========
-    # Ensures deterministic scheduling for control tasks
-    import os
-    os.sched_setaffinity(0, {7})
-    
     # ========== Bringup flag (execute once at startup) ==========
     try:
         node.bringup_done = False

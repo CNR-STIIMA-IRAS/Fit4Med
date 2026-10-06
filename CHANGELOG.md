@@ -2,6 +2,49 @@
 
 Notable changes to the Fit4Med platform software. Newest first.
 
+## 2026-10-07 — Real-time diagnostics and unbuffered EtherCAT driver output
+
+### Added
+
+- **`bash_scripts/rt_latency_test.sh`**: `cyclictest` on every CPU while the system runs, with a per-CPU summary of late wake-ups (>250/500/1000/2000/4000 us).
+- **`bash_scripts/rt_cpu_hogs.sh`**: in one window, the real-time setup (PREEMPT_RT, governor, irqbalance, rtprio limits, scheduling of the `ros2_control_node` and EtherCAT NIC IRQ threads), per-thread CPU and involuntary context switches, per-CPU load, EtherCAT lost frames, kernel warnings, `controller_manager` overrun messages and, with `rtla timerlat`, the kernel analysis of what blocked the CPU. See `bash_scripts/README.md`.
+
+### Changed
+
+- **Kernel warnings in the bring-up log archive**: new `journal/kernel_warnings.log` (`journalctl -k -p warning` for the session), also merged as `[KERNEL]` lines in `journal/fit4med_ethercat_timeline.log`. Before, only kernel lines containing "ethercat" were kept, so NIC link changes, thermal throttling, hung tasks or OOM were missing.
+- **`ros2_control_node` runs under `stdbuf -oL -eL`** in `run_sickPLC`, `run_platform_control` and `run_z_recovery_control`. The EtherCAT driver reports working-counter and slave-state changes with `printf`; with stdout on a pipe (launch, `tee`, journal) they were written in 4 KB blocks, late, and lost if the node died.
+
+### Before deploying
+
+- Install on the robot `rt-tests`, `sysstat` and `rtla` (offline: copy the `.deb`).
+- Tested on a development PC with mocked `cyclictest`/`pidstat`/`mpstat`/`rtla`/`ethercat`; not yet on the robot.
+
+## 2026-10-06 — Lower `plc_manager` load on the pinned CPU
+
+`plc_manager` was still doing too much work from the 500 Hz PLC-state path. The most visible effect was a very busy CPU 7, where the process is pinned by default.
+
+### Before deploying
+
+- Rebuild and reinstall `plc_manager` on the robot.
+- If CPU 7 is still too loaded, run with `PLC_MANAGER_CPU_AFFINITY=6,7` to spread the executor over two cores, or `PLC_MANAGER_CPU_AFFINITY=off` to leave scheduling to Linux.
+
+### Changed
+
+- **PLC commands are published when values change, and refreshed every 0.5 s** (`plc_manager/plc_commands.py`). The IDLE/ESTOP safety refresh still calls `set_automatic_mode()`, `clear_sw_estop()` and `close_brake()` from the state callback, but an identical command vector is published again only after `plc_command_republish_period_sec` (default `0.5`) instead of at PLC-state rate. The refresh is needed: the `PLC_controller` subscription is best effort and `on_activate()` drops the last command, so the bring-up commands (`estop=1`, `z_recovery=1`, `force_sensors_pwr=1`) published between configure and activate of the controller would otherwise be lost for good, leaving the safety chain open. Refreshes are not logged.
+- **`PlcCommandPublisher` is thread-safe**: the main loop (bring-up, shutdown) and the executor threads update the command vector under a lock.
+- **GUI status payload generation is rate-limited** (`plc_manager/plc_manager.py`). The GUI still receives immediate updates when an FSM event is triggered; unchanged periodic status is now built and queued at 10 Hz by default (`gui_status_publish_period_sec`, default `0.1`) instead of on every PLC-state callback.
+- **CPU affinity is configurable** with `PLC_MANAGER_CPU_AFFINITY`. The default remains CPU 7; comma lists and ranges are accepted (for example `6,7` or `5-7`), and `off`/`all`/`none` disable explicit affinity. It is now set before `rclpy.init()`, so the DDS and UDP threads stay on those CPUs too (before, only the main and executor threads did). A CPU that does not exist no longer stops the node: a warning is logged and the process runs on all CPUs.
+
+### Fixed
+
+- The PLC command interface list now uses `PLC_node/estop_bypass`, matching the EtherCAT/ROS 2 control configuration, instead of the stale `PLC_node/s_output.4`.
+- The fallback GUI IP is now `127.0.0.1` instead of `127.0.0.0`.
+
+### Tests
+
+- Added `plc_manager/test/test_plc_commands.py` for command-interface consistency and duplicate-command suppression.
+- Verified the new tests and the existing UDP client tests locally.
+
 ## 2026-10-06 — One log archive per bring-up, written by the launch itself
 
 The logs were collected only by `fmrr_retrieve_logs.ps1`, run by hand on the GUI PC, often late (journal of another boot) or not at all. Now `run_sickPLC.launch.py` archives each run when it exits, however it was started (systemd unit, `fmrr_bringup.ps1`, by hand) and stopped (cleanup script, `systemctl stop`, Ctrl-C, `plc_manager` exit).

@@ -115,7 +115,7 @@
             <command_interface name="mode_of_operation"/>
             <command_interface name="power_cutoff"/>
             <command_interface name="sonar_teach"/>
-            <command_interface name="s_output.4"/>
+            <command_interface name="estop_bypass"/>
             <command_interface name="s_output.5"/>
             <command_interface name="s_output.6"/>
             <command_interface name="s_output.7"/>
