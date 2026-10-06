@@ -308,8 +308,9 @@ _fit4med_sync_apply_staged() {
 }
 
 # fit4med_merged_journal <bringup_user_unit> [journalctl range...]: one
-# timeline of the bring-up service, ethercat.service and the EtherCAT kernel
-# messages, to see which side reports a problem first. Range: journalctl
+# timeline of the bring-up service, ethercat.service and the kernel messages
+# (EtherCAT ones, and any at warning or above), to see which side reports a
+# problem first. Range: journalctl
 # options such as --since @EPOCH --until @EPOCH, the current boot (-b) by
 # default. An empty unit leaves the bring-up service out. Used by
 # fit4med_session_log.sh.
@@ -319,7 +320,7 @@ fit4med_merged_journal() {
   local range=("$@")
   [[ ${#range[@]} -gt 0 ]] || range=(-b)
   echo "# Timeline (${range[*]}): [FIT4MED] ${unit:-no bring-up unit}, [ETHERCAT] ethercat.service,"
-  echo "# [KERNEL] EtherCAT master kernel messages. Times are this robot's clock."
+  echo "# [KERNEL] EtherCAT master kernel messages and kernel warnings/errors. Times are this robot's clock."
   if [[ $EUID -ne 0 ]] && ! id -nG | grep -qwE 'systemd-journal|adm'; then
     echo "# WARNING: $(id -un) cannot read the system journal: [ETHERCAT] and [KERNEL] lines are missing."
     echo "#          Once, on the robot: sudo usermod -aG systemd-journal $(id -un)"
@@ -331,8 +332,10 @@ fit4med_merged_journal() {
     fi
     journalctl -u ethercat.service "${range[@]}" -o short-iso-precise --no-pager 2>/dev/null \
       | _fit4med_tag_journal ETHERCAT
-    journalctl -k "${range[@]}" -o short-iso-precise --no-pager 2>/dev/null | grep -i 'ethercat' \
-      | _fit4med_tag_journal KERNEL
+    {
+      journalctl -k "${range[@]}" -o short-iso-precise --no-pager 2>/dev/null | grep -i 'ethercat'
+      journalctl -k -p warning "${range[@]}" -o short-iso-precise --no-pager 2>/dev/null
+    } | awk '!seen[$0]++' | _fit4med_tag_journal KERNEL  # an EtherCAT warning is in both
   } | LC_ALL=C sort -s -k1,1  # ISO timestamps sort chronologically; -s keeps multi-line messages in order
 }
 

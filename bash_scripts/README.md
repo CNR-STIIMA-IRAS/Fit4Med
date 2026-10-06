@@ -226,7 +226,7 @@ id fit4med
 
 Nell'elenco `groups=` deve comparire `systemd-journal` (oppure `adm`), per esempio:
 
-```
+```bash
 uid=1000(fit4med) gid=1000(fit4med) groups=1000(fit4med),4(adm),...,999(systemd-journal)
 ```
 
@@ -250,6 +250,19 @@ journalctl -u ethercat.service -b -n 5 --no-pager
 Devono comparire righe di `ethercat.service`. Se il permesso manca compare invece `Hint: You are currently not seeing messages from other users and the system` oppure `No journal files were opened due to insufficient permissions`.
 
 **Controllo sull'archivio di un'accensione:** apri `journal/fit4med_ethercat_timeline.log` nello zip. Se in testa c'è `# WARNING: fit4med cannot read the system journal`, il gruppo non era attivo per il servizio (tipicamente: `systemd --user` non ancora riavviato). Senza il warning e con righe `[ETHERCAT]`/`[KERNEL]` è tutto a posto.
+
+## Diagnostica real-time: latenza e processi che rubano CPU al loop EtherCAT
+
+Due script, da lanciare **sul robot come `fit4med`** (non con `sudo`: lo chiedono loro) **mentre il sistema lavora normalmente** (robot acceso, GUI collegata, terapia in corso). I risultati vanno in `~/.ros/fit4med_diagnostics/`.
+
+| Script | Cosa fa |
+| --- | --- |
+| `rt_latency_test.sh [-d 10m]` | Misura con `cyclictest` quanto in ritardo si sveglia un thread real-time su ogni CPU. Riepilogo in `summary.txt`: latenza massima per CPU e numero di risvegli in ritardo oltre 250/500/1000/2000/4000 µs. Con un ciclo di 2–4 ms, oltre qualche centinaio di µs è un avviso, oltre 1000 µs il loop perde cicli. |
+| `rt_cpu_hogs.sh [-d 600] [-a 1000]` | Nella stessa finestra raccoglie: configurazione real-time (kernel PREEMPT_RT, governor, irqbalance, limiti rtprio, priorità dei thread di `ros2_control_node` e degli IRQ della scheda EtherCAT), CPU e preemption per thread (`pidstat`), carico per CPU (`mpstat`), frame EtherCAT persi, warning del kernel, messaggi di overrun del `controller_manager` e, con `rtla timerlat`, l'analisi del kernel su **chi** ha bloccato la CPU al primo ritardo oltre `-a` µs. |
+
+Pacchetti necessari (il robot è offline: scarica i `.deb` su un PC con internet): `rt-tests` (cyclictest), `sysstat` (pidstat, mpstat), `rtla` (o `linux-tools-$(uname -r)`; senza, `rt_cpu_hogs.sh` funziona ma non dice chi ha bloccato la CPU). Le righe del kernel richiedono il gruppo `systemd-journal` (sezione precedente).
+
+Conviene lanciarli una volta a robot fermo e una nella condizione più pesante, e confrontare. Non lanciarli insieme: si disturbano a vicenda.
 
 ## Svuotare le cartelle dei log del robot
 

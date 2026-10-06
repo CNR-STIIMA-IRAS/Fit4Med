@@ -250,7 +250,8 @@ contains:
 | `starts/NNN_<label>_HHMMSS/` | one folder per start of `launch_ros2_env.sh` (`platform`), `launch_ros2_env_z_recovery.sh` (`z_recovery`) and `launch_ros2_bridge.sh` (`rosbridge`), numbered in order, so each restart after an e-stop is separate: `console.log` (whole output of the script, EtherCAT checks included), `run.txt` (start/end, exit code) and the ROS logs of that start |
 | `journal/fit4med_bringup.log` | `journalctl --user -u fit4med-bringup@<ip>.service`, this bring-up only |
 | `journal/ethercat_service.log` | `ethercat.service` status and journal, EtherCAT kernel messages |
-| `journal/fit4med_ethercat_timeline.log` | the two above merged in one timeline |
+| `journal/kernel_warnings.log` | whole kernel log at warning and above (NIC link, thermal throttling, hung tasks, OOM...), not only EtherCAT lines |
+| `journal/fit4med_ethercat_timeline.log` | the three above merged in one timeline |
 | `ethercat_start.txt`, `ethercat_end.txt` | `ethercat master` and `ethercat slaves -v` at start and end |
 | `ros_home_log/` | what was left in `~/.ros/log` (what `log.sh` used to archive) |
 

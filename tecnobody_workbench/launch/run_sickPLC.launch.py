@@ -140,6 +140,8 @@ def generate_launch_description():
         remappings=[('robot_description', 'plc_robot_description')],
         arguments=[],
         parameters=[initial_joint_controllers],
+        # Line-buffered stdout for the EtherCAT driver printf (see run_platform_control).
+        prefix=['stdbuf -oL -eL'],
         output='screen',
     )
 

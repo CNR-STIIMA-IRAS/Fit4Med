@@ -143,6 +143,10 @@ def generate_launch_description():
         executable='ros2_control_node',
         parameters=[initial_joint_controllers],
         # prefix=['xterm -e gdb -ex run --args'],
+        # Line-buffered stdout: the EtherCAT driver reports WC/slave state
+        # changes with printf, which would otherwise reach the logs in 4 KB
+        # blocks (or never, if the node dies).
+        prefix=['stdbuf -oL -eL'],
         output='screen',
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'ros2_control_node_%p_%t.log'}
     )

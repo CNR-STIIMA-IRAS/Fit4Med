@@ -47,6 +47,8 @@ def generate_launch_description():
         package='controller_manager',
         executable='ros2_control_node',
         parameters=[initial_joint_controllers],
+        # Line-buffered stdout for the EtherCAT driver printf (see run_platform_control).
+        prefix=['stdbuf -oL -eL'],
         output='screen',
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'ros2_control_node_%p_%t.log'}
     )

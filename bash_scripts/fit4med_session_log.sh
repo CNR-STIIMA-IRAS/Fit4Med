@@ -14,8 +14,9 @@
 #                                 launch_ros2_env_z_recovery.sh and
 #                                 launch_ros2_bridge.sh (e.g. after each
 #                                 e-stop): console.log + ROS logs of that start
-#   journal/                      bring-up unit, ethercat.service and their
-#                                 merged timeline, limited to this session
+#   journal/                      bring-up unit, ethercat.service, kernel
+#                                 warnings and their merged timeline, limited
+#                                 to this session
 #   ethercat_start.txt, ethercat_end.txt   EtherCAT master and slaves
 #   ros_home_log/                 what was left in ~/.ros/log (what log.sh archived)
 # A session whose launch died without closing it (SIGKILL, power loss) is
@@ -291,6 +292,11 @@ fit4med_log_journals() {
     echo; echo "===== kernel log, EtherCAT lines (this session) ====="
     journalctl -k "${range[@]}" -o short-precise --no-pager | grep -i ethercat
   } > "$dir/journal/ethercat_service.log" 2>&1
+
+  # Whole kernel log at warning and above: NIC link down, thermal throttling,
+  # hung tasks, OOM, RCU stalls... also when the line does not say EtherCAT.
+  journalctl -k -p warning "${range[@]}" -o short-precise --no-pager \
+    > "$dir/journal/kernel_warnings.log" 2>&1
 
   fit4med_merged_journal "$unit" "${range[@]}" > "$dir/journal/fit4med_ethercat_timeline.log" 2>&1
 }
