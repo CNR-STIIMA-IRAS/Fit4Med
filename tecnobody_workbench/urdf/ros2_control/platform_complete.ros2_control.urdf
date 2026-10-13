@@ -9,6 +9,15 @@
             <plugin>ethercat_driver/EthercatDriver</plugin>
             <param name="master_id">1</param>
             <param name="control_frequency">250</param>
+            <!-- Bus supervision: while a fault is active every drive status_word reads 0x0008
+                 (synthetic FAULT), which plc_manager turns into a software ESTOP. -->
+            <param name="bus_fault_wc_cycles">3</param>         <!-- consecutive incomplete working counters -->
+            <param name="bus_fault_hold_time">1.0</param>       <!-- [s] minimum time the fault is reported -->
+            <param name="cycle_slow_factor">3.0</param>         <!-- slow cycle: > factor * nominal period -->
+            <param name="cycle_fault_max_gap">0.05</param>      <!-- [s] single gap; keep below the drive SM watchdog; <= 0 disables -->
+            <param name="cycle_fault_ratio">0.2</param>         <!-- slow cycle ratio in the window; <= 0 disables -->
+            <param name="cycle_fault_window">1.0</param>        <!-- [s] -->
+            <param name="counter_watchdog_timeout">0.05</param> <!-- [s] see counter_watchdog on ft_sensor -->
         </hardware>
 
          <joint name="joint_x">
@@ -88,6 +97,7 @@
             <state_interface name="Sample_Counter" />
             <command_interface name="Control_1" />
             <param name="frame_id">ft_link</param>
+            <param name="counter_watchdog">Sample_Counter</param>
             <ec_module name="AtiAxia90">
                 <plugin>ethercat_generic_plugins/GenericEcSlave</plugin>
                 <param name="alias">0</param>

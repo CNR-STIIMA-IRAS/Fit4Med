@@ -77,11 +77,35 @@ class EthercatSafetyTests(unittest.TestCase):
         m._state_stale_after = 5.0
         m._last_error = None
         m._poll_errors = []
+        m._bus_fault_reason = None
         m._expected_slave_names = {'a', 'b'}
         m._slave_names = ['a', 'b']
         m._slave_states = ['OP', 'OP']
         m.check_state = Check.READY
         return m
+
+    @staticmethod
+    def drive_states(*status_words):
+        return types.SimpleNamespace(
+            dof_names=[f'joint_{i}' for i in range(len(status_words))],
+            status_words=list(status_words))
+
+    def test_driver_bus_fault_status_word_is_fault(self):
+        m = self.monitor()
+        m._on_drive_states(self.drive_states(0x0008, 0x0008, 0x0008))
+        self.assertIn('bus fault', m.runtime_fault(time.monotonic()))
+        self.assertIn('joint_2', m.runtime_fault(time.monotonic()))
+
+    def test_real_drive_fault_is_not_a_bus_fault(self):
+        m = self.monitor()
+        m._on_drive_states(self.drive_states(0x0618, 0x0637, 0x0637))
+        self.assertIsNone(m.runtime_fault(time.monotonic()))
+
+    def test_bus_fault_clears_with_driver_report(self):
+        m = self.monitor()
+        m._on_drive_states(self.drive_states(0x0008, 0x0008))
+        m._on_drive_states(self.drive_states(0x0650, 0x0650))
+        self.assertIsNone(m.runtime_fault(time.monotonic()))
 
     def test_non_op_is_fault(self):
         m = self.monitor()

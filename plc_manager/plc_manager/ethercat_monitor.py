@@ -6,12 +6,19 @@ import threading
 import time
 from typing import Any, Callable
 
+from ethercat_controller_msgs.msg import Cia402DriveStates
 from ethercat_msgs.srv import GetSlaveStates
+from rclpy.qos import QoSProfile, ReliabilityPolicy
 from std_srvs.srv import Trigger
 
 from plc_manager.plc_types import EthercatCheckState, State
 
 LAST_ERROR_MAX_CHARS = 300
+
+# Status word that ethercat_driver_ros2 reports on every drive while it detects a bus
+# fault (lost slave, incomplete working counter, frozen sensor, stalled control loop).
+# Decoded as FAULT, but never produced by a communicating drive (bit 9 is always set).
+BUS_FAULT_STATUS_WORD = 0x0008
 
 
 def _truncate(text: str | None, max_chars: int) -> str | None:
@@ -44,6 +51,9 @@ class EthercatMonitor:
         self.node.declare_parameter('ethercat_state_poll_period', 1.0)
         self.node.declare_parameter('ethercat_state_stale_after', 5.0)
         self.node.declare_parameter('ethercat_state_response_timeout', 3.0)
+        self.node.declare_parameter(
+            'ethercat_drive_states_topic', '/state_controller/drive_states',
+        )
 
         self.startup_check_service_name = self._get_startup_check_service_name()
         self.startup_check_client = self.node.create_client(  # type: ignore
@@ -66,6 +76,7 @@ class EthercatMonitor:
         self._poll_slave_names: list[str] = []
         self._poll_slave_states: list[str] = []
         self._poll_errors: list[str] = []
+        self._bus_fault_reason: str | None = None
         self._state_stale_after = float(
             self.node.get_parameter('ethercat_state_stale_after').value  # type: ignore
         )
@@ -86,6 +97,28 @@ class EthercatMonitor:
             callback_group=timer_group,
             autostart=False,
         )
+        # Fast path: the driver flags bus faults on the drive status words every cycle.
+        # Latest sample only; the driver holds the fault long enough not to be missed.
+        self.drive_states_subscription = self.node.create_subscription(  # type: ignore
+            Cia402DriveStates,
+            str(self.node.get_parameter('ethercat_drive_states_topic').value),  # type: ignore
+            self._on_drive_states,
+            QoSProfile(depth=1, reliability=ReliabilityPolicy.BEST_EFFORT),
+            callback_group=timer_group,
+        )
+
+    def _on_drive_states(self, msg: Any) -> None:
+        faulted = [
+            str(name)
+            for name, status_word in zip(msg.dof_names, msg.status_words)
+            if (int(status_word) & 0xFFFF) == BUS_FAULT_STATUS_WORD
+        ]
+        reason = (
+            'EtherCAT bus fault reported by the driver on ' + ', '.join(faulted)
+            if faulted else None
+        )
+        with self._cache_lock:
+            self._bus_fault_reason = reason
 
     def startup_status_ok(self) -> bool:
         return self.startup_check_state == EthercatCheckState.READY
@@ -411,6 +444,8 @@ class EthercatMonitor:
         if os.environ.get('PLC_MANAGER_SKIP_ETHERCAT', '0') == '1':
             return None
         with self._cache_lock:
+            if self._bus_fault_reason is not None:
+                return self._bus_fault_reason
             if self.check_state == EthercatCheckState.FAILED:
                 return self._last_error or 'EtherCAT health check failed.'
             if self._last_update_monotonic is None:
