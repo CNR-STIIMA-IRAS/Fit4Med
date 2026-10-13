@@ -239,6 +239,8 @@ class TrainingProtocolWindow(QtWidgets.QDialog):
         self._iPhase_0 = i_phase
         self._update_total_training_time_display(force=True)
         self._set_training_buttons_idle()
+        for spin in self.spinBoxSpeedOvr + self.spinBoxDuration:
+            spin.setEnabled(True)
         self.ROS.setExerciseSuspended(False)
         self.ROS.setMovementStopped(False)
         self.ROS.setExerciseInSuspension(True, label)  # orange warning in MotorsWindow

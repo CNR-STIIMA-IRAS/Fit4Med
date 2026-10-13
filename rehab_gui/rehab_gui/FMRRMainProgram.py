@@ -255,7 +255,7 @@ class MainProgram(QMainWindow):
                            self.rehabMovementWindow, self.trainingProtocolWindow):
                 for widget in window.findChildren(QWidget):
                     if isinstance(widget, (QAbstractButton, QAbstractSpinBox, QComboBox, QLineEdit)) and widget not in allowed:
-                        self._busy_widgets[widget] = widget.isEnabled()
+                        self._busy_widgets[widget] = not widget.testAttribute(Qt.WA_ForceDisabled)
                         widget.setEnabled(False)
             self.ui.tabWidget.tabBar().setEnabled(False)
             self.statusBar().showMessage("Operazione ROS in corso...")
