@@ -141,6 +141,8 @@ class MainProgram(QMainWindow):
         self.udp.start_ros_communication.connect(self.ros_manager.startRosCommunication)
         self.udp.stop_ros_communication.connect(self.ros_manager.stopRosCommunication)
         self.udp.udp_message_received.connect(self.motorWindow.onUdpMessageReceived)
+        self._ethercat_fault_shown = None
+        self.udp.plc_status_payload_received.connect(self._onPlcSafetyStatus)
         self.udp.udp_bind_failed.connect(self._onUdpBindFailed)
         self.ros_manager.stop_ros_communication_signal.connect(self.udp.onResetRosCommunication)
         self.ros_manager.ros_communication_established_signal.connect(self.udp.onRosCommunicationEstablished)
@@ -205,6 +207,25 @@ class MainProgram(QMainWindow):
         dialog.setWindowModality(Qt.ApplicationModal)
         dialog.setWindowFlags(dialog.windowFlags() | Qt.WindowStaysOnTopHint)
         dialog.exec_()
+
+    def _onPlcSafetyStatus(self, payload: dict) -> None:
+        ethercat = payload.get("ethercat", {})
+        reason = ethercat.get("latched_fault") if isinstance(ethercat, dict) else None
+        if not reason:
+            self._ethercat_fault_shown = None
+            return
+        if reason == self._ethercat_fault_shown:
+            return
+        self._ethercat_fault_shown = reason
+        # Keep processing UDP and ROS shutdown while the operator reads this.
+        dialog = QMessageBox(QMessageBox.Critical, "Guasto EtherCAT",
+                            "Arresto di sicurezza richiesto per un guasto EtherCAT.\n\n"
+                            "Ripristinare il collegamento e richiedere il riarmo supervisionato.\n"
+                            "La chiusura di questo avviso non riarma la macchina.",
+                            QMessageBox.Ok, self)
+        dialog.setDetailedText(str(reason))
+        dialog.setAttribute(Qt.WA_DeleteOnClose)
+        dialog.open()
 
     def _onUdpBindFailed(self, reason: str) -> None:
         # The UDP layer talking to the embedded controller is dead until this

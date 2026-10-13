@@ -33,7 +33,7 @@ from plc_manager.ethercat_monitor import EthercatMonitor
 from plc_manager.fsm_config import build_plc_fsm
 from plc_manager.gui_status import GuiStatusPublisher
 from plc_manager.plc_commands import PlcCommandPublisher
-from plc_manager.plc_types import EStopState, Event, State
+from plc_manager.plc_types import EStopState, EthercatCheckState, Event, State
 from plc_manager.udp_client import UdpClient
 
 GUI_UDP_PORT = 5005          # rehab_gui listens here
@@ -184,7 +184,67 @@ class PLCControllerInterface(Node):
         self.declare_parameter('estop_rearm_holdoff_sec', 1.0)
         self.fsm = build_plc_fsm(self)
         self.bringup_done = False
+        self._ethercat_monitoring_since: float | None = None
+        self._ethercat_fault_reason: str | None = None
+        self._ethercat_stop_pending = False
+        self._ethercat_safety_timer = self.create_timer(
+            0.05, self._check_ethercat_safety, callback_group=self.timer_group,
+        )
     
+    def _acknowledge_ethercat_fault(self) -> None:
+        # Called only by a guarded START after the operator re-arms the chain.
+        self._ethercat_fault_reason = None
+        self._ethercat_monitoring_since = None
+
+    def _check_ethercat_safety(self) -> None:
+        # Independent of /PLC_controller/plc_states: lost PLC feedback must
+        # not disable detection, cleanup, or GUI notification.
+        if not self.bringup_done or not self.lock.acquire(blocking=False):
+            return
+        try:
+            pending = self.fsm.pending
+            active = self.fsm.state in (State.RUNNING, State.RUNNING_RECOVERY)
+            stopping = pending is not None and pending.event != Event.START
+            if active and not stopping:
+                if self._ethercat_monitoring_since is None:
+                    self._ethercat_monitoring_since = time.monotonic()
+                reason = self.ethercat.runtime_fault(self._ethercat_monitoring_since)
+                if reason:
+                    self._ethercat_fault_reason = reason
+                    self._ethercat_stop_pending = True
+                    self.last_estop_monotonic = time.monotonic()
+                    # Force a fresh topology check before any supervised restart.
+                    self.ethercat.startup_check_requested = True
+                    self.ethercat.startup_check_state = EthercatCheckState.FAILED
+                    self.get_logger().error(f'EtherCAT safety stop: {reason}')
+                    if pending is not None:
+                        self.fsm.cancel_pending()
+                    self.fsm.trigger(Event.ETHERCAT_FAULT, reason)
+            else:
+                self._ethercat_monitoring_since = None
+            if (self._ethercat_stop_pending and self.fsm.pending is None
+                    and self.fsm.state in (State.ESTOP, State.ESTOP_RECOVERY)
+                    and self.estop_cached == EStopState.EMERGENCY):
+                # Software STOP has been observed and cleanup has completed.
+                # The PLC's physical emergency latch now requires operator rearm.
+                self._ethercat_stop_pending = False
+            if self._ethercat_stop_pending:
+                self.plc_commands.close_brake()
+                self.plc_commands.raise_sw_estop()
+            if self.fsm.pending is not None and self.fsm.pending.event == Event.ETHERCAT_FAULT:
+                self.fsm.step()
+            self._publish_gui_status_if_due(force=self._ethercat_fault_reason is not None)
+        except Exception as exc:
+            self._ethercat_fault_reason = f'EtherCAT safety watchdog failed: {exc}'
+            self._ethercat_stop_pending = True
+            self.ethercat.startup_check_requested = True
+            self.ethercat.startup_check_state = EthercatCheckState.FAILED
+            self.plc_commands.close_brake()
+            self.plc_commands.raise_sw_estop()
+            self.get_logger().error(self._ethercat_fault_reason)
+        finally:
+            self.lock.release()
+
     def cleanup(self) -> None:
         self.get_logger().info("Cleanup: destroying node resources.") #type: ignore
         self.client.close()
@@ -491,7 +551,11 @@ class PLCControllerInterface(Node):
                 ):
                     update_estop_cache = False
 
-            if _event == Event.NONE:
+            if self._ethercat_stop_pending:
+                self.plc_commands.close_brake()
+                self.plc_commands.raise_sw_estop()
+                _event = Event.NONE
+            if _event == Event.NONE and not self._ethercat_stop_pending:
                 _event, _msg = self._detect_estop_event(estop_value, sw_estop)
 
             if self.fsm.pending is not None:
@@ -529,7 +593,7 @@ class PLCControllerInterface(Node):
                     State.ESTOP,
                     State.IDLE_RECOVERY,
                     State.ESTOP_RECOVERY,
-                ):
+                ) and not self._ethercat_stop_pending:
                     self.plc_commands.set_automatic_mode()
                     self.plc_commands.clear_sw_estop()
                     self.plc_commands.close_brake()
@@ -558,7 +622,8 @@ class PLCControllerInterface(Node):
     def _fsm_status_payload(self) -> bytes:
         return self.gui_status.fsm_status_payload(
             self.fsm,
-            self.ethercat.status_payload(),
+            {**self.ethercat.status_payload(),
+             "latched_fault": self._ethercat_fault_reason},
             self.plc_commands.plc_outputs,
             self.interface_names,
             self.state_values,

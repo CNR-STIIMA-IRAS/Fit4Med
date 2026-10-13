@@ -38,7 +38,8 @@ class EthercatMonitor:
         )
         self.node.declare_parameter(
             'ethercat_slave_state_services',
-            ['/tecnobody/get_slave_states_master1'],
+            ['/tecnobody/get_slave_states_master0',
+             '/tecnobody/get_slave_states_master1'],
         )
         self.node.declare_parameter('ethercat_state_poll_period', 1.0)
         self.node.declare_parameter('ethercat_state_stale_after', 5.0)
@@ -55,6 +56,7 @@ class EthercatMonitor:
 
         self.check_state = EthercatCheckState.IDLE
         self._cache_lock = threading.Lock()
+        self._expected_slave_names: set[str] = set()
         self._slave_names: list[str] = []
         self._slave_states: list[str] = []
         self._last_update_monotonic: float | None = None
@@ -165,7 +167,8 @@ class EthercatMonitor:
                 if str(name).strip()
             ]
 
-        return service_names or ['/tecnobody/get_slave_states_master1']
+        return service_names or ['/tecnobody/get_slave_states_master0',
+             '/tecnobody/get_slave_states_master1']
 
     def _plc_slave_identifier(self) -> str:
         return str(self.node.get_parameter('plc_slave_identifier').value)  # type: ignore
@@ -226,7 +229,13 @@ class EthercatMonitor:
             if slave_state != 'OP'
         ]
 
+        missing = self._expected_slave_names - set(self._slave_names)
+        non_operational_slaves.extend(f'{name} => MISSING' for name in sorted(missing))
+        if self._poll_errors:
+            non_operational_slaves.extend(self._poll_errors)
+
         if not non_operational_slaves:
+            self._expected_slave_names.update(self._slave_names)
             self.check_state = EthercatCheckState.READY
             if self._poll_errors:
                 self._last_error = '; '.join(self._poll_errors)
@@ -313,7 +322,7 @@ class EthercatMonitor:
             if client.service_is_ready()  # type: ignore
         ]
 
-        if not ready_clients:
+        if len(ready_clients) != len(self._slave_state_clients):
             service_names = ', '.join(self._slave_state_clients.keys())
             self._mark_check_failed(
                 'No configured EtherCAT GetSlaveStates services are ready: '
@@ -322,7 +331,6 @@ class EthercatMonitor:
             return
 
         with self._cache_lock:
-            self.check_state = EthercatCheckState.PENDING
             self._poll_started_at = time.monotonic()
             self._poll_slave_names = []
             self._poll_slave_states = []
@@ -397,6 +405,21 @@ class EthercatMonitor:
         self._slave_states = list(self._poll_slave_states)
         self._last_update_monotonic = time.monotonic()
         self._refresh_check_state_locked()
+
+    def runtime_fault(self, monitoring_since: float) -> str | None:
+        """Return a fault from completed telemetry, or an expired initial wait."""
+        if os.environ.get('PLC_MANAGER_SKIP_ETHERCAT', '0') == '1':
+            return None
+        with self._cache_lock:
+            if self.check_state == EthercatCheckState.FAILED:
+                return self._last_error or 'EtherCAT health check failed.'
+            if self._last_update_monotonic is None:
+                if time.monotonic() - monitoring_since <= self._state_stale_after:
+                    return None
+                return 'No EtherCAT telemetry received after controller startup.'
+            if self._cache_stale_locked():
+                return 'EtherCAT telemetry is stale.'
+            return None
 
     def status_payload(self) -> dict[str, object]:
         with self._cache_lock:

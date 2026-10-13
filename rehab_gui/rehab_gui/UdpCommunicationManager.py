@@ -384,6 +384,10 @@ class UdpCommunicationManager(QObject):
         self._last_plc_status_received_wall_time = self._format_wall_time()
         self._last_udp_display_message = self._format_plc_status_display_message(state, pending)
         self._cache_ethercat_payload(payload.get("ethercat"))
+        fault = self._last_ethercat_payload.get("latched_fault")
+        if fault:
+            self._last_udp_display_message += f" | EtherCAT safety stop: {fault}. Supervised restart required."
+
 
         plc_inputs = self._interface_items(payload.get("plc_inputs"))
         if plc_inputs is not None:
@@ -531,7 +535,7 @@ class UdpCommunicationManager(QObject):
 
         #print(f"[UdpServer] {data.decode(errors='replace')} received from UDP client.")
 
-        if pending_event in ("STOP", "FAIL"):
+        if pending_event in ("STOP", "FAIL", "ETHERCAT_FAULT"):
             self.requestRosCommunicationStop("UDP pending stop/fail transition received.")
             return
 

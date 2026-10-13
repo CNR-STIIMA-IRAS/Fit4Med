@@ -29,6 +29,7 @@ class State(Enum):
 
 
 class Event(Enum):
+    ETHERCAT_FAULT = auto()
     SWITCH_MODE = auto()
     START = auto()
     STOP = auto()

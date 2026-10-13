@@ -17,6 +17,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         controller._ethercat_slaves_status_ok,
     )
     platform_bringup_actions = (
+        controller._acknowledge_ethercat_fault,
         environment.bringup_env,
         plc_commands.close_brake,
         plc_commands.set_automatic_mode,
@@ -24,6 +25,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         plc_commands.clear_sw_estop
     )
     recovery_bringup_actions = (
+        controller._acknowledge_ethercat_fault,
         environment.bringup_recovery_env,
         plc_commands.close_brake,
         plc_commands.set_automatic_mode,
@@ -54,6 +56,27 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         State.IDLE,
         controller.get_logger(),
     )
+
+    # Bus faults stop normal operation and recovery without PLC input feedback.
+    # Keep the brake before the software emergency command.
+    for source in (State.IDLE, State.ESTOP, State.RUNNING,
+                   State.IDLE_RECOVERY, State.ESTOP_RECOVERY, State.RUNNING_RECOVERY):
+        recovery = source in (State.IDLE_RECOVERY, State.ESTOP_RECOVERY,
+                              State.RUNNING_RECOVERY)
+        cleanup = (plc_commands.close_brake, plc_commands.raise_sw_estop,
+                   environment.kill_recovery_env if recovery else environment.kill_env,
+                   plc_commands.set_automatic_mode,
+                   plc_commands.wire_endstroke_to_emergency_chain)
+        stopped = (environment.check_env_running_recovery_stopped if recovery
+                   else environment.check_env_running_stopped)
+        fsm.add_transition(
+            Event.ETHERCAT_FAULT, source,
+            State.ESTOP_RECOVERY if recovery else State.ESTOP,
+            actions=cleanup,
+            success_checks=(stopped,), timeout_actions=cleanup,
+            max_steps=50000,
+            failure_destination=State.ERROR_RECOVERY if recovery else State.ERROR,
+        )
 
     fsm.add_transition(
         Event.SWITCH_MODE,
