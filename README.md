@@ -247,7 +247,7 @@ contains:
 | --- | --- |
 | `session.txt` | start/end time, systemd unit, GUI IP, why the launch stopped |
 | `sickPLC/` | ROS logs of `run_sickPLC.launch.py` and its nodes (`plc_manager`, ...) |
-| `starts/NNN_<label>_HHMMSS/` | one folder per start of `launch_ros2_env.sh` (`platform`), `launch_ros2_env_z_recovery.sh` (`z_recovery`) and `launch_ros2_bridge.sh` (`rosbridge`), numbered in order, so each restart after an e-stop is separate: `console.log` (whole output of the script, EtherCAT checks included), `run.txt` (start/end, exit code) and the ROS logs of that start |
+| `starts/NNN_<label>_HHMMSS/` | one folder per start of `launch_ros2_env.sh` (`platform`), `launch_ros2_env_z_recovery.sh` (`z_recovery`) and `launch_ros2_bridge.sh` (`rosbridge`), numbered in order, so each restart after an e-stop is separate: `console.log` (whole output of the script, EtherCAT checks included), `run.txt` (start/end, exit code), the ROS logs, and a `journal/` with the same journal files below, limited to that start |
 | `journal/fit4med_bringup.log` | `journalctl --user -u fit4med-bringup@<ip>.service`, this bring-up only |
 | `journal/ethercat_service.log` | `ethercat.service` status and journal, EtherCAT kernel messages |
 | `journal/kernel_warnings.log` | whole kernel log at warning and above (NIC link, thermal throttling, hung tasks, OOM...), not only EtherCAT lines |

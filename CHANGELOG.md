@@ -2,6 +2,11 @@
 
 Notable changes to the Fit4Med platform software. Newest first.
 
+## 2026-10-13 — Journal files for each motion-stack start
+
+- Each `starts/NNN_<label>_HHMMSS/` folder now gets its own `journal/` when that start exits. The journalctl files cover only that start, so diagnostics survive and remain attributable even if the overall bring-up is still running.
+- `run.txt` now records `START_EPOCH` and `END_EPOCH` for the journal time range.
+
 ## 2026-10-07 — Brake closed whenever the drives lose torque
 
 The Z axis falls by gravity when the drives have no torque and the brake is released. The brake is a safety-PLC output (`PLC_node/brake_disable`); the drives do not control it. It was released by `ethercat_checker` `start_motors` and closed only by `stop_motors` and by plc_manager state transitions, so several paths left the drives without torque and the brake released. This is the software side; the PLC/drive side (drive-controlled brake, or brake release interlocked with the drive state in the Flexi Soft) is still to be checked.

@@ -13,7 +13,7 @@
 #   starts/NNN_<label>_HHMMSS/    one folder per start of launch_ros2_env.sh,
 #                                 launch_ros2_env_z_recovery.sh and
 #                                 launch_ros2_bridge.sh (e.g. after each
-#                                 e-stop): console.log + ROS logs of that start
+#                                 e-stop): console.log + ROS logs + journal
 #   journal/                      bring-up unit, ethercat.service, kernel
 #                                 warnings and their merged timeline, limited
 #                                 to this session
@@ -44,18 +44,20 @@ _FIT4MED_LOG_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # own numbered folder: the ROS logs go there (ROS_LOG_DIR) and the output of
 # the calling script is copied to console.log. Outside a session: nothing.
 fit4med_log_begin_run() {
-  local session="${FIT4MED_SESSION_DIR:-}" starts n dir
+  local session="${FIT4MED_SESSION_DIR:-}" starts n dir start_epoch
   [[ -n "$session" && -d "$session" ]] || return 0
   starts="$session/starts"
   mkdir -p "$starts" || return 0
   n="$(_fit4med_log_next_number "$starts/.counter")" || return 0
   dir="$(printf '%s/%03d_%s_%s' "$starts" "$n" "$1" "$(date +%H%M%S)")"
   mkdir -p "$dir" || return 0
+  start_epoch="$(date +%s)"
   printf '%s\n' "$$" > "$dir/.running"
   {
     echo "LABEL=$1"
     echo "SCRIPT=$0"
     echo "START_TIME=$(date --iso-8601=ns)"
+    echo "START_EPOCH=$start_epoch"
   } > "$dir/run.txt"
   export ROS_LOG_DIR="$dir"
   FIT4MED_RUN_DIR="$dir"
@@ -71,10 +73,22 @@ fit4med_log_begin_run() {
 }
 
 _fit4med_log_end_run() {
+  local session="${FIT4MED_SESSION_DIR:-}" since until unit
+  until=$(( $(date +%s) + 1 ))
   {
     echo "END_TIME=$(date --iso-8601=ns)"
+    echo "END_EPOCH=$until"
     echo "EXIT_CODE=$1"
   } >> "$FIT4MED_RUN_DIR/run.txt"
+  if [[ -n "$session" && -f "$session/session.txt" ]]; then
+    since="$(_fit4med_kv_get "$FIT4MED_RUN_DIR/run.txt" START_EPOCH)"
+    unit="$(_fit4med_kv_get "$session/session.txt" UNIT)"
+    if [[ "$since" =~ ^[0-9]+$ ]]; then
+      fit4med_log_journals "$FIT4MED_RUN_DIR" "$unit" "$since" "$until"
+    else
+      echo "[ERROR] Missing valid START_EPOCH in $FIT4MED_RUN_DIR/run.txt" >&2
+    fi
+  fi
   rm -f "$FIT4MED_RUN_DIR/.running"
 }
 
