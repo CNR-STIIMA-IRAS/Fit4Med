@@ -192,7 +192,10 @@ class PLCControllerInterface(Node):
         # ========== PLC States Watchdog ==========
         # PLC_controller publishes plc_states on every input change and at
         # least every 20 ms (heartbeat). See _plc_states_watchdog().
-        self.declare_parameter('plc_states_timeout_sec', 0.2)
+        # Disabled by default (0): it measures when state_callback runs, not
+        # when messages arrive, and on 2026-11-12 a stall of this node turned
+        # an estop press (STOP -> ESTOP) into FAIL -> ERROR.
+        self.declare_parameter('plc_states_timeout_sec', 0.0)
         self._plc_states_timeout_sec = float(
             self.get_parameter('plc_states_timeout_sec').value  # type: ignore
         )
@@ -461,7 +464,7 @@ class PLCControllerInterface(Node):
         now = time.monotonic()
         previous_run = self._last_watchdog_monotonic
         self._last_watchdog_monotonic = now
-        if not self.bringup_done:
+        if self._plc_states_timeout_sec <= 0.0 or not self.bringup_done:
             return
 
         last = self._last_plc_states_monotonic

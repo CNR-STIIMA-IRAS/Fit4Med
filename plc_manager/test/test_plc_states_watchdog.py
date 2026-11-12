@@ -122,6 +122,16 @@ def test_rearms_after_messages_come_back(clock):
     assert node.plc_commands.raise_sw_estop.call_count == 2
 
 
+def test_disabled_with_zero_timeout(clock):
+    """plc_states_timeout_sec = 0 (the default) switches the watchdog off."""
+    node = _node()
+    node._plc_states_timeout_sec = 0.0
+    _run(node, clock, 0.1, message_every=PERIOD)
+    _run(node, clock, 5.0)
+    node.plc_commands.raise_sw_estop.assert_not_called()
+    node.fsm.trigger.assert_not_called()
+
+
 def test_quiet_before_bringup(clock):
     """Before the bring-up nothing is supervised."""
     node = _node()

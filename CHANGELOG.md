@@ -2,6 +2,14 @@
 
 Notable changes to the Fit4Med platform software. Newest first.
 
+## 2026-11-12 — `plc_states` watchdog disabled by default
+
+During an estop test at 17:45:12 `plc_manager` did not run `state_callback` for 0.33 s, while `PLC_controller` was still publishing. The watchdog took it for a silent PLC and sent FAIL (RUNNING → ERROR) before the estop STOP (RUNNING → ESTOP) was processed. The machine went to the safe state (SW ESTOP, brake closed, platform stopped), but through the wrong FSM path, which then needs the key re-arm from ERROR.
+
+### Changed
+
+- `plc_states_timeout_sec` defaults to 0, which disables the watchdog. It measures when `state_callback` runs, not when the messages arrive: it must be redesigned before it is enabled again.
+
 ## 2026-11-12 — Less CPU for the PLC states and the drive-state checks
 
 With the Python nodes on the four housekeeping CPUs (entry below), those CPUs ran at about 68% and every node waited for the CPU 10-14% of the time; the jitter of both EtherCAT loops grew (standard deviation of the read period: PLC 2.4 → 4.9 µs, platform 2.5 → 3.6 µs). Most of that load was the rclpy executor waking up for messages and timers: `plc_manager` about 1 CPU for 500 `plc_states`/s, `ethercat_checker` about 0.55 CPU for 250 drive states/s plus a 250 Hz timer.
