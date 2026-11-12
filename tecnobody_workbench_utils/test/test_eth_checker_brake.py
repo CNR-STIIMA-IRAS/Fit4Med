@@ -32,6 +32,7 @@ PLC_TOPIC = '/PLC_controller/plc_commands'
 JOINTS = ['joint_x', 'joint_y', 'joint_z']
 BRAKE_OPEN = {'PLC_node/brake_disable': 1}
 BRAKE_CLOSED = {'PLC_node/brake_disable': 0}
+BRAKE_CLOSED_SW_ESTOP = {'PLC_node/brake_disable': 0, 'PLC_node/estop': 0}
 
 
 class FakePublisher:
@@ -103,15 +104,31 @@ def test_brake_not_released_by_the_node_is_left_alone(checker):
     assert checker.plc_command_publisher.messages == []
 
 
-def test_missing_drive_states_close_the_released_brake(checker):
-    """ros2_control_node crashed or stalled: no states, close the brake."""
+def test_missing_drive_states_close_the_brake_and_raise_sw_estop(checker):
+    """No states: brake closed and SW ESTOP raised, in one message, once."""
     checker._release_brake()
     checker.check_states()
     assert checker.plc_command_publisher.messages[-1] == BRAKE_OPEN  # still fresh
 
     checker._last_drive_states_monotonic = time.monotonic() - 2 * ec.DRIVE_STATES_TIMEOUT_S
     checker.check_states()
-    assert checker.plc_command_publisher.messages[-1] == BRAKE_CLOSED
+    assert checker.plc_command_publisher.messages[-1] == BRAKE_CLOSED_SW_ESTOP
+    count = len(checker.plc_command_publisher.messages)
+    checker.check_states()  # once per release
+    assert len(checker.plc_command_publisher.messages) == count
+
+
+def test_a_late_check_does_not_trip(checker):
+    """A stalled node (timer late) is not taken for missing drive states."""
+    checker._release_brake()
+    checker.check_states()
+    stale = time.monotonic() - 2 * ec.DRIVE_STATES_TIMEOUT_S
+    checker._last_drive_states_monotonic = stale
+    checker._last_check_states_monotonic = stale  # previous run long ago
+    checker.check_states()
+    assert checker.plc_command_publisher.messages[-1] == BRAKE_OPEN
+    checker.check_states()  # on time now, states still missing: trip
+    assert checker.plc_command_publisher.messages[-1] == BRAKE_CLOSED_SW_ESTOP
 
 
 def test_stop_motors_always_closes_the_brake(checker):

@@ -226,6 +226,7 @@ class EthercatCheckerNode(Node):
         self._brake_lock = threading.Lock()
         self._brake_released = False
         self._last_drive_states_monotonic : float | None = None
+        self._last_check_states_monotonic : float | None = None
 
     ########################################################################
     # Service Callbacks
@@ -484,6 +485,27 @@ class EthercatCheckerNode(Node):
         else:
             self.get_logger().info(f'Brake closed: {reason}')
 
+    def _close_brake_and_raise_sw_estop(self, reason: str):
+        """
+        Close the brake and open the emergency chain, in one PLC message.
+
+        Used when this node can no longer supervise the drives. Closing only
+        the brake left the motors on, pushing against it, and the FSM still
+        RUNNING. The SW estop (PLC_node/estop = 0, active-low) is latched by
+        the PLC until the key, like the mushroom: plc_manager sees the chain
+        open and runs the usual STOP (drives off, GUI told, key re-arm).
+        One message for both: a partial message from another node in the
+        same PLC cycle cannot split them.
+        """
+        with self._brake_lock:
+            if not self._brake_released:
+                return
+            self._brake_released = False
+            self._publish_plc_command(
+                ['PLC_node/brake_disable', 'PLC_node/estop'], [0, 0]
+            )
+        self.get_logger().error(f'Brake closed and SW ESTOP raised: {reason}')
+
     def close_brake_on_exit(self):
         """Close the brake if this node released it (called at exit)."""
         self._close_brake('ethercat_checker node exiting', only_if_released=True)
@@ -499,16 +521,27 @@ class EthercatCheckerNode(Node):
         This method runs in a separate callback group to avoid blocking
         other node operations.
         """
+        now = time.monotonic()
+        previous_check = self._last_check_states_monotonic
+        self._last_check_states_monotonic = now
+        # This node itself was stalled (this timer ran late): the drive
+        # states may be waiting in the queue, not missing. Decide next run.
+        node_stalled = (
+            previous_check is not None
+            and now - previous_check > DRIVE_STATES_TIMEOUT_S / 2
+        )
+
         last = self._last_drive_states_monotonic
         if (
             self._brake_released
+            and not node_stalled
             and last is not None
-            and time.monotonic() - last > DRIVE_STATES_TIMEOUT_S
+            and now - last > DRIVE_STATES_TIMEOUT_S
         ):
-            self._close_brake(
-                f'no drive states for more than {DRIVE_STATES_TIMEOUT_S:.1f} s '
-                '(EtherCAT loop or ros2_control_node lost)',
-                only_if_released=True,
+            self._close_brake_and_raise_sw_estop(
+                f'no drive states for {now - last:.2f} s '
+                f'(timeout {DRIVE_STATES_TIMEOUT_S:.1f} s; '
+                'EtherCAT loop or ros2_control_node lost)'
             )
 
         if self.feedback.fault_present and self.error_auto_reset_enabled:

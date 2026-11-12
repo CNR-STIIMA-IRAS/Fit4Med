@@ -2,6 +2,21 @@
 
 Notable changes to the Fit4Med platform software. Newest first.
 
+## 2026-11-12 — Drive-states watchdog raises the SW ESTOP
+
+At 18:41:25 `ethercat_checker` logged `Brake closed: no drive states for more than 0.2 s` while the EtherCAT loop was running normally (no kernel EtherCAT event, regular read period), right when a `ros2 topic echo` was started on the robot: the node itself did not run its drive-states callback for 0.2 s. The watchdog closed the brake but left the drives enabled and the FSM in RUNNING: the motors pushed against the closed brake for 20 s (mechanical noise) until the mushroom was pressed. Nothing was shown in the GUI.
+
+### Before deploying
+
+- Rebuild and reinstall `tecnobody_workbench_utils` on the robot.
+- Do not run `ros2` CLI commands on the robot while the machine moves until this is deployed.
+
+### Changed
+
+- **When the drive states stop, `ethercat_checker` closes the brake and raises the SW ESTOP** (`PLC_node/estop = 0`) in one PLC message. The PLC latches it until the key, like the mushroom; `plc_manager` sees the chain open and runs the usual `RUNNING + STOP => ESTOP` (drives off, GUI told, key re-arm). Brake and estop go in one message so that a partial command from another node in the same PLC cycle cannot split them. `plc_manager` does not write `PLC_node/estop` in RUNNING, so it cannot clear it before the PLC latches it.
+- **A late `check_states` run does not trip the watchdog**: if the timer itself ran more than half the timeout late (the node was stalled), the next run decides. Timeout unchanged (0.2 s).
+- Torque loss reported in the drive states (fault or drives off without `stop_motors`) still only closes the brake, as before.
+
 ## 2026-11-12 — GUI no longer needs a restart after an estop
 
 After an estop the GUI often showed "Restart GUI Required" and the key did not start the platform until the GUI was restarted. The GUI closes its ROS connection by itself when the PLC status reports a pending STOP/FAIL, but `plc_manager` sent that status only after the transition actions, which stop rosbridge (`kill_env` waits up to 2 s for port 9090). The GUI, polling rosbridge every 0.2 s, usually saw the connection drop first and took the unexpected-loss path: modal dialog, `ROS_CONNECTION_FAILED`, START guard refusing the key. It depended on which message arrived first, so it happened only on some estops.
