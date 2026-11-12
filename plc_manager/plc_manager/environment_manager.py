@@ -4,6 +4,7 @@
 import os
 import subprocess
 import threading
+import time
 from typing import Callable
 
 from tecnobody_workbench_utils.fsm import PendingTransition
@@ -15,6 +16,13 @@ from tecnobody_workbench_utils.utils import (
 )
 
 from plc_manager.plc_types import State
+
+ROSBRIDGE_LAUNCH_PATTERN = "ros2 launch tecnobody_workbench run_rosbridge.launch.py"
+# The GUI is told about a STOP/FAIL by UDP and then closes its rosbridge
+# connection by itself. Stopping rosbridge at once made the GUI see the
+# connection drop first and take the unexpected-loss path (modal dialog,
+# ROS_CONNECTION_FAILED, START refused until the GUI is restarted).
+ROSBRIDGE_STOP_DELAY_SEC = 0.5
 
 
 class EnvironmentManager:
@@ -199,8 +207,16 @@ class EnvironmentManager:
             "run_z_recovery_control.launch"
         )
 
+        self._stop_rosbridge()
+
+    @staticmethod
+    def _stop_rosbridge() -> None:
+        # Called after the platform stack was signalled: the motion stops
+        # first, the GUI gets ROSBRIDGE_STOP_DELAY_SEC to disconnect.
+        if find_matching_pids(ROSBRIDGE_LAUNCH_PATTERN):
+            time.sleep(ROSBRIDGE_STOP_DELAY_SEC)
         stop_launch_environment(
-            "ros2 launch tecnobody_workbench run_rosbridge.launch.py",
+            ROSBRIDGE_LAUNCH_PATTERN,
             "run_rosbridge.launch",
             9090
         )
@@ -214,8 +230,4 @@ class EnvironmentManager:
             "run_platform_control.launch"
         )
 
-        stop_launch_environment(
-            "ros2 launch tecnobody_workbench run_rosbridge.launch.py",
-            "run_rosbridge.launch",
-            9090
-        )
+        self._stop_rosbridge()

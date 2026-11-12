@@ -46,6 +46,7 @@ def _node(state=State.RUNNING):
         plc_commands=MagicMock(),
         fsm=SimpleNamespace(pending=None, state=state, trigger=MagicMock()),
         get_logger=MagicMock(),
+        _announce_stop_to_gui=MagicMock(),
     )
 
 

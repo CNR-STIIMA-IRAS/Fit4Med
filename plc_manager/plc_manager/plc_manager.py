@@ -506,6 +506,7 @@ class PLCControllerInterface(Node):
                 self.fsm.pending is None
                 and self.fsm.state in (State.RUNNING, State.RUNNING_RECOVERY)
             ):
+                self._announce_stop_to_gui(Event.FAIL)
                 try:
                     self.fsm.trigger(Event.FAIL, reason)  # type: ignore
                 except (InvalidTransition, GuardFailed, TransitionTimeout) as exc:
@@ -599,6 +600,7 @@ class PLCControllerInterface(Node):
             ## 
             if _event != Event.NONE:
                 force_gui_status = True
+                self._announce_stop_to_gui(_event)
                 try:
                     self.fsm.trigger(_event, _msg) #type: ignore
                 except GuardFailed:
@@ -642,14 +644,29 @@ class PLCControllerInterface(Node):
                 self.lock.release()
 
 
-    def _fsm_status_payload(self) -> bytes:
+    def _fsm_status_payload(self, announced_event: Event | None = None) -> bytes:
         return self.gui_status.fsm_status_payload(
             self.fsm,
             self.ethercat.status_payload(),
             self.plc_commands.plc_outputs,
             self.interface_names,
             self.state_values,
+            announced_event=announced_event,
         )
+
+    def _announce_stop_to_gui(self, event: Event) -> None:
+        """Tell the GUI about a STOP/FAIL before its cleanup stops rosbridge.
+
+        The GUI closes its ROS connection on a pending STOP/FAIL. Sent after
+        the cleanup, the message arrived when rosbridge was already gone and
+        the GUI took the unexpected-loss path (restart required).
+        """
+        if event not in (Event.STOP, Event.FAIL):
+            return
+        try:
+            self.gui_status.notify(self._fsm_status_payload(announced_event=event))
+        except Exception as exc:
+            self.get_logger().error(f"Cannot announce {event.name} to the GUI: {exc}")
 
     def _publish_gui_status_if_due(self, force: bool = False) -> None:
         now = time.monotonic()

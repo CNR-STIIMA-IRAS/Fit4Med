@@ -2,6 +2,20 @@
 
 Notable changes to the Fit4Med platform software. Newest first.
 
+## 2026-11-12 — GUI no longer needs a restart after an estop
+
+After an estop the GUI often showed "Restart GUI Required" and the key did not start the platform until the GUI was restarted. The GUI closes its ROS connection by itself when the PLC status reports a pending STOP/FAIL, but `plc_manager` sent that status only after the transition actions, which stop rosbridge (`kill_env` waits up to 2 s for port 9090). The GUI, polling rosbridge every 0.2 s, usually saw the connection drop first and took the unexpected-loss path: modal dialog, `ROS_CONNECTION_FAILED`, START guard refusing the key. It depended on which message arrived first, so it happened only on some estops.
+
+### Before deploying
+
+- Rebuild and reinstall `plc_manager` on the robot.
+- Test: platform running (GUI connected, a movement running if possible), press the estop. The GUI must not show "Restart GUI Required"; after re-arming, the key must start the platform with no GUI restart. Journal: `RUNNING + STOP => ESTOP`, then `ROS_DISCONNECTED` from the GUI.
+
+### Changed
+
+- **STOP/FAIL announced to the GUI before the transition actions**: the FSM status with `pending: {event: STOP|FAIL, ...}` is sent just before `fsm.trigger()` (`PLCControllerInterface._announce_stop_to_gui`, `GuiStatusPublisher.fsm_status_payload(announced_event=...)`), only when the FSM has that transition from the current state.
+- **rosbridge stopped 0.5 s after the platform** (`environment_manager.ROSBRIDGE_STOP_DELAY_SEC`, in `kill_env` and `kill_recovery_env`): the platform launch is signalled first, so the motion stops as before; the GUI gets the time to disconnect. No pause when rosbridge is not running.
+
 ## 2026-11-12 — `plc_states` watchdog disabled by default
 
 During an estop test at 17:45:12 `plc_manager` did not run `state_callback` for 0.33 s, while `PLC_controller` was still publishing. The watchdog took it for a silent PLC and sent FAIL (RUNNING → ERROR) before the estop STOP (RUNNING → ESTOP) was processed. The machine went to the safe state (SW ESTOP, brake closed, platform stopped), but through the wrong FSM path, which then needs the key re-arm from ERROR.
