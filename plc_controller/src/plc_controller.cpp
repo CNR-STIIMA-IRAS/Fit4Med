@@ -337,10 +337,10 @@ CallbackReturn PLCController::on_deactivate(const rclcpp_lifecycle::State &)
  * @return return_type::OK if successful
  */
 controller_interface::return_type PLCController::update(
-  const rclcpp::Time &, const rclcpp::Duration &)
+  const rclcpp::Time & time, const rclcpp::Duration &)
 {
-  // ========== Read PLC state and publish ==========
-  update_plc_states();
+  // ========== Read PLC state and publish (on change + heartbeat) ==========
+  update_plc_states(time);
 
   // ========== Apply latest command to PLC ==========
   return update_plc_commands();
@@ -496,24 +496,45 @@ void PLCController::store_state_interface_types()
 
 
 /**
- * Initialize PlcStates message with interface names and NaN placeholder values.
+ * Prepare the PlcStates message and the state buffers.
  * 
  * Called during on_activate() before entering update() loop.
- * Pre-populates the message that will be published every cycle.
  * 
  * Initialization:
- *   - interface_names: Extracted from state_interface_types_
- *   - values: Vector of quiet_NaN() (invalid until first real state read)
+ *   - ordered_state_interfaces_: the state interfaces in state_interface_types_
+ *     order, the order the names and values are published in
+ *   - interface_names: written once here, never touched by update()
+ *   - value buffers: sized here, so update() only overwrites them
+ *   - heartbeat period: from the state_publish_period_ms parameter
  * 
  * This pre-allocation ensures no dynamic allocation happens in update() loop.
  */
 void PLCController::initialize_plc_state_msg()
 {
+  ordered_state_interfaces_.clear();
+  InterfacesNames interface_names;
+  for (const auto & interface_name : state_interface_types_)
+  {
+    auto it = state_interfaces_map_.find(interface_name);
+    if (it != state_interfaces_map_.end())
+    {
+      ordered_state_interfaces_.push_back(it->second);
+      interface_names.push_back(it->second.get().get_interface_name());
+    }
+  }
+
+  current_plc_state_values_.assign(interface_names.size(), false);
+  published_plc_state_values_.assign(interface_names.size(), false);
+  plc_state_published_ = false;
+  plc_state_publish_period_ = rclcpp::Duration::from_nanoseconds(
+    static_cast<int64_t>(params_.state_publish_period_ms) * 1000000);
+
+  // Not in the RT loop yet: a blocking lock is fine here.
+  realtime_plc_state_publisher_->lock();
   auto & plc_state_msg = realtime_plc_state_publisher_->msg_;
-  const auto gpio_name = params_.gpios.front();
-  plc_state_msg.interface_names = get_plc_state_interfaces_names(gpio_name);
-  plc_state_msg.values = std::vector<bool>(
-    plc_state_msg.interface_names.size(), false);
+  plc_state_msg.interface_names = interface_names;
+  plc_state_msg.values = current_plc_state_values_;
+  realtime_plc_state_publisher_->unlock();
 }
 
 
@@ -734,99 +755,95 @@ controller_interface::return_type PLCController::update_plc_commands()
 
 
 /**
- * Read GPIO input state and publish PlcStates message.
+ * Read the GPIO inputs and publish PlcStates on change and as a heartbeat.
  * 
  * Real-time Context: Called from update() at 500 Hz
  * 
  * Execution Sequence:
- *   1. Try to acquire realtime_plc_state_publisher_ lock (non-blocking)
- *      - If locked (previous message still being serialized), return immediately
- *      - This prevents blocking and priority inversion
- *   
- *   2. Clear previous interface_names and values from message
- *   
- *   3. For each state interface in state_interface_types_:
- *      a. Find interface in state_interfaces_map_
- *      b. Read value via get_optional<double>()
- *      c. Append interface_name to plc_state_msg.interface_names
- *      d. Append value to plc_state_msg.values
- *         (or NaN if get_optional has no value)
- *   
- *   4. Release lock and publish asynchronously
- *      - Publish happens in background thread (doesn't block update() loop)
- *      - Latest message always wins if publish thread falls behind
+ *   1. Read every state interface into current_plc_state_values_
+ *      (same order as the names written by initialize_plc_state_msg())
+ *   2. Publish when an input changed since the last published message, at
+ *      once in this cycle, or when the heartbeat period has elapsed
+ *   3. Try to acquire realtime_plc_state_publisher_ lock (non-blocking)
+ *      - If locked (previous message still being serialized), return: the
+ *        message is retried in the next cycle, because the published values
+ *        are updated only after a successful publish
+ *   4. Copy the values (same size: no allocation), release lock and publish
+ *      asynchronously in the publisher thread
+ * 
+ * Why not every cycle: the only subscriber, plc_manager, is a Python node.
+ * At 500 messages/s it needed about one CPU, and before it had one it
+ * dropped part of them. Changes still reach it in the cycle they happen in.
  * 
  * Message Structure:
- *   PlcStates message (published every cycle):
- *     interface_names: ["estop", "reset", "manual_switch_pressed", ...]
- *     values: [1, 0, 1, ...]  (corresponding GPIO input states)
- * 
- * Non-blocking Behavior:
- *   - If publisher lock is held (previous publish still in progress):
- *     → skip this cycle, return immediately
- *     → no blocking, no priority inversion
- *   - If lock acquired:
- *     → update message, release lock
- *     → publish happens asynchronously in publisher's thread
+ *   interface_names: ["estop", "reset", "manual_switch_pressed", ...]
+ *   values: [1, 0, 1, ...]  (corresponding GPIO input states)
  * 
  * Exception Handling:
- *   - Catches std::exception and logs via fprintf
- *   - Still calls unlockAndPublish() to release lock
+ *   - Catches std::exception while reading and logs via fprintf; nothing is
+ *     published in that cycle
  * 
- * @return void (no return value)
+ * @param time Controller time of this update cycle
  */
-void PLCController::update_plc_states()
+void PLCController::update_plc_states(const rclcpp::Time & time)
 {
-  // ========== Try to acquire publisher lock (non-blocking) ==========
-  if (!realtime_plc_state_publisher_ || !realtime_plc_state_publisher_->trylock())
+  if (!realtime_plc_state_publisher_)
   {
-    // Publisher busy (previous message still being serialized), skip this cycle
     return;
   }
 
-  auto & plc_state_msg = realtime_plc_state_publisher_->msg_;
+  // ========== Read all GPIO input state registers ==========
   try
   {
-    // ========== Clear previous state ==========
-    plc_state_msg.values.clear();
-    plc_state_msg.interface_names.clear();
-
-    // ========== Read all GPIO input state registers ==========
-    for (const auto & interface_name : state_interface_types_)
+    for (size_t i = 0; i < ordered_state_interfaces_.size(); ++i)
     {
-      auto it = state_interfaces_map_.find(interface_name);
-      if (it != state_interfaces_map_.end())
+      const auto & state_interface = ordered_state_interfaces_[i].get();
+      const auto optional_value = state_interface.get_optional<double>();
+      if (optional_value.has_value())
       {
-        const auto & state_interface = it->second.get();
-
-        // ========== Append interface name ==========
-        plc_state_msg.interface_names.push_back(state_interface.get_interface_name());
-
-        // ========== Read value from GPIO input register ==========
-        auto optional_value = state_interface.get_optional<double>();
-        if (optional_value.has_value())
-        {
-          // Value available: append to message
-          plc_state_msg.values.push_back(optional_value.value());
-        }
-        else
-        {
-          // Value not available: append NaN placeholder
-          RCLCPP_ERROR(
-            get_node()->get_logger(), "Failed to retrieve state value for %s",
-            interface_name.c_str());
-          plc_state_msg.values.push_back(false);
-        }
+        current_plc_state_values_[i] = static_cast<bool>(optional_value.value());
+      }
+      else
+      {
+        RCLCPP_ERROR(
+          get_node()->get_logger(), "Failed to retrieve state value for %s",
+          state_interface.get_name().c_str());
+        current_plc_state_values_[i] = false;
       }
     }
   }
   catch (const std::exception & e)
   {
     fprintf(stderr, "Exception thrown during reading state interface, error: %s \n", e.what());
+    return;
   }
 
-  // ========== Release lock and publish asynchronously ==========
+  // ========== Publish on change, or when the heartbeat is due ==========
+  // The time comparisons run only after a first publish, so both times come
+  // from the controller_manager clock.
+  const bool publish =
+    !plc_state_published_ ||
+    current_plc_state_values_ != published_plc_state_values_ ||
+    plc_state_publish_period_.nanoseconds() == 0 ||
+    time < last_plc_state_publish_time_ ||
+    (time - last_plc_state_publish_time_) >= plc_state_publish_period_;
+  if (!publish)
+  {
+    return;
+  }
+
+  if (!realtime_plc_state_publisher_->trylock())
+  {
+    // Publisher busy (previous message still being serialized): retry next cycle
+    return;
+  }
+
+  realtime_plc_state_publisher_->msg_.values = current_plc_state_values_;
   realtime_plc_state_publisher_->unlockAndPublish();
+
+  published_plc_state_values_ = current_plc_state_values_;
+  last_plc_state_publish_time_ = time;
+  plc_state_published_ = true;
 }
 
 

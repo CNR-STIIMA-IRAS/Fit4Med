@@ -35,3 +35,12 @@ plc_controller_parameters:
           unique<>: null
         }
       }
+  state_publish_period_ms: {
+    type: int,
+    default_value: 20,
+    description: "Heartbeat period of ~/plc_states, in ms. The message is also published at once, in the same cycle, whenever an input changes. 0 publishes every update cycle.",
+    read_only: true,
+    validation: {
+      gt_eq<>: [0]
+    }
+  }

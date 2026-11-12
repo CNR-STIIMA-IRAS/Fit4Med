@@ -44,6 +44,7 @@ PLC_MANAGER_UDP_PORT = 5006  # our source port, where the GUI replies
 DEFAULT_EEG_DELAY_MS = 4000
 DEFAULT_GUI_STATUS_PERIOD_SEC = 0.1
 DEFAULT_PLC_COMMAND_REPUBLISH_PERIOD_SEC = 0.5
+PLC_STATES_WATCHDOG_PERIOD_SEC = 0.05
 # Unset: the housekeeping CPUs, i.e. those not isolated (isolcpus) for the
 # EtherCAT loops. Set: a CPU list such as 0-1,4-5, or 'off' to keep the
 # inherited affinity.
@@ -187,6 +188,22 @@ class PLCControllerInterface(Node):
         self.declare_parameter('estop_rearm_holdoff_sec', 1.0)
         self.fsm = build_plc_fsm(self)
         self.bringup_done = False
+
+        # ========== PLC States Watchdog ==========
+        # PLC_controller publishes plc_states on every input change and at
+        # least every 20 ms (heartbeat). See _plc_states_watchdog().
+        self.declare_parameter('plc_states_timeout_sec', 0.2)
+        self._plc_states_timeout_sec = float(
+            self.get_parameter('plc_states_timeout_sec').value  # type: ignore
+        )
+        self._last_plc_states_monotonic: float | None = None
+        self._last_watchdog_monotonic: float | None = None
+        self._plc_states_lost = False
+        self._plc_states_watchdog_timer = self.create_timer(
+            PLC_STATES_WATCHDOG_PERIOD_SEC,
+            self._plc_states_watchdog,
+            callback_group=self.timer_group,
+        )
     
     def cleanup(self) -> None:
         self.get_logger().info("Cleanup: destroying node resources.") #type: ignore
@@ -433,7 +450,71 @@ class PLCControllerInterface(Node):
             and self.environment.check_env_running_recovery_stopped()
         )
 
+    def _plc_states_watchdog(self) -> None:
+        """Raise the SW ESTOP when /PLC_controller/plc_states stops arriving.
+
+        Without these messages the FSM, stepped by state_callback(), no longer
+        sees the PLC inputs (estop, Z limit switch): the PLC ros2_control_node
+        or its publisher is stuck. Once per loss: SW ESTOP, and FAIL if the
+        platform is running.
+        """
+        now = time.monotonic()
+        previous_run = self._last_watchdog_monotonic
+        self._last_watchdog_monotonic = now
+        if not self.bringup_done:
+            return
+
+        last = self._last_plc_states_monotonic
+        if last is None:
+            # Bring-up completed before the first message: count from here.
+            self._last_plc_states_monotonic = now
+            return
+
+        if now - last <= self._plc_states_timeout_sec:
+            if self._plc_states_lost:
+                self.get_logger().warning(  # type: ignore
+                    'PLC states are arriving again.'
+                )
+                self._plc_states_lost = False
+            return
+
+        # This node itself was stalled (the timer ran late): the messages may
+        # be waiting in the queue, not missing. Decide at the next run.
+        if (
+            previous_run is None
+            or now - previous_run > self._plc_states_timeout_sec / 2
+        ):
+            return
+
+        if self._plc_states_lost or not self.lock.acquire(blocking=False):
+            return
+        try:
+            self._plc_states_lost = True
+            reason = (
+                f'No PLC states for {now - last:.2f} s '
+                f'(timeout {self._plc_states_timeout_sec:.2f} s)'
+            )
+            self.get_logger().error(  # type: ignore
+                bc.FAIL + f'{reason}: raising the SW ESTOP.' + bc.ENDC
+            )
+            self.plc_commands.raise_sw_estop()
+            self.plc_commands.set_automatic_mode()
+            if (
+                self.fsm.pending is None
+                and self.fsm.state in (State.RUNNING, State.RUNNING_RECOVERY)
+            ):
+                try:
+                    self.fsm.trigger(Event.FAIL, reason)  # type: ignore
+                except (InvalidTransition, GuardFailed, TransitionTimeout) as exc:
+                    self.get_logger().error(  # type: ignore
+                        f'FAIL after the PLC states loss not applied: {exc}'
+                    )
+        finally:
+            self.lock.release()
+
     def state_callback(self, msg: PlcStates) -> None:
+        self._last_plc_states_monotonic = time.monotonic()
+
         # ========== Acquire lock to prevent concurrent execution ==========
         if not self.bringup_done:
             return

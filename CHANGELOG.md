@@ -2,6 +2,25 @@
 
 Notable changes to the Fit4Med platform software. Newest first.
 
+## 2026-11-12 — Less CPU for the PLC states and the drive-state checks
+
+With the Python nodes on the four housekeeping CPUs (entry below), those CPUs ran at about 68% and every node waited for the CPU 10-14% of the time; the jitter of both EtherCAT loops grew (standard deviation of the read period: PLC 2.4 → 4.9 µs, platform 2.5 → 3.6 µs). Most of that load was the rclpy executor waking up for messages and timers: `plc_manager` about 1 CPU for 500 `plc_states`/s, `ethercat_checker` about 0.55 CPU for 250 drive states/s plus a 250 Hz timer.
+
+### Before deploying
+
+- Rebuild and reinstall `plc_controller` (C++), `tecnobody_workbench_utils` and `plc_manager` on the robot.
+- After the bring-up: `ros2 topic hz /PLC_controller/plc_states` shows about 50 Hz with the inputs still; pressing a PLC input (e.g. the estop) still appears at once in `ros2 topic echo /PLC_controller/plc_states`.
+
+### Changed
+
+- **`plc_controller` publishes `plc_states` on change, plus a heartbeat**: at once, in the same 2 ms cycle, when any input changes, otherwise every `state_publish_period_ms` (new parameter, default 20 ms; 0 restores one message per cycle). A change is never lost: if the publisher is busy, the message is retried in the next cycle. The interface names are written once at activation, so the RT loop no longer allocates strings every cycle.
+- **FSM transition timeouts are in seconds**: `StateMachine.add_transition(timeout_sec=...)`, measured with `time.monotonic()`. The transitions used `max_steps=50000`, one step per `plc_states` message: 100 s at 500 Hz, and it would have become 1000 s at 50 Hz. `fsm_config.TRANSITION_TIMEOUT_SEC` = 100 s keeps today's value. `max_steps` still works when `timeout_sec` is not given.
+- **`ethercat_checker` timer from 250 Hz to 50 Hz** (`CHECK_STATES_PERIOD_S`). It only runs the drive-states watchdog and the automatic fault reset: faults and torque loss still close the brake in the 250 Hz drive-states callback. Without drive states the brake now closes between 200 and 220 ms instead of 200 and 204 ms.
+
+### Added
+
+- **`plc_manager` watchdog on `plc_states`**: after the bring-up, no message for more than `plc_states_timeout_sec` (new parameter, default 0.2 s, checked every 50 ms) raises the SW ESTOP and, if the platform is running, sends FAIL to the FSM. Once per loss; it re-arms when the messages come back. A late run of the watchdog itself (the node was stalled) does not count as a loss. Before, a stuck PLC controller went unnoticed: the FSM, stepped by these messages, simply stopped.
+
 ## 2026-11-12 — Non real-time nodes moved off the isolated CPUs
 
 The robot PC isolates CPUs 2-3,6-7 (`isolcpus`) for the two EtherCAT loops: PLC on CPU 2, platform on CPU 3. CPU 6 and 7 are their SMT siblings (`/sys/devices/system/cpu/cpu3/topology/thread_siblings_list` = `3,7`). Several Python nodes were pinned to single isolated CPUs: `plc_manager` to CPU 7 (100% busy, next to the platform loop), `ethercat_checker` and `filter_commands` together to CPU 6 (about 70% busy, next to the PLC loop). With `isolcpus=domain` the kernel does not balance them, so they also queued behind each other: `plc_manager` waited for the CPU 54% of the time and, with a keep-last-10 queue, skipped part of the `/PLC_controller/plc_states` messages. Given 4 CPUs, it now handles all of them and uses about 1.1 CPU.

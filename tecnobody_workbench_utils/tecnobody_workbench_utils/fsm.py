@@ -1,3 +1,4 @@
+import time
 from typing import Callable, Generic, Iterable, Optional, TypeVar
 from enum import Enum, auto
 
@@ -42,6 +43,10 @@ class Transition(Generic[StateT]):
     success_checks: tuple[Callable[[], bool], ...] = ()
     timeout_actions: tuple[Callable[[], None], ...] = ()
     max_steps: int = 1
+    # When set, the pending transition times out after this many seconds
+    # and max_steps is not used: step() is called at the rate of the
+    # messages that drive the FSM, which is not a fixed rate.
+    timeout_sec: Optional[float] = None
     failure_destination: Optional[StateT] = None
     msg: str = ""
 
@@ -52,6 +57,7 @@ class PendingTransition(Generic[StateT, EventT]):
     event: EventT
     transition: Transition[StateT]
     steps: int = 0
+    started_monotonic: float = 0.0
 
 
 class StateMachine(Generic[StateT, EventT]):
@@ -91,10 +97,13 @@ class StateMachine(Generic[StateT, EventT]):
         timeout_action: Optional[Callable[[], None]] = None,
         timeout_actions: Optional[Iterable[Callable[[], None]]] = None,
         max_steps: int = 1,
+        timeout_sec: Optional[float] = None,
         failure_destination: Optional[StateT] = None,
     ) -> None:
         if max_steps < 1:
             raise ValueError("max_steps must be at least 1")
+        if timeout_sec is not None and timeout_sec <= 0.0:
+            raise ValueError("timeout_sec must be greater than 0")
 
         self.transitions[(source, event)] = Transition(
             destination=destination,
@@ -113,6 +122,7 @@ class StateMachine(Generic[StateT, EventT]):
                 "timeout_actions",
             ),
             max_steps=max_steps,
+            timeout_sec=timeout_sec,
             failure_destination=failure_destination,
             msg="",
         )
@@ -234,6 +244,7 @@ class StateMachine(Generic[StateT, EventT]):
             source=self.state,
             event=event,
             transition=transition,
+            started_monotonic=time.monotonic(),
         )
         return TransitionStatus.PENDING
 
@@ -273,7 +284,11 @@ class StateMachine(Generic[StateT, EventT]):
             return TransitionStatus.COMPLETED
 
         pending.steps += 1
-        if pending.steps < transition.max_steps:
+        if transition.timeout_sec is not None:
+            elapsed_sec = time.monotonic() - pending.started_monotonic
+            if elapsed_sec < transition.timeout_sec:
+                return TransitionStatus.PENDING
+        elif pending.steps < transition.max_steps:
             return TransitionStatus.PENDING
         
         _msg = bcolors.FAIL + transition.msg + "Transition ❌" + bcolors.ENDC
@@ -287,10 +302,14 @@ class StateMachine(Generic[StateT, EventT]):
         if transition.failure_destination is not None:
             self.state = transition.failure_destination
 
+        limit = (
+            f"{transition.timeout_sec:g} s"
+            if transition.timeout_sec is not None
+            else f"{transition.max_steps} steps"
+        )
         timeout_error = TransitionTimeout(
             f"{pending.source.name} --{pending.event.name}--> "
-            f"{transition.destination.name} failed after "
-            f"{transition.max_steps} steps"
+            f"{transition.destination.name} failed after {limit}"
         )
         self._fail_transition(
             pending.source,

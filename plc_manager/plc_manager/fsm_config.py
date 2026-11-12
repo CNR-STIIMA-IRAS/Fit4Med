@@ -7,6 +7,11 @@ from tecnobody_workbench_utils.fsm import StateMachine
 
 from plc_manager.plc_types import Event, State
 
+# Time a pending transition may take to pass its success checks. It used to be
+# 50000 FSM steps, one per /PLC_controller/plc_states message: 100 s at the
+# 500 Hz the PLC controller published every message at.
+TRANSITION_TIMEOUT_SEC = 100.0
+
 
 def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
     environment = controller.environment
@@ -91,7 +96,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         actions=platform_bringup_actions,
         success_checks=(environment.check_env_running,),
         timeout_actions=platform_cleanup_actions,
-        max_steps=50000,
+        timeout_sec=TRANSITION_TIMEOUT_SEC,
         failure_destination=State.ERROR,
     )
     fsm.add_transition(
@@ -102,7 +107,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         actions=recovery_bringup_actions,
         success_checks=(environment.check_env_running_recovery,),
         timeout_actions=recovery_cleanup_actions,
-        max_steps=50000,
+        timeout_sec=TRANSITION_TIMEOUT_SEC,
         failure_destination=State.ERROR_RECOVERY,
     )
     fsm.add_transition(
@@ -112,7 +117,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         actions=recovery_cleanup_actions,
         success_checks=(environment.check_env_running_recovery_stopped,),
         timeout_actions=recovery_cleanup_actions,
-        max_steps=50000,
+        timeout_sec=TRANSITION_TIMEOUT_SEC,
         failure_destination=State.ERROR_RECOVERY,
     )
 
@@ -123,7 +128,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         actions=platform_cleanup_actions,
         success_checks=(environment.check_env_running_stopped,),
         timeout_actions=platform_cleanup_actions,
-        max_steps=50000,
+        timeout_sec=TRANSITION_TIMEOUT_SEC,
         failure_destination=State.ERROR,
     )
 
@@ -134,7 +139,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         actions=platform_cleanup_actions,
         success_checks=(environment.check_env_running_stopped,),
         timeout_actions=platform_cleanup_actions,
-        max_steps=50000,
+        timeout_sec=TRANSITION_TIMEOUT_SEC,
         failure_destination=State.ERROR,
     )
 
@@ -145,7 +150,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         actions=recovery_cleanup_actions,
         success_checks=(environment.check_env_running_recovery_stopped,),
         timeout_actions=recovery_cleanup_actions,
-        max_steps=50000,
+        timeout_sec=TRANSITION_TIMEOUT_SEC,
         failure_destination=State.ERROR_RECOVERY,
     )
 
@@ -156,7 +161,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         actions=idle_stop_actions,
         success_checks=(environment.check_env_running_stopped,),
         timeout_actions=platform_cleanup_actions,
-        max_steps=50000,
+        timeout_sec=TRANSITION_TIMEOUT_SEC,
         failure_destination=State.ERROR,
     )
 
@@ -167,7 +172,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         actions=idle_stop_actions,
         success_checks=(environment.check_env_running_recovery_stopped,),
         timeout_actions=recovery_cleanup_actions,
-        max_steps=50000,
+        timeout_sec=TRANSITION_TIMEOUT_SEC,
         failure_destination=State.ERROR_RECOVERY,
     )
     fsm.add_transition(
@@ -177,7 +182,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         actions=idle_stop_actions,
         success_checks=(environment.check_env_running_stopped,),
         timeout_actions=platform_cleanup_actions,
-        max_steps=50000,
+        timeout_sec=TRANSITION_TIMEOUT_SEC,
         failure_destination=State.ERROR,
     )
 
@@ -188,7 +193,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         actions=idle_stop_actions,
         success_checks=(environment.check_env_running_recovery_stopped,),
         timeout_actions=recovery_cleanup_actions,
-        max_steps=50000,
+        timeout_sec=TRANSITION_TIMEOUT_SEC,
         failure_destination=State.ERROR_RECOVERY,
     )
 
@@ -197,7 +202,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         State.ERROR,
         State.IDLE,
         actions=idle_stop_actions,
-        max_steps=50000,
+        timeout_sec=TRANSITION_TIMEOUT_SEC,
         failure_destination=State.ERROR,
     )
 
@@ -207,7 +212,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         State.ERROR_RECOVERY,
         State.IDLE_RECOVERY,
         actions=idle_stop_actions,
-        max_steps=50000,
+        timeout_sec=TRANSITION_TIMEOUT_SEC,
         failure_destination=State.ERROR_RECOVERY,
     )
 
@@ -216,7 +221,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         State.ERROR,
         State.IDLE,
         actions=platform_cleanup_actions,
-        max_steps=50000,
+        timeout_sec=TRANSITION_TIMEOUT_SEC,
         failure_destination=State.ERROR,
     )
 
@@ -225,7 +230,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         State.ERROR_RECOVERY,
         State.IDLE_RECOVERY,
         actions=recovery_cleanup_actions,
-        max_steps=50000,
+        timeout_sec=TRANSITION_TIMEOUT_SEC,
         failure_destination=State.ERROR_RECOVERY,
     )
 
@@ -237,7 +242,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         actions=platform_bringup_actions,
         success_checks=(environment.check_env_running,),
         timeout_actions=platform_cleanup_actions,
-        max_steps=50000,
+        timeout_sec=TRANSITION_TIMEOUT_SEC,
         failure_destination=State.ERROR,
     )
 
@@ -249,7 +254,7 @@ def build_plc_fsm(controller: Any) -> StateMachine[State, Event]:
         actions=recovery_bringup_actions,
         success_checks=(environment.check_env_running_recovery,),
         timeout_actions=recovery_cleanup_actions,
-        max_steps=50000,
+        timeout_sec=TRANSITION_TIMEOUT_SEC,
         failure_destination=State.ERROR_RECOVERY,
     )
 

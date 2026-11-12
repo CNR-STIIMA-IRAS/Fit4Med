@@ -60,6 +60,9 @@ BRAKE_COMMAND_SPACING_S = 0.02
 # Drive states arrive at 250 Hz: without them for this long while the brake
 # is released, the EtherCAT loop is considered lost and the brake is closed.
 DRIVE_STATES_TIMEOUT_S = 0.2
+# Period of check_states(): the brake closes between DRIVE_STATES_TIMEOUT_S
+# and DRIVE_STATES_TIMEOUT_S + CHECK_STATES_PERIOD_S after the last message.
+CHECK_STATES_PERIOD_S = 0.02
 
 
 class DriverStates:
@@ -200,10 +203,13 @@ class EthercatCheckerNode(Node):
             callback_group=self.motors_service_group
         )        
 
-        # Timer for periodic state checking and fault detection
-        # 0.004 seconds = 250 Hz to match controller_manager update rate
+        # Timer for the drive-states watchdog and the automatic fault reset.
+        # Faults and torque loss close the brake in drive_states_callback(),
+        # at the 250 Hz of the drive states; this timer only detects their
+        # absence (DRIVE_STATES_TIMEOUT_S), so 50 Hz is enough. At 250 Hz the
+        # rclpy executor alone cost about a third of a CPU.
         self.check_states_timer = self.create_timer(
-            0.004, 
+            CHECK_STATES_PERIOD_S,
             self.check_states,
             callback_group=timer_group
         )
@@ -487,7 +493,7 @@ class EthercatCheckerNode(Node):
         """
         Periodic check for fault conditions and automatic recovery.
         
-        Called at 250 Hz by the check_states_timer. If a fault is detected
+        Called every CHECK_STATES_PERIOD_S by check_states_timer. If a fault is detected
         and auto-reset is enabled, attempts to reset the fault condition.
         
         This method runs in a separate callback group to avoid blocking

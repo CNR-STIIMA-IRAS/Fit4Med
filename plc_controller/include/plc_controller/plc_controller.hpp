@@ -215,30 +215,28 @@ private:
   void store_state_interface_types();
 
   /**
-   * @brief Initialize PlcStates message with interface names.
-   * 
-   * Pre-allocates PlcStates message structure with correct interface names
-   * and empty value vector. Called during on_activate() to prepare the
-   * message template for subsequent state updates.
+   * @brief Prepare the PlcStates message and the state buffers.
+   *
+   * Called during on_activate(): stores the state interfaces in publishing
+   * order, writes the interface names into the message once, and sizes the
+   * value buffers, so that update() neither allocates nor copies strings.
    */
   void initialize_plc_state_msg();
 
   /// ========== Runtime Interface Operations ==========
 
   /**
-   * @brief Publish current PLC state inputs to ROS subscribers.
-   * 
-   * This function:
-   *   1. Locks realtime_plc_state_publisher_ for thread-safe access
-   *   2. Iterates state_interface_types_ and reads each LoanedStateInterface
-   *   3. Converts double values to uint8_t (GPIO are boolean/digital)
-   *   4. Populates PlcStates message with interface names and values
-   *   5. Publishes to /plc_controller_manager/PLC_controller/plc_states
-   * 
-   * Called every 2 ms (500 Hz) from update(). Uses try_lock() for non-blocking
-   * operation; skips publish if lock unavailable (no blocking in real-time loop).
+   * @brief Read the PLC state inputs and publish them when needed.
+   *
+   * Reads every input each cycle. Publishes to
+   * /plc_controller_manager/PLC_controller/plc_states at once when any input
+   * changed since the last published message, and otherwise every
+   * state_publish_period_ms (heartbeat). Uses trylock(): when the publisher
+   * is busy the message is retried in the next cycle, so a change is not lost.
+   *
+   * @param time Controller time of this update cycle
    */
-  void update_plc_states();
+  void update_plc_states(const rclcpp::Time & time);
 
   /**
    * @brief Apply ROS commands to PLC via command interfaces.
@@ -367,6 +365,24 @@ private:
   /// @brief Map: interface name (string) → LoanedStateInterface reference
   /// Enables O(1) lookup of state interface by name during update()
   MapOfReferencesToStateInterfaces state_interfaces_map_;
+
+  /// @brief State interfaces in publishing order (state_interface_types_ order)
+  StateInterfaces ordered_state_interfaces_;
+
+  /// @brief Input values read in the current cycle (sized at activation)
+  std::vector<bool> current_plc_state_values_;
+
+  /// @brief Input values of the last published PlcStates message
+  std::vector<bool> published_plc_state_values_;
+
+  /// @brief False until the first PlcStates message after activation
+  bool plc_state_published_{false};
+
+  /// @brief Controller time of the last published PlcStates message
+  rclcpp::Time last_plc_state_publish_time_;
+
+  /// @brief Heartbeat period of PlcStates (0: publish every cycle)
+  rclcpp::Duration plc_state_publish_period_{0, 0};
 
   /// @brief Lock-free buffer for ROS command message (subscription thread → update thread)
   /// Subscriber writes latest PlcController message to buffer without blocking real-time thread
