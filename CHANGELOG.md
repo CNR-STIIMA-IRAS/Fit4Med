@@ -2,6 +2,28 @@
 
 Notable changes to the Fit4Med platform software. Newest first.
 
+## 2026-11-12 — Non real-time nodes moved off the isolated CPUs
+
+The robot PC isolates CPUs 2-3,6-7 (`isolcpus`) for the two EtherCAT loops: PLC on CPU 2, platform on CPU 3. CPU 6 and 7 are their SMT siblings (`/sys/devices/system/cpu/cpu3/topology/thread_siblings_list` = `3,7`). Several Python nodes were pinned to single isolated CPUs: `plc_manager` to CPU 7 (100% busy, next to the platform loop), `ethercat_checker` and `filter_commands` together to CPU 6 (about 70% busy, next to the PLC loop). With `isolcpus=domain` the kernel does not balance them, so they also queued behind each other: `plc_manager` waited for the CPU 54% of the time and, with a keep-last-10 queue, skipped part of the `/PLC_controller/plc_states` messages. Given 4 CPUs, it now handles all of them and uses about 1.1 CPU.
+
+### Before deploying
+
+- Rebuild and reinstall `tecnobody_workbench_utils`, `plc_manager` and `tecnobody_workbench` on the robot.
+- After the bring-up: `taskset -cp` of `plc_manager_node`, `ethercat_checker_node`, `filter_commands_node` and `fct_manager_node` shows `0,1,4,5`; `ps -eLo tid,cls,rtprio,psr,comm | grep ros2_control` still shows two `FF 50` threads, on CPU 2 and 3.
+- The drop-in `~/.config/systemd/user/fit4med-bringup@192.168.1.2.service.d/10-cpu-affinity.conf` (manual test of the same change) is no longer needed: remove it and run `systemctl --user daemon-reload`.
+
+### Changed
+
+- **New `tecnobody_workbench_utils.cpu_affinity`**: `housekeeping_cpus()` is the set of online CPUs minus `/sys/devices/system/cpu/isolated`, so it follows the kernel command line and no CPU number is written in the code.
+- `ethercat_checker_node`, `filter_commands_node`, `fct_manager_node` and `run_rosbridge_websocket.launch.py` move to the housekeeping CPUs instead of CPUs 6, 6, 5 and 4. `ethercat_checker` and `filter_commands` are started by `run_platform_control.launch.py`, pinned to CPU 3: they must set their affinity explicitly, or they would inherit the CPU of the platform loop.
+- `plc_manager` defaults to the housekeeping CPUs instead of CPU 7. `PLC_MANAGER_CPU_AFFINITY` still overrides it (`off` keeps the inherited affinity). The bring-up scripts it starts inherit the same CPUs.
+- The launch files that pin the RT processes to CPU 2 and 3 are unchanged.
+
+### Robot PC setup (not in this repository)
+
+- `irqaffinity=0,1,4,5` added to the kernel command line: the GPU, audio, disk and RTC interrupts were on the isolated CPUs.
+- `GRUB_DEFAULT` pinned to the `6.12.39-rt11` entry and `GRUB_SAVEDEFAULT=false`: the first GRUB entry is the non-RT `6.17` generic kernel.
+
 ## 2026-10-13 — Journal files for each motion-stack start
 
 - Each `starts/NNN_<label>_HHMMSS/` folder now gets its own `journal/` when that start exits. The journalctl files cover only that start, so diagnostics survive and remain attributable even if the overall bring-up is still running.

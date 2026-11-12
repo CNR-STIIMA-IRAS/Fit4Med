@@ -34,10 +34,6 @@ Key features:
 - Separate handling of jog and speed override commands
 """
 
-import os
-# Set CPU affinity to core 6 for deterministic timing
-os.sched_setaffinity(0, {6})
-
 import sys
 from typing import List
 from copy import deepcopy
@@ -54,6 +50,8 @@ from control_msgs.msg import SpeedScalingFactor
 from tecnobody_msgs.srv import SoftMovement
 from std_msgs.msg import Float64MultiArray
 from std_srvs.srv import Trigger
+
+from tecnobody_workbench_utils.cpu_affinity import pin_to_housekeeping_cpus
 
 # Enhanced error reporting
 from rich.traceback import install
@@ -575,6 +573,10 @@ def main():
     Args:
         None
     """
+    # Off the isolated CPUs: the launch file that starts this node is pinned
+    # to the CPU of the platform control loop, and we would inherit it.
+    pin_to_housekeeping_cpus('filter_commands_node')
+
     rclpy.init(args=sys.argv)
 
     # Create and run the filter commands node

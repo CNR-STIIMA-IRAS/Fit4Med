@@ -48,6 +48,8 @@ from ethercat_controller_msgs.srv import GetDriveStates
 from std_srvs.srv import SetBool, Trigger
 from tecnobody_msgs.msg import PlcController
 
+from tecnobody_workbench_utils.cpu_affinity import pin_to_housekeeping_cpus
+
 # Global flag for coordinating node shutdown across threads
 _shutdown_request = False
 
@@ -607,9 +609,9 @@ def main(args=None):
     signal.signal(signal.SIGINT, _raise_keyboard_interrupt)
     signal.signal(signal.SIGTERM, _raise_keyboard_interrupt)
 
-    # Set CPU affinity to core 6 for deterministic timing
-    import os
-    os.sched_setaffinity(0, {6})
+    # Off the isolated CPUs: the launch file that starts this node is pinned
+    # to the CPU of the platform control loop, and we would inherit it.
+    pin_to_housekeeping_cpus('ethercat_checker_node')
 
     node = EthercatCheckerNode()
 

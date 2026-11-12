@@ -12,7 +12,12 @@ from launch.launch_description_sources import AnyLaunchDescriptionSource
 
 
 import os
-os.sched_setaffinity(0, {4})
+
+from tecnobody_workbench_utils.cpu_affinity import pin_to_housekeeping_cpus
+
+# rosbridge and the launch process: off the isolated CPUs, balanced across
+# the housekeeping ones.
+pin_to_housekeeping_cpus('run_rosbridge_websocket.launch.py')
 
 def generate_launch_description():
     rosbridge_pkg = FindPackageShare('rosbridge_server').find('rosbridge_server')

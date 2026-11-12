@@ -95,6 +95,8 @@ from action_msgs.msg import GoalStatus
 from std_msgs.msg import String
 from std_srvs.srv import Trigger
 
+from tecnobody_workbench_utils.cpu_affinity import pin_to_housekeeping_cpus
+
 # Development tooling
 from rich.traceback import install
 install(show_locals=True)
@@ -1449,9 +1451,9 @@ def main(args=None):
     """
     rclpy.init(args=args)
 
-    # Set CPU affinity to core 5 for deterministic scheduling
-    import os
-    os.sched_setaffinity(0, {5})
+    # Off the isolated CPUs, with the scheduler free to balance across the
+    # housekeeping ones.
+    pin_to_housekeeping_cpus('fct_manager_node')
 
     # Get controller name from command line or use default
     input_controller = sys.argv[1] if len(sys.argv) > 1 else "joint_trajectory_controller"

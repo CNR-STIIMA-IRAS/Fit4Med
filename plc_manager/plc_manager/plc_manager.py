@@ -23,6 +23,7 @@ import threading
 import signal
 
 from tecnobody_workbench_utils.utils import bcolors as bc
+from tecnobody_workbench_utils.cpu_affinity import housekeeping_cpus, parse_cpu_list
 
 from tecnobody_workbench_utils.fsm import (
     InvalidTransition, GuardFailed,
@@ -43,7 +44,9 @@ PLC_MANAGER_UDP_PORT = 5006  # our source port, where the GUI replies
 DEFAULT_EEG_DELAY_MS = 4000
 DEFAULT_GUI_STATUS_PERIOD_SEC = 0.1
 DEFAULT_PLC_COMMAND_REPUBLISH_PERIOD_SEC = 0.5
-DEFAULT_CPU_AFFINITY = {7}
+# Unset: the housekeeping CPUs, i.e. those not isolated (isolcpus) for the
+# EtherCAT loops. Set: a CPU list such as 0-1,4-5, or 'off' to keep the
+# inherited affinity.
 CPU_AFFINITY_ENV = 'PLC_MANAGER_CPU_AFFINITY'
 
 CALLBACK_STATUS_MESSAGE : dict[State,str] = {
@@ -607,43 +610,25 @@ def _parse_eeg_delay_ms(value: str | None) -> int:
 
 
 def _parse_cpu_affinity(value: str | None) -> set[int] | None:
+    """CPUs from PLC_MANAGER_CPU_AFFINITY; when unset, the housekeeping CPUs.
+
+    None means "do not set the affinity". The housekeeping CPUs come from
+    sysfs: reading them can raise OSError, ValueError or RuntimeError.
+    """
     if value is None:
-        return set(DEFAULT_CPU_AFFINITY)
+        return housekeeping_cpus()
 
     normalized_value = value.strip().lower()
     if normalized_value in ('', 'all', 'none', 'off', 'disabled'):
         return None
 
-    cpus: set[int] = set()
-    for chunk in normalized_value.split(','):
-        chunk = chunk.strip()
-        if not chunk:
-            continue
-        if '-' in chunk:
-            start_text, end_text = chunk.split('-', 1)
-            try:
-                start_cpu = int(start_text)
-                end_cpu = int(end_text)
-            except ValueError:
-                raise SystemExit(
-                    f"{CPU_AFFINITY_ENV} must be a comma-separated CPU list."
-                )
-            if start_cpu > end_cpu:
-                raise SystemExit(
-                    f"{CPU_AFFINITY_ENV} CPU ranges must be ascending."
-                )
-            cpus.update(range(start_cpu, end_cpu + 1))
-            continue
-
-        try:
-            cpus.add(int(chunk))
-        except ValueError:
-            raise SystemExit(
-                f"{CPU_AFFINITY_ENV} must be a comma-separated CPU list."
-            )
-
-    if any(cpu < 0 for cpu in cpus):
-        raise SystemExit(f"{CPU_AFFINITY_ENV} CPUs must be >= 0.")
+    try:
+        cpus = parse_cpu_list(normalized_value)
+    except ValueError:
+        raise SystemExit(
+            f"{CPU_AFFINITY_ENV} must be a comma-separated list of CPUs "
+            "or ascending ranges (e.g. 0-1,4-5)."
+        )
 
     return cpus or None
 
@@ -653,17 +638,19 @@ def main(args=None): #type: ignore
     # ========== Parse arguments ==========
     target_ip = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.1"
     eeg_delay_ms = _parse_eeg_delay_ms(sys.argv[2] if len(sys.argv) > 2 else None)
-    cpu_affinity = _parse_cpu_affinity(os.environ.get(CPU_AFFINITY_ENV))
 
     # ========== CPU affinity ==========
     # Before rclpy.init: the DDS, UDP and executor threads created afterwards
-    # inherit it, so the whole process stays on these CPUs.
-    affinity_error: OSError | None = None
-    if cpu_affinity is not None:
-        try:
+    # inherit it, so the whole process stays on these CPUs. So do the
+    # bring-up scripts started with subprocess.Popen.
+    cpu_affinity: set[int] | None = None
+    affinity_error: Exception | None = None
+    try:
+        cpu_affinity = _parse_cpu_affinity(os.environ.get(CPU_AFFINITY_ENV))
+        if cpu_affinity is not None:
             os.sched_setaffinity(0, cpu_affinity)
-        except OSError as exc:
-            affinity_error = exc
+    except (OSError, ValueError, RuntimeError) as exc:
+        affinity_error = exc
 
     # Initialize ROS 2 without automatic signal handling
     rclpy.init(args=args, signal_handler_options=SignalHandlerOptions.NO) #type: ignore
@@ -671,15 +658,15 @@ def main(args=None): #type: ignore
     # ========== Create node instance ==========
     node = PLCControllerInterface(target_ip, eeg_delay_ms)
 
-    if cpu_affinity is None:
+    if affinity_error is not None:
+        node.get_logger().warning(  # type: ignore
+            f"Cannot set CPU affinity ({affinity_error}): "
+            f"running on CPUs {sorted(os.sched_getaffinity(0))}. "
+            f"Check {CPU_AFFINITY_ENV} (this PC has {os.cpu_count()} CPUs)."
+        )
+    elif cpu_affinity is None:
         node.get_logger().info(  # type: ignore
             f"CPU affinity disabled by {CPU_AFFINITY_ENV}."
-        )
-    elif affinity_error is not None:
-        node.get_logger().warning(  # type: ignore
-            f"Cannot set CPU affinity to CPUs {sorted(cpu_affinity)} "
-            f"({affinity_error}): running on CPUs {sorted(os.sched_getaffinity(0))}. "
-            f"Check {CPU_AFFINITY_ENV} (this PC has {os.cpu_count()} CPUs)."
         )
     else:
         node.get_logger().info(  # type: ignore
