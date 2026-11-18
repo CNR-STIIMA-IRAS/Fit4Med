@@ -80,5 +80,25 @@ else
     fi
 fi
 
+# Optional diagnostic monitors, enabled in the environment of the bring-up
+# (systemd unit or the shell that runs ros2 launch):
+#   FIT4MED_EC_MONITOR=1   ec_link_monitor.sh: EtherCAT slaves, counters, drive alarms
+#   FIT4MED_CPU_MONITOR=1  rt_load_monitor.sh: CPU load per CPU/process/thread
+# Their logs go to the folder of this start (so into the session zip); they
+# stop by themselves when this script exits.
+start_monitor() {  # <script> <description>
+    local script
+    script="$(dirname "$0")/$1"
+    if [ -x "$script" ]; then
+        "$script" -P $$ -o "${FIT4MED_RUN_DIR:-$HOME/.ros/fit4med_diagnostics}" \
+            > /dev/null 2>&1 < /dev/null &
+        echo "*** $2 started (PID $!) ***"
+    else
+        echo "WARNING: $2 enabled but $script is not executable." >&2
+    fi
+}
+[ "${FIT4MED_EC_MONITOR:-0}" = "1" ] && start_monitor ec_link_monitor.sh "EtherCAT link monitor"
+[ "${FIT4MED_CPU_MONITOR:-0}" = "1" ] && start_monitor rt_load_monitor.sh "CPU load monitor"
+
 echo "************************************************** Launching ROS2 environment with perform_homing set to: $perform_homing, eeg_delay_ms set to: $eeg_delay_ms **************************************************"
 ros2 launch tecnobody_workbench run_platform_control.launch.py perform_homing:=$perform_homing eeg_delay_ms:=$eeg_delay_ms
