@@ -80,6 +80,21 @@ else
     fi
 fi
 
+# EtherCAT error counters of the slaves (link losses, RX errors): print them
+# in this start's console.log, then clear them, so that the counters seen
+# during this start belong to it and never stay saturated at 255. Skip with
+# FIT4MED_EC_CLEAR_COUNTERS=0. Never blocks the start.
+if [ "${FIT4MED_EC_CLEAR_COUNTERS:-1}" = "1" ]; then
+    EC_COUNTERS_SCRIPT="$(dirname "$0")/ec_error_counters.sh"
+    if [ -x "$EC_COUNTERS_SCRIPT" ]; then
+        echo "*** EtherCAT error counters (master 1) since the previous start, then cleared ***"
+        timeout 20 "$EC_COUNTERS_SCRIPT" -m 1 dump-clear \
+            || echo "WARNING: EtherCAT error counters not (all) read/cleared, proceeding anyway." >&2
+    else
+        echo "WARNING: $EC_COUNTERS_SCRIPT not found/executable, error counters not cleared." >&2
+    fi
+fi
+
 # Optional diagnostic monitors, enabled in the environment of the bring-up
 # (systemd unit or the shell that runs ros2 launch):
 #   FIT4MED_EC_MONITOR=1   ec_link_monitor.sh: EtherCAT slaves, counters, drive alarms

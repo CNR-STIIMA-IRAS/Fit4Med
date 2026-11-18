@@ -94,18 +94,17 @@ cd C:\fit4med_ws\src\Fit4Med
 .\ps_scripts\fmrr_to_robot_sync.ps1 -Folder Fit4Med/bash_scripts -DryRun
 ```
 
-Lo script mostra cosa cambierebbe. Devono comparire **solo** questi file
-(l'ordine non conta):
+Lo script mostra cosa cambierebbe. Controlla due cose:
 
-- `launch_ros2_env.sh` (modificato)
-- `ec_link_monitor.sh` (nuovo)
-- `rt_load_monitor.sh` (nuovo)
-- `ec_delta_monitor_setup.sh` (nuovo)
-- `fit4med_diag_monitors.sh` (nuovo)
+- tutti i file elencati sono dentro `bash_scripts` (per esempio
+  `launch_ros2_env.sh`, `ec_link_monitor.sh`, `rt_load_monitor.sh`,
+  `ec_error_counters.sh`, `fit4med_diag_monitors.sh`; quali compaiono dipende
+  da cosa è già sul robot);
+- **nessun file viene cancellato** (righe con "delete" / "deleting").
 
 Può comparire anche "restore executable permission" per alcuni di questi: va
-bene. **Se compaiono altri file, o file da cancellare, fermati** e contatta
-Nicola, mandandogli quello che vedi a schermo.
+bene. **Se compaiono file da cancellare, o file fuori da `bash_scripts`,
+fermati** e contatta Nicola, mandandogli quello che vedi a schermo.
 
 **3b. Copia vera:**
 

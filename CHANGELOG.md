@@ -2,6 +2,24 @@
 
 Notable changes to the Fit4Med platform software. Newest first.
 
+## 2026-11-18 — EtherCAT error counters printed and cleared at each platform start
+
+The first monitor run showed on the joint_y → joint_z segment 43 link losses counted by both drives and RX errors saturated at 255 on both ends (ESC counters reset only at power-up): the link itself drops. Saturated counters cannot show new errors, and cumulative ones do not tell when they happened.
+
+### Before deploying
+
+- Sync `Fit4Med/bash_scripts` to the robot (no build). At the next platform start `console.log` shows `*** EtherCAT error counters (master 1) since the previous start, then cleared ***` and one line per slave.
+
+### Added
+
+- `bash_scripts/ec_error_counters.sh dump|clear|dump-clear`: per slave and port, invalid frames, RX errors, forwarded errors, link losses (0x0300-0x0313) and processing/PDI errors, in decimal; clearing writes 0x0300, 0x030C, 0x030D and 0x0310.
+
+### Changed
+
+- `launch_ros2_env.sh` runs `ec_error_counters.sh dump-clear` after the CoE fault reset and before the monitors: the values go to the start's `console.log` (so into the session zip), then the counters restart from 0. `FIT4MED_EC_CLEAR_COUNTERS=0` skips it; a failure only prints a warning.
+- `ec_link_monitor.sh`: lost frames logged only when the minimum of 5 samples increases (sent minus received made it toggle 2↔3); explanation updated for the per-start counters.
+- `rt_load_monitor.sh`: `sensors` output kept whole (the `°C` filter dropped everything under `LC_ALL=C`).
+
 ## 2026-11-18 — Diagnostic monitors for the EtherCAT drops
 
 Runs 0040–0048 show 83 in-operation drops of the joint_z drive (slave 1-2, Delta ASDA-A2-E): it left the bus, reported AL185 "EtherCAT connection error" and came back after 18.2 s. These monitors record what is needed to tell a cable/connector problem from a reset of the drive's EtherCAT interface, without anyone at the robot. Step-by-step guide for the operator: `GUIDA_LOG_DIAGNOSTICA.md`.

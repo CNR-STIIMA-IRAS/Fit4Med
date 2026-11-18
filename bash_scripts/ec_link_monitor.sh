@@ -36,13 +36,15 @@
 #     13 = peak load [%]. Selectors at 0 (default) are skipped, so this works
 #     before the drives are configured; ec_delta_monitor_setup.sh sets them.
 #
+# launch_ros2_env.sh prints and clears these counters at each platform start
+# (ec_error_counters.sh), so here they count what happened during this start.
 # Reading it after a drop:
-#   - slave 1 (joint_y), lost link of its port 1 increases: the link towards
-#     joint_z went down (both for a cable problem and for a joint_z reboot);
-#   - slave 2 (joint_z) counters back to ~0 when it reappears: joint_z was
-#     power-cycled or reset (ESC counters reset at power-up);
-#   - slave 2 counters unchanged and its port 0 lost link increased: joint_z
-#     stayed powered and the link itself broke (cable/connector).
+#   - lost link of slave 1 (joint_y) port 1 AND of slave 2 (joint_z) port 0
+#     both increased: the link itself dropped while both were powered
+#     (cable, connectors, PHY, shield/ground);
+#   - only slave 1 port 1 increased and slave 2 came back with all counters
+#     at 0: joint_z (its EtherCAT interface) was reset or power-cycled;
+#   - RX errors (rx) rising on that segment before a drop: bad signal on it.
 #
 # Cost: about 11 short `ethercat` calls every PERIOD s (default 2 s), i.e.
 # 1-2% of one housekeeping CPU. The register reads travel in the cyclic frames
@@ -214,6 +216,7 @@ alarm_histories | tee -a "$LOG"
 
 prev_slaves=""
 prev_lost=""
+lost_window=()
 prev_counters=""
 max_slaves=0
 history_due=0   # epoch time after which the alarm history is read again (0: no)
@@ -236,7 +239,16 @@ while true; do
     next_drives=$(( $(date +%s) + DRIVE_S ))
   fi
   s=$(slaves_line)
-  l=$(lost_frames)
+  l_raw=$(lost_frames)
+  # The master counts lost frames as sent minus received, so frames still on
+  # the wire add 1 now and then: log the minimum of the last 5 samples. A real
+  # loss raises it for good and shows up within 5 samples.
+  l="$l_raw"
+  if [[ "$l_raw" =~ ^[0-9]+$ ]]; then
+    lost_window+=("$l_raw")
+    (( ${#lost_window[@]} > 5 )) && lost_window=("${lost_window[@]:1}")
+    l=$(printf '%s\n' "${lost_window[@]}" | sort -n | head -1)
+  fi
   c=$(counters_line)
   n=$(wc -w <<< "$s")
   pn=$(wc -w <<< "$prev_slaves")
@@ -265,15 +277,16 @@ while true; do
   if [[ "$s" != "$prev_slaves" ]]; then
     echo "$(ts) slaves: $s" | tee -a "$LOG"
   fi
-  if [[ "$l" != "$prev_lost" ]]; then
+  # Only increases: the real counter never goes down.
+  if [[ -z "$prev_lost" ]] || { [[ "$l" =~ ^[0-9]+$ && "$prev_lost" =~ ^[0-9]+$ ]] && (( l > prev_lost )); }; then
     echo "$(ts) master $MASTER lost frames: $l" | tee -a "$LOG"
+    prev_lost="$l"
   fi
   if [[ "$c" != "$prev_counters" ]]; then
     echo "$(ts) counters: $c" | tee -a "$LOG"
   fi
 
   prev_slaves="$s"
-  prev_lost="$l"
   prev_counters="$c"
   sleep "$PERIOD"
 done

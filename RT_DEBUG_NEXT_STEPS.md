@@ -32,6 +32,24 @@ Script used: per master-1 session, kernel events between "12/12" and "Releasing 
   changed on 11-11 between 11:05 and 11:18 — not the DC/memlock fixes (applied 11-12 afternoon; memlock still
   failing in 0049) and not the platform software (startup logs identical). **Ask the user** (hardware: Z drive
   cable/connector, power supply, cabinet, drive parameters, power cycle?).
+- **ESC counters read by the monitor on 2026-11-18 (runs 0080/0081, no drop during hours of tests) — the
+  joint_y ↔ joint_z segment is the weak point:**
+
+  | Link | lost link (both ends) | RX errors (invalid frame / RX error) |
+  |---|---|---|
+  | joint_x → joint_y | y port 0: 1 | y port 0: 0 / 0 |
+  | **joint_y → joint_z** | **y port 1: 43, z port 0: 43** | **y port 1: 1 / 255, z port 0: 1 / 255 (saturated)** |
+  | joint_z → ATI | z port 1: 1, ATI port 0: 0 | ATI port 0: 1 / 1 |
+
+  ESC counters reset only at power-up of the slave. **Both ends counted the same 43 link losses**, so both
+  ESCs were powered when the link went down: the link itself dropped (cable, connectors, PHY/magnetics,
+  shield/ground), not a reset of the joint_z drive. RX errors are saturated at 255 on both ends of that
+  segment only. Counters unchanged during the 0080/0081 tests. Next: inspect/replace the joint_y OUT →
+  joint_z IN cable and connectors; clear the counters (writing 0x0300 clears 0x0300-0x030B, writing 0x0310
+  clears the lost-link counters) so new errors become visible again.
+- Monitor fixes after the first real run: lost frames logged only when the 5-sample minimum increases
+  (the master counts sent minus received, frames in flight made it toggle 2↔3); `sensors` output kept whole
+  (under LC_ALL=C it prints " C", not "°C", so the old filter dropped everything).
 - **Codes decoded with the Delta ASDA-A2-E manual** (drives are Delta ASDA-A2-E, vendor 0x1DD; manuals in
   `tecnobody_workbench_utils/resource/`, chapter 9 alarm list):
   - joint_z `0x8120` data `01 85` = **AL185 "EtherCAT connection error (Servo Off)"**: the drive itself detected

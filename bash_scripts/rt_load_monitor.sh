@@ -119,7 +119,8 @@ while true; do
   prev_offset="$offset"
   if (( elapsed % THREAD_S == 0 )); then
     if have sensors; then
-      { echo "===== $(date +%H:%M:%S)"; sensors 2> /dev/null | grep -E '°C|RPM' ; } >> "$OUT/sensors.txt"
+      # Under LC_ALL=C sensors prints " C" instead of "°C": keep every line.
+      { echo "===== $(date +%H:%M:%S)"; LC_ALL=C.UTF-8 sensors 2> /dev/null | grep -v '^$' ; } >> "$OUT/sensors.txt"
     fi
     cur="$(rt_threads)"
     if [[ "$cur" != "$prev" ]]; then
