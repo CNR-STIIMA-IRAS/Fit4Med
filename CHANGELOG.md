@@ -2,6 +2,26 @@
 
 Notable changes to the Fit4Med platform software. Newest first.
 
+## 2026-11-18 — Diagnostic monitors for the EtherCAT drops
+
+Runs 0040–0048 show 83 in-operation drops of the joint_z drive (slave 1-2, Delta ASDA-A2-E): it left the bus, reported AL185 "EtherCAT connection error" and came back after 18.2 s. These monitors record what is needed to tell a cable/connector problem from a reset of the drive's EtherCAT interface, without anyone at the robot. Step-by-step guide for the operator: `GUIDA_LOG_DIAGNOSTICA.md`.
+
+### Before deploying
+
+- Sync `Fit4Med/bash_scripts` to the robot (no build), then on the robot `bash_scripts/fit4med_diag_monitors.sh enable`.
+- After the next platform start: `pgrep -fa "ec_link_monitor|rt_load_monitor"` shows both.
+
+### Added
+
+- `bash_scripts/ec_link_monitor.sh`: slaves answering, master lost frames, ESC counters 0x0300/0x0308/0x0310, DL status 0x0110 and AL code 0x0134 of slaves 1-3 every 2 s (a line only on change); Delta alarm history P4-00…04 (0x2400…0x2404) at start, after the slaves are back and at stop; every 10 s current/torque (0x6078/0x6077) and the drive status monitors P0-09…11 named after P0-17…19 (skipped while not set).
+- `bash_scripts/rt_load_monitor.sh`: unattended variant of `rt_cpu_hogs.sh` (no sudo, no rtla, no ros2 CLI): mpstat 10 s, pidstat processes 30 s and threads with %wait 60 s, real-time threads placement, PC temperatures, wall-clock steps. About 2 MB per hour before zipping.
+- `bash_scripts/ec_delta_monitor_setup.sh`: show / `--apply` (P0-17/18/19 = 14 DC bus V, 16 IGBT °C, 12 average load %, with a restore file) / `--restore` the Delta monitor selectors. Not applied yet.
+- `bash_scripts/fit4med_diag_monitors.sh enable|disable|status`: sets `FIT4MED_EC_MONITOR=1` and `FIT4MED_CPU_MONITOR=1` for the pendant (drop-in on `fit4med-bringup@.service`, every instance) and for a shell start (marked block in `~/.bashrc`).
+
+### Changed
+
+- `bash_scripts/launch_ros2_env.sh` starts the monitors enabled by those variables before `ros2 launch`; their logs go to the folder of the start (`starts/NNN_platform_…/`, so into the session zip retrieved by `fmrr_retrieve_logs.ps1`); they stop by themselves when the script exits.
+
 ## 2026-11-12 — Drive-states watchdog raises the SW ESTOP
 
 At 18:41:25 `ethercat_checker` logged `Brake closed: no drive states for more than 0.2 s` while the EtherCAT loop was running normally (no kernel EtherCAT event, regular read period), right when a `ros2 topic echo` was started on the robot: the node itself did not run its drive-states callback for 0.2 s. The watchdog closed the brake but left the drives enabled and the FSM in RUNNING: the motors pushed against the closed brake for 20 s (mechanical noise) until the mushroom was pressed. Nothing was shown in the GUI.
