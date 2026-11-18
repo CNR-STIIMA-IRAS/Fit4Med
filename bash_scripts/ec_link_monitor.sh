@@ -27,14 +27,21 @@
 # error, AL3E1 (6200h) SYNC failed, AL500 (9000h) STO/estop, AL180 (8130h)
 # PDOs not received. The history is read again when the monitor stops.
 #
-# Every DRIVE_S seconds (default 10) it also writes to ec_drives_<date>.log,
-# per Delta drive, through the mailbox:
+# It also writes to ec_drives_<date>.log, per Delta drive, through the
+# mailbox, every DRIVE_S seconds (default 10), or every FAST_S seconds
+# (default 2) for the FAST_DRIVES (default: slave 2, joint_z, the gravity
+# axis that brakes the load in descent):
 #   - current (0x6078) and torque (0x6077), per mille of the rated value;
+#   - velocity (0x606C) and following error (0x60F4), drive units;
+#   - regen=1 when torque and velocity have opposite signs: the motor is
+#     braking and returning energy to the drive (brake chopper/resistor);
 #   - the drive's status monitor registers P0-09...P0-11 (0x2009...0x200B),
 #     labelled with what P0-17...P0-19 (0x2011...0x2013) select: 14 = DC bus
 #     voltage [V], 16 = IGBT temperature [C], 12 = average load [%],
 #     13 = peak load [%]. Selectors at 0 (default) are skipped, so this works
 #     before the drives are configured; ec_delta_monitor_setup.sh sets them.
+# At start it logs, per drive: following error window (0x6065) and the
+# regenerative resistor settings P1-52 [Ohm] (0x2134) and P1-53 [W] (0x2135).
 #
 # launch_ros2_env.sh prints and clears these counters at each platform start
 # (ec_error_counters.sh), so here they count what happened during this start.
@@ -50,7 +57,8 @@
 # 1-2% of one housekeeping CPU. The register reads travel in the cyclic frames
 # of the running application.
 #
-# Usage: ec_link_monitor.sh [-m MASTER] [-p PERIOD_S] [-d DRIVE_S] [-s "SLAVES"] [-o OUT_DIR] [-H]
+# Usage: ec_link_monitor.sh [-m MASTER] [-p PERIOD_S] [-d DRIVE_S] [-F FAST_S] [-f "FAST_DRIVES"]
+#                           [-s "SLAVES"] [-o OUT_DIR] [-H]
 #   -s  slave positions whose registers are read (default "1 2 3": joint_y,
 #       joint_z and the ATI sensor behind it)
 #   -H  print the drives' alarm history and exit
@@ -69,12 +77,16 @@ DRIVE_NAMES=(joint_x joint_y joint_z)
 HISTORY_ONLY=false
 PARENT_PID=""
 DRIVE_S=10
+FAST_S=2
+FAST_DRIVES=(2)
 
-while getopts "m:p:d:s:o:P:Hh" opt; do
+while getopts "m:p:d:F:f:s:o:P:Hh" opt; do
   case "$opt" in
     m) MASTER="$OPTARG" ;;
     p) PERIOD="$OPTARG" ;;
     d) DRIVE_S="$OPTARG" ;;
+    F) FAST_S="$OPTARG" ;;
+    f) read -r -a FAST_DRIVES <<< "$OPTARG" ;;
     s) read -r -a SLAVES <<< "$OPTARG" ;;
     o) OUT_ROOT="$OPTARG" ;;
     H) HISTORY_ONLY=true ;;
@@ -129,23 +141,44 @@ SELECTORS=(0x2011 0x2012 0x2013)   # P0-17, P0-18, P0-19
 MONITORS=(0x2009 0x200A 0x200B)    # P0-09, P0-10, P0-11
 
 # One line per drive: current, torque and the configured monitor registers.
+# drives_lines <index>...: one line per drive (indices into DRIVES).
 drives_lines() {
-  local idx p k sel line
-  for idx in "${!DRIVES[@]}"; do
+  local idx p k sel line cur tq vel ferr regen
+  for idx in "$@"; do
     p="${DRIVES[$idx]}"
     line="$(ts) ${DRIVE_NAMES[$idx]}:"
-    sel=$(sdo "$p" 0x6078 int16)
-    if [[ "$sel" == "?" ]]; then
+    cur=$(sdo "$p" 0x6078 int16)
+    if [[ "$cur" == "?" ]]; then
       echo "$line offline"
       continue
     fi
-    line+=" current_permille=$sel torque_permille=$(sdo "$p" 0x6077 int16)"
+    tq=$(sdo "$p" 0x6077 int16)
+    vel=$(sdo "$p" 0x606C int32)
+    ferr=$(sdo "$p" 0x60F4 int32)
+    regen="?"
+    if [[ "$tq" =~ ^-?[0-9]+$ && "$vel" =~ ^-?[0-9]+$ ]]; then
+      regen=0
+      (( tq * vel < 0 )) && regen=1
+    fi
+    line+=" current_permille=$cur torque_permille=$tq velocity=$vel following_error=$ferr regen=$regen"
     for k in 0 1 2; do
       sel=$(sdo "$p" "${SELECTORS[$k]}" uint16)
       [[ "$sel" == "?" || "$sel" == "0" ]] && continue
       line+=" $(monitor_name "$sel")=$(sdo "$p" "${MONITORS[$k]}" int32)"
     done
     echo "$line"
+  done
+}
+
+# Drive settings that matter for tracking and braking, once at start.
+drives_settings() {
+  local idx p
+  for idx in "${!DRIVES[@]}"; do
+    p="${DRIVES[$idx]}"
+    echo "$(ts) settings slave $p (${DRIVE_NAMES[$idx]}):" \
+      "following_error_window(0x6065)=$(sdo "$p" 0x6065 uint32)" \
+      "regen_resistor_P1-52=$(sdo "$p" 0x2134 uint16)Ohm" \
+      "regen_resistor_P1-53=$(sdo "$p" 0x2135 uint16)W"
   done
 }
 
@@ -206,11 +239,13 @@ counters_line() {
   echo "# registers per slave: rx = 0x0300 (2 bytes per port: invalid frame, RX error),"
   echo "#   fwd = 0x0308 (1 byte per port), lost_link = 0x0310 (1 byte per port),"
   echo "#   dl = 0x0110 DL status (link/loop per port), al_code = 0x0134 AL status code"
-  echo "# drive current/torque/monitor registers every ${DRIVE_S}s in $(basename "$DRIVES_LOG")"
+  echo "# drives every ${DRIVE_S}s (slaves ${FAST_DRIVES[*]}: every ${FAST_S}s) in $(basename "$DRIVES_LOG")"
 } | tee "$LOG"
 alarm_histories | tee -a "$LOG"
 {
-  echo "# ec_drives: every ${DRIVE_S}s; current/torque per mille of rated (0x6078/0x6077);"
+  echo "# ec_drives: every ${DRIVE_S}s, slaves ${FAST_DRIVES[*]} every ${FAST_S}s; current/torque per mille of"
+  echo "# rated (0x6078/0x6077); velocity 0x606C and following_error 0x60F4 in drive units;"
+  echo "# regen=1: torque and velocity of opposite sign (the motor brakes, energy back to the drive);"
   echo "# other fields: status monitor registers P0-09..11 named after P0-17..19 (unset ones skipped)"
 } > "$DRIVES_LOG"
 
@@ -221,6 +256,13 @@ prev_counters=""
 max_slaves=0
 history_due=0   # epoch time after which the alarm history is read again (0: no)
 next_drives=0
+next_fast=0
+# Indices (into DRIVES) of the fast and of the slow drives.
+fast_idx=(); slow_idx=()
+for i in "${!DRIVES[@]}"; do
+  if [[ " ${FAST_DRIVES[*]} " == *" ${DRIVES[$i]} "* ]]; then fast_idx+=("$i"); else slow_idx+=("$i"); fi
+done
+drives_settings >> "$DRIVES_LOG"
 
 finish() {
   echo "$(ts) $1: alarm history at stop" | tee -a "$LOG"
@@ -234,9 +276,13 @@ while true; do
   if [[ -n "$PARENT_PID" ]] && ! kill -0 "$PARENT_PID" 2> /dev/null; then
     finish "parent $PARENT_PID gone"
   fi
-  if (( $(date +%s) >= next_drives )); then
-    drives_lines >> "$DRIVES_LOG"
+  if (( ${#slow_idx[@]} > 0 && $(date +%s) >= next_drives )); then
+    drives_lines "${slow_idx[@]}" >> "$DRIVES_LOG"
     next_drives=$(( $(date +%s) + DRIVE_S ))
+  fi
+  if (( ${#fast_idx[@]} > 0 && $(date +%s) >= next_fast )); then
+    drives_lines "${fast_idx[@]}" >> "$DRIVES_LOG"
+    next_fast=$(( $(date +%s) + FAST_S ))
   fi
   s=$(slaves_line)
   l_raw=$(lost_frames)

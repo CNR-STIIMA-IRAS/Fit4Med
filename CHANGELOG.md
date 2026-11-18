@@ -18,6 +18,7 @@ The first monitor run showed on the joint_y → joint_z segment 43 link losses c
 
 - `launch_ros2_env.sh` runs `ec_error_counters.sh dump-clear` after the CoE fault reset and before the monitors: the values go to the start's `console.log` (so into the session zip), then the counters restart from 0. `FIT4MED_EC_CLEAR_COUNTERS=0` skips it; a failure only prints a warning.
 - `ec_link_monitor.sh`: lost frames logged only when the minimum of 5 samples increases (sent minus received made it toggle 2↔3); explanation updated for the per-start counters.
+- `ec_link_monitor.sh`, to test whether the drops follow the braking of the gravity axis: `ec_drives_*.log` adds velocity (0x606C), following error (0x60F4) and `regen=1` when torque and velocity have opposite signs (the motor brakes and returns energy to the drive); joint_z is sampled every 2 s (`-F`, `-f`), the other drives every 10 s; at start, per drive, the following error window (0x6065) and the regenerative resistor settings P1-52 [Ohm] / P1-53 [W]. Reads only, nothing written to the drives.
 - `rt_load_monitor.sh`: `sensors` output kept whole (the `°C` filter dropped everything under `LC_ALL=C`).
 
 ## 2026-11-18 — Diagnostic monitors for the EtherCAT drops

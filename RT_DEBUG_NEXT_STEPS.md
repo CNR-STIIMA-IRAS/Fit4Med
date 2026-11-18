@@ -47,6 +47,14 @@ Script used: per master-1 session, kernel events between "12/12" and "Releasing 
   segment only. Counters unchanged during the 0080/0081 tests. Next: inspect/replace the joint_y OUT →
   joint_z IN cable and connectors; clear the counters (writing 0x0300 clears 0x0300-0x030B, writing 0x0310
   clears the lost-link counters) so new errors become visible again.
+- Hypotheses from the user (2026-11-18): (a) following-error windows overloading joint_z — unlikely as the
+  cause of the drops: a following error gives AL009/0x8611 (seen only 5 times in 0040–0048) and a fault does not
+  take the EtherCAT link down (separate ESC); (b) braking of the gravity axis — an undersized resistor would
+  give AL002/AL005, never seen; but EMI from the brake chopper / joint_z motor cable on the y→z EtherCAT cable is
+  plausible and fits errors concentrated on that segment. The monitor now logs velocity, following error and
+  `regen` for joint_z every 2 s, and P1-52/P1-53 and 0x6065 at start: check whether RX errors/link losses rise
+  during `regen=1` phases. Physical checks: cable routing vs motor/resistor cables, STP shield grounding,
+  grounding of drive/motor/resistor, short twisted resistor wires, a ferrite on the y→z cable.
 - Monitor fixes after the first real run: lost frames logged only when the 5-sample minimum increases
   (the master counts sent minus received, frames in flight made it toggle 2↔3); `sensors` output kept whole
   (under LC_ALL=C it prints " C", not "°C", so the old filter dropped everything).
