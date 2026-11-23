@@ -53,6 +53,14 @@
 #     at 0: joint_z (its EtherCAT interface) was reset or power-cycled;
 #   - RX errors (rx) rising on that segment before a drop: bad signal on it.
 #
+# Mailbox (SDO) reads of a drive are done only while that drive is in OP:
+# while the master configures a slave (PREOP -> SAFEOP -> OP, at each start
+# and after a drop) it uses the same mailbox, and a concurrent read can make
+# its PDO configuration time out (run 0090: joint_z stuck in PREOP + ERROR,
+# "Invalid output configuration"). So the settings and the alarm history are
+# read at start only once all drives are in OP, and after a drop only once
+# they are back in OP (or after 60 s, when nobody is configuring them).
+#
 # Cost: about 11 short `ethercat` calls every PERIOD s (default 2 s), i.e.
 # 1-2% of one housekeeping CPU. The register reads travel in the cyclic frames
 # of the running application.
@@ -219,6 +227,34 @@ slaves_line() {
     | awk '{printf "%s:%s%s ", $1, $3, ($4 == "E" ? "+E" : "")}'
 }
 
+# State of slave $1 in a slaves_line() output $2 ("OP", "PREOP+E", ...;
+# "none" if absent).
+slave_state() {
+  local tok
+  for tok in $2; do
+    if [[ "${tok%%:*}" == "$1" ]]; then echo "${tok#*:}"; return; fi
+  done
+  echo none
+}
+
+# The drive indices (into DRIVES) given as arguments whose slave is in OP,
+# without error, in the slaves_line() output $1: only those may be read
+# through the mailbox (see the header).
+drives_in_op() {
+  local s="$1" idx out=()
+  shift
+  for idx in "$@"; do
+    [[ "$(slave_state "${DRIVES[$idx]}" "$s")" == "OP" ]] && out+=("$idx")
+  done
+  echo "${out[*]}"
+}
+
+all_drives_in_op() {
+  local ready
+  read -r -a ready <<< "$(drives_in_op "$1" "${!DRIVES[@]}")"
+  (( ${#ready[@]} == ${#DRIVES[@]} ))
+}
+
 lost_frames() {
   timeout 2 ethercat -m "$MASTER" master 2> /dev/null \
     | awk '/Lost frames/ {print $3; exit}'
@@ -240,8 +276,8 @@ counters_line() {
   echo "#   fwd = 0x0308 (1 byte per port), lost_link = 0x0310 (1 byte per port),"
   echo "#   dl = 0x0110 DL status (link/loop per port), al_code = 0x0134 AL status code"
   echo "# drives every ${DRIVE_S}s (slaves ${FAST_DRIVES[*]}: every ${FAST_S}s) in $(basename "$DRIVES_LOG")"
+  echo "# mailbox reads (drives, settings, alarm history) only while the drive is in OP"
 } | tee "$LOG"
-alarm_histories | tee -a "$LOG"
 {
   echo "# ec_drives: every ${DRIVE_S}s, slaves ${FAST_DRIVES[*]} every ${FAST_S}s; current/torque per mille of"
   echo "# rated (0x6078/0x6077); velocity 0x606C and following_error 0x60F4 in drive units;"
@@ -255,6 +291,8 @@ lost_window=()
 prev_counters=""
 max_slaves=0
 history_due=0   # epoch time after which the alarm history is read again (0: no)
+history_deadline=0
+startup_reads_done=false   # settings + first alarm history, once all drives are in OP
 next_drives=0
 next_fast=0
 # Indices (into DRIVES) of the fast and of the slow drives.
@@ -262,7 +300,6 @@ fast_idx=(); slow_idx=()
 for i in "${!DRIVES[@]}"; do
   if [[ " ${FAST_DRIVES[*]} " == *" ${DRIVES[$i]} "* ]]; then fast_idx+=("$i"); else slow_idx+=("$i"); fi
 done
-drives_settings >> "$DRIVES_LOG"
 
 finish() {
   echo "$(ts) $1: alarm history at stop" | tee -a "$LOG"
@@ -276,15 +313,24 @@ while true; do
   if [[ -n "$PARENT_PID" ]] && ! kill -0 "$PARENT_PID" 2> /dev/null; then
     finish "parent $PARENT_PID gone"
   fi
+  # Slave states first: they decide which drives may be read via mailbox.
+  s=$(slaves_line)
+  if ! $startup_reads_done && all_drives_in_op "$s"; then
+    echo "$(ts) all drives in OP: settings and alarm history" | tee -a "$LOG"
+    alarm_histories | tee -a "$LOG"
+    drives_settings >> "$DRIVES_LOG"
+    startup_reads_done=true
+  fi
   if (( ${#slow_idx[@]} > 0 && $(date +%s) >= next_drives )); then
-    drives_lines "${slow_idx[@]}" >> "$DRIVES_LOG"
+    read -r -a ready <<< "$(drives_in_op "$s" "${slow_idx[@]}")"
+    (( ${#ready[@]} > 0 )) && drives_lines "${ready[@]}" >> "$DRIVES_LOG"
     next_drives=$(( $(date +%s) + DRIVE_S ))
   fi
   if (( ${#fast_idx[@]} > 0 && $(date +%s) >= next_fast )); then
-    drives_lines "${fast_idx[@]}" >> "$DRIVES_LOG"
+    read -r -a ready <<< "$(drives_in_op "$s" "${fast_idx[@]}")"
+    (( ${#ready[@]} > 0 )) && drives_lines "${ready[@]}" >> "$DRIVES_LOG"
     next_fast=$(( $(date +%s) + FAST_S ))
   fi
-  s=$(slaves_line)
   l_raw=$(lost_frames)
   # The master counts lost frames as sent minus received, so frames still on
   # the wire add 1 now and then: log the minimum of the last 5 samples. A real
@@ -308,7 +354,10 @@ while true; do
     fi
   fi
   (( n > max_slaves )) && max_slaves=$n
-  if (( history_due > 0 )) && (( $(date +%s) >= history_due )); then
+  # Back after a drop: wait until the master has reconfigured them (all in
+  # OP); past the deadline nobody is configuring them, so read anyway.
+  if (( history_due > 0 )) && (( $(date +%s) >= history_due )) \
+     && { all_drives_in_op "$s" || (( $(date +%s) >= history_deadline )); }; then
     if h=$(alarm_histories); then
       echo "$h" | tee -a "$LOG"
       history_due=0
