@@ -61,6 +61,14 @@
 # read at start only once all drives are in OP, and after a drop only once
 # they are back in OP (or after 60 s, when nobody is configuring them).
 #
+# It also logs "dc_diff_ns", the distributed-clock system time difference of
+# each drive (register 0x092C, signed ns: the drive's clock minus the time it
+# receives): every PERIOD s for 60 s after start and after a slave count
+# change, every DC_S s (default 10) otherwise. At each start the master waits
+# up to 5 s per drive for it to drop below its threshold and logs "Slave did
+# not sync after 5000 ms" when it does not: these values show whether the
+# drives converge later or never. Register reads work in any state.
+#
 # Cost: about 11 short `ethercat` calls every PERIOD s (default 2 s), i.e.
 # 1-2% of one housekeeping CPU. The register reads travel in the cyclic frames
 # of the running application.
@@ -87,6 +95,8 @@ PARENT_PID=""
 DRIVE_S=10
 FAST_S=2
 FAST_DRIVES=(2)
+DC_S=10
+DC_FAST_WINDOW_S=60
 
 while getopts "m:p:d:F:f:s:o:P:Hh" opt; do
   case "$opt" in
@@ -260,6 +270,22 @@ lost_frames() {
     | awk '/Lost frames/ {print $3; exit}'
 }
 
+# DC system time difference (0x092C) of each drive, in signed ns: bit 31 set
+# means the drive's clock is behind the time it receives.
+dc_line() {
+  local p raw b v line=""
+  for p in "${DRIVES[@]}"; do
+    raw=$(reg "$p" 0x092C 4)
+    if [[ "$raw" == offline ]]; then line+=" s$p=offline"; continue; fi
+    read -r -a b <<< "$raw"
+    if (( ${#b[@]} != 4 )); then line+=" s$p=?"; continue; fi
+    v=$(( b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24) ))
+    if (( v & 0x80000000 )); then v=$(( -(v & 0x7FFFFFFF) )); fi
+    line+=" s$p=$v"
+  done
+  echo "dc_diff_ns:$line"
+}
+
 counters_line() {
   local p line=""
   for p in "${SLAVES[@]}"; do
@@ -277,6 +303,7 @@ counters_line() {
   echo "#   dl = 0x0110 DL status (link/loop per port), al_code = 0x0134 AL status code"
   echo "# drives every ${DRIVE_S}s (slaves ${FAST_DRIVES[*]}: every ${FAST_S}s) in $(basename "$DRIVES_LOG")"
   echo "# mailbox reads (drives, settings, alarm history) only while the drive is in OP"
+  echo "# dc_diff_ns = 0x092C per drive (signed ns), every ${PERIOD}s for ${DC_FAST_WINDOW_S}s after start/slave changes, then every ${DC_S}s"
 } | tee "$LOG"
 {
   echo "# ec_drives: every ${DRIVE_S}s, slaves ${FAST_DRIVES[*]} every ${FAST_S}s; current/torque per mille of"
@@ -295,6 +322,8 @@ history_deadline=0
 startup_reads_done=false   # settings + first alarm history, once all drives are in OP
 next_drives=0
 next_fast=0
+next_dc=0
+dc_fast_until=$(( $(date +%s) + DC_FAST_WINDOW_S ))
 # Indices (into DRIVES) of the fast and of the slow drives.
 fast_idx=(); slow_idx=()
 for i in "${!DRIVES[@]}"; do
@@ -347,6 +376,8 @@ while true; do
 
   if [[ -n "$prev_slaves" && "$n" != "$pn" ]]; then
     echo "$(ts) !!! SLAVE COUNT $pn -> $n: $s" | tee -a "$LOG"
+    dc_fast_until=$(( $(date +%s) + DC_FAST_WINDOW_S ))
+    next_dc=0
     if (( n > pn && n >= max_slaves )); then
       # All back: read the alarms once their mailbox works (a few s later).
       history_due=$(( $(date +%s) + 5 ))
@@ -379,6 +410,14 @@ while true; do
   fi
   if [[ "$c" != "$prev_counters" ]]; then
     echo "$(ts) counters: $c" | tee -a "$LOG"
+  fi
+  if (( $(date +%s) >= next_dc )); then
+    echo "$(ts) $(dc_line)" >> "$LOG"
+    if (( $(date +%s) < dc_fast_until )); then
+      next_dc=0
+    else
+      next_dc=$(( $(date +%s) + DC_S ))
+    fi
   fi
 
   prev_slaves="$s"

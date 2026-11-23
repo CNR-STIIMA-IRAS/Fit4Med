@@ -21,7 +21,29 @@ import launch.logging
 # os.environ['RCUTILS_CONSOLE_OUTPUT_FORMAT']="[{severity}] [{name}]: {message} ({function_name}() at {file_name}:{line_number})"
 
 import os
+import sys
 os.sched_setaffinity(0, {2})
+
+
+def _housekeeping_prefix():
+    """taskset prefix that starts a process on the housekeeping CPUs.
+
+    This launch runs on CPU 2 (above) so that the PLC ros2_control_node, with
+    its RT loop, inherits it. Everything else would inherit it too: the
+    spawner and the Python nodes would start there, competing with the RT
+    loop (in run_platform_control each spawner took 6-15 s instead of < 1 s).
+    """
+    try:
+        from tecnobody_workbench_utils.cpu_affinity import housekeeping_cpus
+        cpus = ','.join(str(cpu) for cpu in sorted(housekeeping_cpus()))
+    except Exception as exc:  # noqa: BLE001
+        print(f'[run_sickPLC] housekeeping CPUs unknown ({exc}): '
+              'spawner and nodes stay on CPU 2', file=sys.stderr)
+        return []
+    return [f'taskset -c {cpus}']
+
+
+HOUSEKEEPING_PREFIX = _housekeeping_prefix()
 
 plc_controller_manager_node_name="plc_controller_manager"
 
@@ -148,6 +170,7 @@ def generate_launch_description():
     rsp = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
+        prefix=HOUSEKEEPING_PREFIX,
         name='plc_state_publisher',
         remappings=[('robot_description', 'plc_robot_description')],
         output='screen',
@@ -157,6 +180,7 @@ def generate_launch_description():
     plc_controller_spawner = Node(
         package='controller_manager',
         executable='spawner',
+        prefix=HOUSEKEEPING_PREFIX,
         arguments=['PLC_controller', '-c', f'/{plc_controller_manager_node_name}'],
         output='screen',
     )
@@ -180,6 +204,7 @@ def generate_launch_description():
     ethercat_slaves_status_check_node = Node(
         package='plc_manager',
         executable='ethercat_slaves_status_check_node',
+        prefix=HOUSEKEEPING_PREFIX,
         output='screen',
     )
 
@@ -190,6 +215,7 @@ def generate_launch_description():
             'tecnobody_msgs/msg/PlcController',
             "{interface_names: ['PLC_node/mode_of_operation', 'PLC_node/estop'], values: [7, 1]}",
         ],
+        prefix=HOUSEKEEPING_PREFIX,
         output='screen',
         condition=IfCondition(debug_delta),
     )
@@ -204,6 +230,7 @@ def generate_launch_description():
     sonar_teach_node = Node(
         package='tecnobody_workbench_utils',
         executable='sonar_teach_node',
+        prefix=HOUSEKEEPING_PREFIX,
         name='sonar_teach_node',
         output='screen',
     )

@@ -10,7 +10,30 @@ from launch.actions import RegisterEventHandler, OpaqueFunction, SetEnvironmentV
 import threading
 
 import os
+import sys
 os.sched_setaffinity(0, {2,3})
+
+LAUNCH_NAME = 'run_PLC_safemod'
+
+def _housekeeping_prefix():
+    """taskset prefix that starts a process on the housekeeping CPUs.
+
+    This launch runs on the isolated CPU(s) above so that ros2_control_node,
+    with its RT loop, inherits them. Everything else would inherit them too:
+    spawners and Python nodes then start there, competing with the RT loop
+    (in run_platform_control each spawner took 6-15 s instead of < 1 s).
+    """
+    try:
+        from tecnobody_workbench_utils.cpu_affinity import housekeeping_cpus
+        cpus = ','.join(str(cpu) for cpu in sorted(housekeeping_cpus()))
+    except Exception as exc:  # noqa: BLE001
+        print(f'[{LAUNCH_NAME}] housekeeping CPUs unknown ({exc}): '
+              'spawners and nodes stay on the isolated CPUs', file=sys.stderr)
+        return []
+    return [f'taskset -c {cpus}']
+
+
+HOUSEKEEPING_PREFIX = _housekeeping_prefix()
 
 
 # Funzione per lanciare il nodo che pubblica il flag
@@ -67,6 +90,7 @@ def generate_launch_description():
     jsb = Node(
         package='controller_manager',
         executable='spawner',
+        prefix=HOUSEKEEPING_PREFIX,
         arguments=['joint_state_broadcaster'],
         output='screen',
         additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
@@ -75,6 +99,7 @@ def generate_launch_description():
     rsp = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
+        prefix=HOUSEKEEPING_PREFIX,
         output='screen',
         parameters=[robot_description],
         additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
@@ -83,6 +108,7 @@ def generate_launch_description():
     plc_spawner = Node(
         package='controller_manager',
         executable='spawner',
+        prefix=HOUSEKEEPING_PREFIX,
         arguments=['PLC_controller'],
         output='screen',
         additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
@@ -98,6 +124,7 @@ def generate_launch_description():
     ssb = Node(
         package='controller_manager',
         executable='spawner',
+        prefix=HOUSEKEEPING_PREFIX,
         arguments=['state_controller'],
         output='screen',
         additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
@@ -106,6 +133,7 @@ def generate_launch_description():
     fsb = Node(
         package='controller_manager',
         executable='spawner',
+        prefix=HOUSEKEEPING_PREFIX,
         arguments=['ft_sensor_command_broadcaster'],
         output='screen',
         additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
@@ -114,6 +142,7 @@ def generate_launch_description():
     homing = Node(
         package='tecnobody_workbench_utils',
         executable='boot_hw',
+        prefix=HOUSEKEEPING_PREFIX,
         arguments=['MODE_CYCLIC_SYNC_POSITION'],
         output='screen',
         additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
@@ -122,6 +151,7 @@ def generate_launch_description():
     homing_done_publisher = Node(
         package='tecnobody_workbench_utils',
         executable='homing_completion_publisher',
+        prefix=HOUSEKEEPING_PREFIX,
         output='screen',
         additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
@@ -129,6 +159,7 @@ def generate_launch_description():
     eth_checker = Node(
         package='tecnobody_workbench_utils',
         executable='ethercat_checker_node',
+        prefix=HOUSEKEEPING_PREFIX,
         name='tecnobody_ethercat_checker_node',
         output='screen',
         additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
@@ -137,6 +168,7 @@ def generate_launch_description():
     ft_offset_updater = Node(
         package='tecnobody_workbench_utils',
         executable='ft_offset_updater',
+        prefix=HOUSEKEEPING_PREFIX,
         output='screen',
         additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
     )
@@ -144,6 +176,7 @@ def generate_launch_description():
     joint_controller_node = Node(
         package='controller_manager',
         executable='spawner',
+        prefix=HOUSEKEEPING_PREFIX,
         arguments=[
             'joint_trajectory_controller'
             # 'scaled_trajectory_controller'
@@ -155,6 +188,7 @@ def generate_launch_description():
     forward_controller_node = Node(
         package='controller_manager',
         executable='spawner',
+        prefix=HOUSEKEEPING_PREFIX,
         arguments=['forward_velocity_controller', '--inactive'],
         output='screen',
         additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
@@ -163,6 +197,7 @@ def generate_launch_description():
     forward_pos_controller_node = Node(
         package='controller_manager',
         executable='spawner',
+        prefix=HOUSEKEEPING_PREFIX,
         arguments=['forward_position_controller'],
         output='screen',
         additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
@@ -171,6 +206,7 @@ def generate_launch_description():
     admittance_controller_node = Node(
         package='controller_manager',
         executable='spawner',
+        prefix=HOUSEKEEPING_PREFIX,
         arguments=['admittance_controller', '--inactive'],
         output='screen',
         additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}

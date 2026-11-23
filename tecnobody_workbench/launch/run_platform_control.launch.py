@@ -15,7 +15,29 @@ from launch.launch_description_sources import AnyLaunchDescriptionSource
 import threading
 
 import os
+import sys
 os.sched_setaffinity(0, {3})
+
+
+def _housekeeping_prefix():
+    """taskset prefix that starts a process on the housekeeping CPUs.
+
+    This launch runs on CPU 3 (above) so that ros2_control_node, with its RT
+    loop, inherits it. Everything else would inherit it too: the ~9 spawners
+    and the Python nodes start together there, competing with the RT loop for
+    one CPU, and each spawner took 6-15 s instead of well under 1 s (run 0091).
+    """
+    try:
+        from tecnobody_workbench_utils.cpu_affinity import housekeeping_cpus
+        cpus = ','.join(str(cpu) for cpu in sorted(housekeeping_cpus()))
+    except Exception as exc:  # noqa: BLE001
+        print(f'[run_platform_control] housekeeping CPUs unknown ({exc}): '
+              'spawners and nodes stay on CPU 3', file=sys.stderr)
+        return []
+    return [f'taskset -c {cpus}']
+
+
+HOUSEKEEPING_PREFIX = _housekeeping_prefix()
 
 # Funzione per lanciare il nodo che pubblica il flag
 def launch_status_node(context, *args, **kwargs):
@@ -88,6 +110,7 @@ def generate_launch_description():
     jsb = Node(
         package='controller_manager',
         executable='spawner',
+        prefix=HOUSEKEEPING_PREFIX,
         arguments=['joint_state_broadcaster'],
         output='screen',
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'joint_state_broadcaster_%p_%t.log'}
@@ -96,6 +119,7 @@ def generate_launch_description():
     rsp = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
+        prefix=HOUSEKEEPING_PREFIX,
         output='screen',
         parameters=[robot_description],
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'robot_state_publisher_%p_%t.log'}
@@ -104,6 +128,7 @@ def generate_launch_description():
     ssb = Node(
         package='controller_manager',
         executable='spawner',
+        prefix=HOUSEKEEPING_PREFIX,
         arguments=['state_controller'],
         output='screen',
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'state_controller_%p_%t.log'}
@@ -113,6 +138,7 @@ def generate_launch_description():
     fsb = Node(
         package='controller_manager',
         executable='spawner',
+        prefix=HOUSEKEEPING_PREFIX,
         arguments=['ft_sensor_command_broadcaster'],
         output='screen',
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'ft_sensor_command_broadcaster_%p_%t.log'}
@@ -121,6 +147,7 @@ def generate_launch_description():
     homing = Node(
         package='tecnobody_workbench_utils',
         executable='boot_hw',
+        prefix=HOUSEKEEPING_PREFIX,
         arguments=['MODE_CYCLIC_SYNC_POSITION'],
         output='screen',
         condition=IfCondition(LaunchConfiguration('perform_homing')),
@@ -130,12 +157,14 @@ def generate_launch_description():
     homing_done_publisher = Node(
         package='tecnobody_workbench_utils',
         executable='homing_completion_publisher',
+        prefix=HOUSEKEEPING_PREFIX,
         output='screen',
     )
 
     eth_checker = Node(
         package='tecnobody_workbench_utils',
         executable='ethercat_checker_node',
+        prefix=HOUSEKEEPING_PREFIX,
         name='tecnobody_ethercat_checker_node',
         output='screen',
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'ethercat_checker_%p_%t.log'}
@@ -144,6 +173,7 @@ def generate_launch_description():
     ft_offset_updater = Node(
         package='tecnobody_workbench_utils',
         executable='ft_offset_updater',
+        prefix=HOUSEKEEPING_PREFIX,
         output='screen',
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'ft_offset_updater_%p_%t.log'}
     )
@@ -151,6 +181,7 @@ def generate_launch_description():
     go_to_start_controller_node = Node(
         package='controller_manager',
         executable='spawner',
+        prefix=HOUSEKEEPING_PREFIX,
         arguments=[
             'go_to_start_controller',
             '--inactive'
@@ -162,6 +193,7 @@ def generate_launch_description():
     joint_controller_node = Node(
         package='controller_manager',
         executable='spawner',
+        prefix=HOUSEKEEPING_PREFIX,
         arguments=[
             'joint_trajectory_controller'
             #'scaled_trajectory_controller'
@@ -173,6 +205,7 @@ def generate_launch_description():
     remapping_controller_node = Node(
         package='controller_manager',
         executable='spawner',
+        prefix=HOUSEKEEPING_PREFIX,
         arguments=[
             'remapping_controller'
         ],
@@ -183,6 +216,7 @@ def generate_launch_description():
     forward_controller_node = Node(
         package='controller_manager',
         executable='spawner',
+        prefix=HOUSEKEEPING_PREFIX,
         arguments=['forward_velocity_controller', '--inactive'],
         output='screen',
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'forward_velocity_controller_%p_%t.log'}
@@ -191,6 +225,7 @@ def generate_launch_description():
     forward_pos_controller_node = Node(
         package='controller_manager',
         executable='spawner',
+        prefix=HOUSEKEEPING_PREFIX,
         arguments=['forward_position_controller'],
         output='screen',
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'forward_position_controller_%p_%t.log'}
@@ -200,6 +235,7 @@ def generate_launch_description():
     admittance_controller_node = Node(
         package='controller_manager',
         executable='spawner',
+        prefix=HOUSEKEEPING_PREFIX,
         arguments=['admittance_controller', '--inactive'],
         output='screen',
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'admittance_controller_%p_%t.log'}
@@ -216,6 +252,7 @@ def generate_launch_description():
     fct_manager_node = Node(
         package='tecnobody_workbench_utils',
         executable='fct_manager_node',
+        prefix=HOUSEKEEPING_PREFIX,
         arguments=['joint_trajectory_controller'],
         parameters=[{
             'eeg_delay_ms': ParameterValue(
@@ -230,6 +267,7 @@ def generate_launch_description():
     bag_recorder_node = Node(
         package='tecnobody_workbench_utils',
         executable='bag_recorder_node',
+        prefix=HOUSEKEEPING_PREFIX,
         output='screen',
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'bag_recorder_node_%p_%t.log'}
     )
@@ -237,6 +275,7 @@ def generate_launch_description():
     filter_commands_node = Node(
         package='tecnobody_workbench_utils',
         executable='filter_commands_node',
+        prefix=HOUSEKEEPING_PREFIX,
         parameters=[{'forward_velocity_controller_name': 'forward_velocity_controller', 
                    'joint_trajectory_controller_name':'joint_trajectory_controller', 
                    'default_sample_rate':250,
