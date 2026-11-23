@@ -15,6 +15,12 @@ import roslibpy
 
 command_context = threading.local()
 
+# Controller states come from /controller_manager/activity. Without a message
+# within CONTROLLER_SEED_DELAY_S of the subscription, a single list_controllers
+# call fills them, repeated at most every CONTROLLER_SEED_RETRY_S.
+CONTROLLER_SEED_DELAY_S = 2.0
+CONTROLLER_SEED_RETRY_S = 5.0
+
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
 GREEN='\033[0;32m'
@@ -250,6 +256,15 @@ class SyncRosManager:
         self.destroy_clients_init : bool = False
         self.lock = threading.Lock()
 
+        # Controller states from /controller_manager/activity: a list of
+        # {'name', 'state'} like the list_controllers response, None until the
+        # first message. Written by roslibpy callbacks, read by the GUI worker.
+        self._controller_states : List[dict] = None #type: ignore
+        self._controller_states_lock = threading.Lock()
+        # One list_controllers call fills the cache if activity says nothing
+        # (see _controller_states_snapshot).
+        self._controller_seed_not_before : float = time.monotonic() + CONTROLLER_SEED_DELAY_S
+
         self.movement_status : str = 'idle'
 
         self.init_service_clients()
@@ -273,6 +288,19 @@ class SyncRosManager:
         )
         self.movement_status_subscriber.subscribe(self.update_movement_status)  #TODO: check
 
+        # Controller states, pushed by the controller manager on every change
+        # (RELIABLE + TRANSIENT_LOCAL: the last state arrives on subscription).
+        # Replaces polling list_controllers through rosbridge, which creates
+        # and destroys a DDS client per call and sometimes got no answer
+        # within its 5 s timeout. No throttle: a throttled topic may drop the
+        # last change.
+        self.controller_activity_subscriber : roslibpy.Topic = roslibpy.Topic(
+            self.ros_client,
+            '/controller_manager/activity',
+            'controller_manager_msgs/msg/ControllerManagerActivity',
+            queue_length=1)
+        self.controller_activity_subscriber.subscribe(self._on_controller_manager_activity)
+
         #  publishers        
         self.plc_command_publisher : roslibpy.Topic = roslibpy.Topic(
             self.ros_client,
@@ -285,7 +313,8 @@ class SyncRosManager:
     def detach_publisher_and_subscribers(self):
         self.joint_subscriber.unsubscribe()
         self.movement_status_subscriber.unsubscribe()
-        
+        self.controller_activity_subscriber.unsubscribe()
+
         self.plc_command_publisher.unadvertise()
         
         print('All publisher/subscribers are correctly detached')
@@ -448,13 +477,63 @@ class SyncRosManager:
         self.RobotJointPosition = positions
         self.HandlePosition = list(positions)
 
+    @staticmethod
+    def _controller_states_from(controllers) -> List[dict]:
+        """[{'name', 'state'}] from ControllerManagerActivity.controllers
+        (state is a NamedLifecycleState {'id', 'label'}) or from a
+        list_controllers response (state is already the label)."""
+        states : List[dict] = []
+        for ctrl in controllers:
+            state = ctrl.get('state')
+            if isinstance(state, Mapping):
+                state = state.get('label')
+            states.append({'name': ctrl.get('name'), 'state': state})
+        return states
+
+    def _on_controller_manager_activity(self, msg) -> None:
+        if not isinstance(msg, Mapping) or not isinstance(msg.get('controllers'), list):
+            return
+        states = self._controller_states_from(msg['controllers'])
+        with self._controller_states_lock:
+            self._controller_states = states
+
+    def _on_list_controllers_seed(self, response) -> None:
+        if not isinstance(response, Mapping) or not isinstance(response.get('controller'), list):
+            return
+        states = self._controller_states_from(response['controller'])
+        with self._controller_states_lock:
+            # An activity message is newer than any list_controllers answer.
+            if self._controller_states is None:
+                self._controller_states = states
+
+    def _controller_states_snapshot(self) -> List[dict]:
+        """Latest controller states, or None if none has arrived yet.
+
+        If the GUI subscribed before the controller manager existed, rosbridge
+        picks a volatile QoS and the last state is not replayed: after
+        CONTROLLER_SEED_DELAY_S without messages, one list_controllers call
+        (every CONTROLLER_SEED_RETRY_S at most) fills the cache.
+        """
+        with self._controller_states_lock:
+            if self._controller_states is not None:
+                return self._controller_states
+            now = time.monotonic()
+            if now < self._controller_seed_not_before or self.current_controller_client is None:
+                return None
+            self._controller_seed_not_before = now + CONTROLLER_SEED_RETRY_S
+        self.current_controller_client.call_async(
+            None,
+            on_done_callback=self._on_list_controllers_seed,
+            on_error_callback=lambda error: logging.getLogger(__name__).warning(
+                "list_controllers (seed of the controller states) failed: %s", error))
+        return None
+
     def update_controller_and_driver_states(self) -> None:
-        
+
         if not self.destroy_clients_init:
 
-            # Both queries go out together (was: one after the other, 3 s timeout each).
-            msg_drive_states, list_controllers_response = call_in_parallel(
-                [(self.get_drive_state_client, None), (self.current_controller_client, None)],
+            msg_drive_states, = call_in_parallel(
+                [(self.get_drive_state_client, None)],
                 timeout=self._poll_timeout_s)
             self.coe_drive_states.from_dict(msg_drive_states['states']\
                                             if msg_drive_states is not None and 'states' in msg_drive_states \
@@ -464,9 +543,11 @@ class SyncRosManager:
                 print(f'Warning! Get an incomplete list of states (received the data for the axes: {self.coe_drive_states.dof_names}, expected: {self._joint_names}')
                 return
 
-            if list_controllers_response is None or 'controller' not in list_controllers_response:
+            controller_states = self._controller_states_snapshot()
+            if controller_states is None:
                 return
-            
+            list_controllers_response = {'controller': controller_states}
+
             ##########################
             moo : List[int] = [ self.get_op_mode_number(mode) for mode in self.coe_drive_states.modes_of_operation ]
 

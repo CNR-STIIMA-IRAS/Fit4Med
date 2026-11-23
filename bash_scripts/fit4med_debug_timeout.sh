@@ -4,20 +4,24 @@
 
 if [[ ${1:-} == -h || ${1:-} == --help ]]; then
     echo "Uso: bash $0 [--seconds SECONDI]  (predefinito: 600)"
+    echo "     bash $0 --compare PRIMA.txt DOPO.txt"
     echo "Sul PC Fit4Med, con GUI collegata, robot fermo e motori disattivati."
     echo "Crea un rapporto .txt sulla scrivania. Ctrl+C termina e salva il rapporto."
+    echo "Il confronto dei due rapporti si può eseguire anche su un PC senza ROS 2."
     exit 0
 fi
 
-if [[ ! -r /opt/ros/jazzy/setup.bash ]] || ! source /opt/ros/jazzy/setup.bash; then
-    echo "ROS 2 Jazzy non disponibile. Avvia questo script nel terminale del PC Fit4Med." >&2
-    exit 1
-fi
+if [[ ${1:-} != --compare ]]; then
+    if [[ ! -r /opt/ros/jazzy/setup.bash ]] || ! source /opt/ros/jazzy/setup.bash; then
+        echo "ROS 2 Jazzy non disponibile. Avvia questo script nel terminale del PC Fit4Med." >&2
+        exit 1
+    fi
 
-# Match fit4med-bringup@.service unless the shell already specifies these.
-export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-1}"
-export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
-export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-1}"
+    # Match fit4med-bringup@.service unless the shell already specifies these.
+    export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-1}"
+    export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
+    export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-1}"
+fi
 
 umask 077
 exec nice -n 10 /usr/bin/python3 -u - "$@" <<'PYTHON'
@@ -32,6 +36,7 @@ from pathlib import Path
 import re
 import signal
 import socket
+from statistics import median, quantiles
 import subprocess
 import threading
 import time
@@ -43,12 +48,21 @@ PERIOD = 1.0
 ROS_TIMEOUT = 5.0
 WS_TIMEOUT = 7.0
 CHANNELS = ("ROS2", "ROSBRIDGE")
+PACKAGES = (
+    "ros-jazzy-rosbridge-library", "ros-jazzy-rosbridge-server",
+    "ros-jazzy-controller-manager", "ros-jazzy-rmw-fastrtps-cpp",
+)
 ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 CONSOLE_EVENTS = re.compile(
     r"list_controllers|rosbridge_websocket.*Client (?:connected|disconnected)"
     r"|Working counter|slave\(s\) responding|overrun|datagram.*timed out",
     re.IGNORECASE,
 )
+GUI_TIMEOUT = re.compile(
+    rf"\[rosbridge_websocket\]:.*\[id: call_service:{re.escape(SERVICE)}:\d+\]"
+    r" call_service Exception: Timeout exceeded while waiting for service response"
+)
+BRIDGE_CLIENTS = re.compile(r"\[rosbridge_websocket\]: Client (?:connected|disconnected)\. (\d+) clients? total\.")
 
 
 def timestamp():
@@ -213,10 +227,95 @@ def append_events(report, offsets, started, finished):
         report.write("\n".join(selected) + "\n" if selected else "(nessun evento)\n")
 
 
+def read_comparison_report(path):
+    lines = path.read_text(encoding="utf-8-sig").splitlines()
+    if not lines or not lines[0].startswith("Fit4Med | "):
+        raise ValueError(f"{path}: intestazione del rapporto Fit4Med mancante")
+    _, started, host, kernel = lines[0].split(" | ", 3)
+    versions = {}
+    counts = {channel: Counter() for channel in CHANNELS}
+    latencies = {channel: [] for channel in CHANNELS}
+    gui_timeouts = 0
+    gui_log_read = False
+    gui_log_incomplete = False
+    in_bridge_console = False
+    max_bridge_clients = None
+    finished = None
+    for line in lines[1:]:
+        if line.startswith("===== Riepilogo | "):
+            finished = line.removeprefix("===== Riepilogo | ").removesuffix(" =====")
+        if line.startswith("--- ") and line.endswith(" ---"):
+            log_path = Path(line[4:-4])
+            in_bridge_console = log_path.name == "console.log" and "_rosbridge_" in log_path.parent.name
+            continue
+        if in_bridge_console:
+            if line.startswith(("Estratto limitato", "[Errno ")):
+                gui_log_incomplete = True
+            elif line:
+                gui_log_read = True
+                gui_timeouts += bool(GUI_TIMEOUT.search(line))
+                client_event = BRIDGE_CLIENTS.search(line)
+                if client_event:
+                    max_bridge_clients = max(max_bridge_clients or 0, int(client_event[1]))
+            continue
+        fields = line.split("\t", 5)
+        if len(fields) == 2 and fields[0] in PACKAGES:
+            versions[fields[0]] = fields[1]
+        if len(fields) == 6 and fields[1] in CHANNELS:
+            _, channel, _, status, milliseconds, _ = fields
+            counts[channel][status] += 1
+            if status == "OK":
+                latencies[channel].append(float(milliseconds))
+    if finished is None:
+        raise ValueError(f"{path}: riepilogo mancante, acquisizione incompleta")
+    elapsed = (datetime.fromisoformat(finished) - datetime.fromisoformat(started)).total_seconds()
+    return {
+        "host": host, "kernel": kernel, "elapsed": elapsed, "versions": versions,
+        "counts": counts, "latencies": latencies, "gui_timeouts": gui_timeouts,
+        "gui_log_read": gui_log_read, "gui_log_incomplete": gui_log_incomplete,
+        "max_bridge_clients": max_bridge_clients,
+    }
+
+
+def print_comparison(before_path, after_path):
+    before, after = (read_comparison_report(path) for path in (before_path, after_path))
+    for path, data in ((before_path, before), (after_path, after)):
+        print(f"\n{path.name} | {data['host']} | kernel {data['kernel']} | {data['elapsed']:.0f} s")
+        for package in PACKAGES:
+            print(f"  {package}: {data['versions'].get(package, 'versione assente')}")
+        if data["gui_log_read"]:
+            prefix = "almeno " if data["gui_log_incomplete"] else ""
+            print(f"  Timeout GUI di list_controllers: {prefix}{data['gui_timeouts']}")
+        else:
+            print("  Timeout GUI di list_controllers: non misurabili, log rosbridge assente")
+        if data["max_bridge_clients"] is not None:
+            print(f"  Client WebSocket simultanei, massimo osservato: {data['max_bridge_clients']}")
+        for channel in CHANNELS:
+            counts = data["counts"][channel]
+            values = data["latencies"][channel]
+            counts_text = ", ".join(f"{status}={n}" for status, n in sorted(counts.items()))
+            print(f"  Sonda {channel}: {counts_text or 'nessuna misura'}")
+            if values:
+                p95 = quantiles(values, n=100, method="inclusive")[94] if len(values) > 1 else values[0]
+                print(f"    Latenza delle risposte: mediana {median(values):.2f} ms, p95 {p95:.2f} ms")
+    if all(d["gui_log_read"] and not d["gui_log_incomplete"] and d["elapsed"] > 0 for d in (before, after)):
+        before_rate, after_rate = (d["gui_timeouts"] * 60 / d["elapsed"] for d in (before, after))
+        print(f"\nTimeout GUI al minuto, prima → dopo: {before_rate:.2f} → {after_rate:.2f}")
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Diagnostica Fit4Med del servizio list_controllers")
+    parser = argparse.ArgumentParser(
+        prog="fit4med_debug_timeout.sh", description="Diagnostica Fit4Med del servizio list_controllers",
+    )
     parser.add_argument("--seconds", type=int, default=600, help="durata in secondi")
+    parser.add_argument("--compare", nargs=2, type=Path, metavar=("PRIMA", "DOPO"))
     args = parser.parse_args()
+    if args.compare:
+        try:
+            print_comparison(*args.compare)
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
+        return
     if args.seconds <= 0:
         parser.error("--seconds deve essere maggiore di zero")
 
@@ -241,10 +340,7 @@ def main():
         for key in ("ROS_DOMAIN_ID", "RMW_IMPLEMENTATION", "ROS_LOCALHOST_ONLY"):
             report.write(f"{key}={os.environ[key]}\n")
         report.write(f"Servizio {SERVICE} | {WS_URL} | durata {args.seconds}s | periodo {PERIOD}s\n")
-        report.write(run_read_command(
-            "dpkg-query", "-W", "ros-jazzy-controller-manager",
-            "ros-jazzy-rosbridge-server", "ros-jazzy-rosbridge-library", "ros-jazzy-rmw-fastrtps-cpp",
-        ) + "\n\n")
+        report.write(run_read_command("dpkg-query", "-W", *PACKAGES) + "\n\n")
         report.write("inizio\tcanale\tid\tesito\tms\tdettagli\n")
 
         def record(channel, request_id, when, begin, status, details):
