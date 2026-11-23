@@ -20,6 +20,10 @@ command_context = threading.local()
 # call fills them, repeated at most every CONTROLLER_SEED_RETRY_S.
 CONTROLLER_SEED_DELAY_S = 2.0
 CONTROLLER_SEED_RETRY_S = 5.0
+# Drive states come from /ethercat_checker/drive_states (10 Hz, only while
+# the EtherCAT loop is alive). Older than this, they are shown as unknown
+# ('n/a' + fault), as when the get_drive_states poll used to fail.
+DRIVE_STATES_STALE_S = 1.0
 
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
@@ -112,32 +116,6 @@ class RosilibpyServiceHandler(object):
                        self.namespace, elapsed, threading.current_thread().name,
                        result is not None)
 
-def call_in_parallel(calls, timeout: float) -> list:
-    """Issue [(handler, request), ...] together and wait for all of them.
-
-    A cycle costs the slowest call instead of the sum. A call that fails or
-    does not answer within `timeout` yields None (a late answer is dropped).
-    """
-    results = [None] * len(calls)
-    events = [threading.Event() for _ in calls]
-    for idx, (handler, req) in enumerate(calls):
-        def done(response, idx=idx):
-            results[idx] = response
-            events[idx].set()
-
-        def failed(error, idx=idx, namespace=handler.namespace):
-            logging.getLogger(__name__).warning("ROS service %s failed: %s", namespace, error)
-            events[idx].set()
-
-        handler.call_async(req, on_done_callback=done, on_error_callback=failed)
-
-    deadline = time.monotonic() + timeout
-    for idx, event in enumerate(events):
-        if not event.wait(max(0.0, deadline - time.monotonic())):
-            logging.getLogger(__name__).warning("ROS service %s: no answer within %.1fs",
-                                                calls[idx][0].namespace, timeout)
-    return list(results)
-
 class ConstRequestServiceHandler(RosilibpyServiceHandler):
     def __init__(self, ros_client: roslibpy.Ros, namespace: str, msg_type: str, req: dict = None): #type: ignore
         super().__init__(ros_client, namespace, msg_type)
@@ -199,9 +177,6 @@ class SyncRosManager:
     def __init__(self, expected_number_of_slaves: int, joint_names: List[str], ros_client: roslibpy.Ros):
         self._ros_period = 1
         self._controller_list_period = 50  # milliseconds
-        # Status poll timeout. Not lower: a missed drive-state answer shows the
-        # drives as 'n/a' + fault in the GUI until the next poll.
-        self._poll_timeout_s : float = 1.0
         self.trajectory_controller_name : str = 'joint_trajectory_controller'
         self.go_to_start_controller_name : str = 'go_to_start_controller'
         self.forward_command_controller_name : str = 'forward_velocity_controller'
@@ -264,6 +239,12 @@ class SyncRosManager:
         # One list_controllers call fills the cache if activity says nothing
         # (see _controller_states_snapshot).
         self._controller_seed_not_before : float = time.monotonic() + CONTROLLER_SEED_DELAY_S
+        # Arrival time of the last /ethercat_checker/drive_states message, None
+        # before the first one. coe_drive_states is replaced as a whole object
+        # (never edited field by field), so readers in other threads always see
+        # one consistent sample; this lock pairs it with its arrival time.
+        self._drive_states_monotonic : float = None #type: ignore
+        self._drive_states_lock = threading.Lock()
 
         self.movement_status : str = 'idle'
 
@@ -301,6 +282,15 @@ class SyncRosManager:
             queue_length=1)
         self.controller_activity_subscriber.subscribe(self._on_controller_manager_activity)
 
+        # Drive states, pushed at 10 Hz by ethercat_checker (replaces polling
+        # the get_drive_states service, for the same reason as above).
+        self.drive_states_subscriber : roslibpy.Topic = roslibpy.Topic(
+            self.ros_client,
+            '/ethercat_checker/drive_states',
+            'ethercat_controller_msgs/msg/Cia402DriveStates',
+            queue_length=1)
+        self.drive_states_subscriber.subscribe(self._on_drive_states)
+
         #  publishers        
         self.plc_command_publisher : roslibpy.Topic = roslibpy.Topic(
             self.ros_client,
@@ -314,6 +304,7 @@ class SyncRosManager:
         self.joint_subscriber.unsubscribe()
         self.movement_status_subscriber.unsubscribe()
         self.controller_activity_subscriber.unsubscribe()
+        self.drive_states_subscriber.unsubscribe()
 
         self.plc_command_publisher.unadvertise()
         
@@ -341,9 +332,6 @@ class SyncRosManager:
         self.enable_eth_error_check : RosilibpyServiceHandler = RosilibpyServiceHandler(self.ros_client, '/ethercat_checker/enable_error_checking',
                                                                                         'std_srvs/srv/SetBool')
 
-        self.get_drive_state_client : RosilibpyServiceHandler = RosilibpyServiceHandler(self.ros_client, '/ethercat_checker/get_drive_states',
-                                                                                        'ethercat_controller_msgs/srv/GetDriveStates')
-        
         self.get_slave_state_client : RosilibpyServiceHandler = RosilibpyServiceHandler(self.ros_client, '/ethercat_checker/get_slave_states',
                                                                                         'tecnobody_msgs/srv/GetSlaveStates')
         
@@ -407,7 +395,6 @@ class SyncRosManager:
         self.reset_fault_client = None #type: ignore
         self.mode_of_op_client = None #type: ignore
         self.enable_eth_error_check = None #type: ignore
-        self.get_drive_state_client = None #type: ignore
         self.get_slave_state_client = None #type: ignore
         self.perform_homing_client = None #type: ignore
         self.set_trajectory_client = None #type: ignore
@@ -528,16 +515,25 @@ class SyncRosManager:
                 "list_controllers (seed of the controller states) failed: %s", error))
         return None
 
+    def _on_drive_states(self, msg) -> None:
+        states = CoEDriveStates(len(self._joint_names))
+        states.from_dict(msg if isinstance(msg, Mapping) else None)
+        with self._drive_states_lock:
+            self.coe_drive_states = states
+            self._drive_states_monotonic = time.monotonic()
+
+    def _refresh_drive_states(self) -> None:
+        """Replace coe_drive_states with 'unknown' once the topic goes quiet."""
+        with self._drive_states_lock:
+            last = self._drive_states_monotonic
+            if last is None or time.monotonic() - last > DRIVE_STATES_STALE_S:
+                self.coe_drive_states = CoEDriveStates(len(self._joint_names))
+
     def update_controller_and_driver_states(self) -> None:
 
         if not self.destroy_clients_init:
 
-            msg_drive_states, = call_in_parallel(
-                [(self.get_drive_state_client, None)],
-                timeout=self._poll_timeout_s)
-            self.coe_drive_states.from_dict(msg_drive_states['states']\
-                                            if msg_drive_states is not None and 'states' in msg_drive_states \
-                                                else None) #type: ignore
+            self._refresh_drive_states()
 
             if len(self.coe_drive_states.dof_names) != len(self._joint_names):
                 print(f'Warning! Get an incomplete list of states (received the data for the axes: {self.coe_drive_states.dof_names}, expected: {self._joint_names}')
@@ -750,17 +746,6 @@ class SyncRosManager:
     #     except Exception as e:
     #         print(f'Get Op Mode service call failed with exception: {e}')
     #     return response
-
-    def get_drive_states(self) -> dict:
-        result : dict = None  # type: ignore
-        try:
-            result = self.get_drive_state_client.call()
-            if result is None:
-                print('Drive States Service call failed')
-
-        except Exception as e:
-            print(f'Drive States Service call failed with exception: {e}')
-        return result
 
     def get_slave_states(self) -> dict:
         result : dict = None  # type: ignore

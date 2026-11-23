@@ -63,6 +63,10 @@ DRIVE_STATES_TIMEOUT_S = 0.2
 # Period of check_states(): the brake closes between DRIVE_STATES_TIMEOUT_S
 # and DRIVE_STATES_TIMEOUT_S + CHECK_STATES_PERIOD_S after the last message.
 CHECK_STATES_PERIOD_S = 0.02
+# /ethercat_checker/drive_states for the GUI: one check_states() run in this
+# many (50 Hz / 5 = 10 Hz), and only while the drive states are fresh, so a
+# lost EtherCAT loop shows as missing data instead of the last good sample.
+DRIVE_STATES_PUBLISH_EVERY = 5
 
 
 class DriverStates:
@@ -139,9 +143,18 @@ class EthercatCheckerNode(Node):
 	    # Publisher for PLC commands (brake control, etc.)
         qos = rclpy.qos.QoSProfile(depth=10, reliability=rclpy.qos.ReliabilityPolicy.RELIABLE)  # Adjust as necessary
         self.plc_command_publisher = self.create_publisher(
-            PlcController, 
-            '/PLC_controller/plc_commands', 
+            PlcController,
+            '/PLC_controller/plc_commands',
             qos
+        )
+
+        # Drive states for the GUI (through rosbridge), published by
+        # check_states(): replaces polling get_drive_states, since rosbridge
+        # creates and destroys a DDS client for every service call.
+        self.drive_states_publisher = self.create_publisher(
+            Cia402DriveStates,
+            '/ethercat_checker/drive_states',
+            rclpy.qos.QoSProfile(depth=1, reliability=rclpy.qos.ReliabilityPolicy.RELIABLE)
         )
 
         # Service Servers
@@ -218,8 +231,12 @@ class EthercatCheckerNode(Node):
         self.error_auto_reset_enabled = False
         self.dof_names = ['joint_x', 'joint_y', 'joint_z']
 
-        # Current drive feedback container
+        # Current drive feedback container. drive_states_callback() writes it
+        # and _drive_states_msg() reads it from different callback groups of a
+        # multi-threaded executor: the lock keeps each sample consistent.
         self.feedback : DriverStates = DriverStates(self.dof_names)
+        self._feedback_lock = threading.Lock()
+        self._check_states_count = 0
 
         # Brake supervision (see module docstring). The lock serialises
         # start/stop_motors, the drive-state callback, the watchdog and exit.
@@ -264,16 +281,17 @@ class EthercatCheckerNode(Node):
                                      modes, and status words for all DOFs
         """
         self._last_drive_states_monotonic = time.monotonic()
-        for dof in self.dof_names:
-            try:
-                index = msg.dof_names.index(dof) #type: ignore
-                self.feedback.states[dof] = msg.drive_states[index] #type: ignore
-                self.feedback.mode_of_operations[dof] = msg.modes_of_operation[index] #type: ignore
-                self.feedback.status_words[dof] = msg.status_words[index] #type: ignore
-                self.feedback.fault_present = msg.fault_present
-                self.feedback.drives_on = msg.drives_on
-            except ValueError:
-                self.get_logger().error(f'DoF {dof} not found in received message')
+        with self._feedback_lock:
+            for dof in self.dof_names:
+                try:
+                    index = msg.dof_names.index(dof) #type: ignore
+                    self.feedback.states[dof] = msg.drive_states[index] #type: ignore
+                    self.feedback.mode_of_operations[dof] = msg.modes_of_operation[index] #type: ignore
+                    self.feedback.status_words[dof] = msg.status_words[index] #type: ignore
+                    self.feedback.fault_present = msg.fault_present
+                    self.feedback.drives_on = msg.drives_on
+                except ValueError:
+                    self.get_logger().error(f'DoF {dof} not found in received message')
 
         if self._brake_released and (msg.fault_present or not msg.drives_on):
             self._close_brake(
@@ -298,14 +316,21 @@ class EthercatCheckerNode(Node):
             GetDriveStates.Response: Response containing current drive states
         """
         response = GetDriveStates.Response()
-        response.states : Cia402DriveStates = Cia402DriveStates() #type: ignore
-        response.states.dof_names = self.dof_names
-        response.states.drive_states = [state for state in self.feedback.states.values()]
-        response.states.modes_of_operation = [mode for mode in self.feedback.mode_of_operations.values()]
-        response.states.status_words = [status_word for status_word in self.feedback.status_words.values()]
-        response.states.fault_present = self.feedback.fault_present
-        response.states.drives_on = self.feedback.drives_on
+        response.states = self._drive_states_msg()
         return response
+
+    def _drive_states_msg(self) -> Cia402DriveStates:
+        """Snapshot of the current drive feedback (service and topic)."""
+        msg = Cia402DriveStates()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.dof_names = list(self.dof_names)
+        with self._feedback_lock:
+            msg.drive_states = [self.feedback.states[dof] for dof in self.dof_names]
+            msg.modes_of_operation = [self.feedback.mode_of_operations[dof] for dof in self.dof_names]
+            msg.status_words = [self.feedback.status_words[dof] for dof in self.dof_names]
+            msg.fault_present = self.feedback.fault_present
+            msg.drives_on = self.feedback.drives_on
+        return msg
     
     def start_motors_callback(self, request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
         """
@@ -532,6 +557,14 @@ class EthercatCheckerNode(Node):
         )
 
         last = self._last_drive_states_monotonic
+        self._check_states_count += 1
+        if (
+            self._check_states_count % DRIVE_STATES_PUBLISH_EVERY == 0
+            and last is not None
+            and now - last <= DRIVE_STATES_TIMEOUT_S
+        ):
+            self.drive_states_publisher.publish(self._drive_states_msg())
+
         if (
             self._brake_released
             and not node_stalled
