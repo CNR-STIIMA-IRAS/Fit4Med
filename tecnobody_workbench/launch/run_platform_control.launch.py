@@ -8,7 +8,7 @@ from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration
-from launch.event_handlers import OnProcessExit, OnShutdown
+from launch.event_handlers import OnProcessExit
 from launch.actions import RegisterEventHandler, LogInfo, OpaqueFunction, DeclareLaunchArgument, GroupAction, IncludeLaunchDescription, EmitEvent
 from launch.events import Shutdown
 from launch.launch_description_sources import AnyLaunchDescriptionSource
@@ -40,73 +40,6 @@ def set_node_names(context, *args, **kwargs):
         node.get_logger().info(f"Setting launch status {args}")
         node.set_ready(args)
     return []
-
-def clean_shutdown():
-    joint_state_broadcaster_unspawner = Node(
-        package='controller_manager',
-        executable='unspawner',
-        arguments=['joint_state_broadcaster'],
-        output='screen',
-    )
-    state_controller_unspawner = Node(
-        package='controller_manager',
-        executable='unspawner',
-        arguments=['state_controller'],
-        output='screen',
-    )
-    force_torque_sensor_broadcaster_unspawner = Node(
-        package='controller_manager',
-        executable='unspawner',
-        arguments=[
-            "ft_sensor_command_broadcaster"
-        ],
-        output='screen',
-    )
-    joint_controller_unspawner = Node(
-        package='controller_manager',
-        executable='unspawner',
-        arguments=[
-            "joint_trajectory_controller"
-            # 'scaled_joint_trajectory_controller'
-        ],
-        output='screen',
-    )
-    forward_pos_controller_unspawner = Node(
-        package='controller_manager',
-        executable='unspawner',
-        arguments=[
-            "forward_position_controller"
-        ],
-        output='screen',
-    )
-    forward_vel_controller_unspawner = Node(
-        package='controller_manager',
-        executable='unspawner',
-        arguments=[
-            "forward_velocity_controller"
-        ],
-        output='screen',
-    )
-    admittance_controller_unspawner = Node(
-        package='controller_manager',
-        executable='unspawner',
-        arguments=[
-            "admittance_controller"
-        ],
-        output='screen',
-    )
-
-
-    return LaunchDescription([
-        joint_state_broadcaster_unspawner,
-        state_controller_unspawner,
-        force_torque_sensor_broadcaster_unspawner,
-        forward_pos_controller_unspawner,
-        forward_vel_controller_unspawner,
-        admittance_controller_unspawner,
-        joint_controller_unspawner,
-    ])
-
 
 def generate_launch_description():
     ros2_controllers = 'safemod_controllers.yaml'
@@ -388,12 +321,12 @@ def generate_launch_description():
         )
     )
     
-    controller_unspawner = RegisterEventHandler(
-        event_handler=OnShutdown(
-            on_shutdown=[LogInfo(msg=['Launch was asked to shutdown. Unspawning controllers...']),
-                clean_shutdown()] # type: ignore
-        )
-    )
+    # No unspawners on shutdown: launch never starts a process requested while
+    # it is shutting down (ExecuteLocal returns early on context.is_shutdown),
+    # so they never ran; and the second Shutdown (from the handler below)
+    # re-executed the same Node actions -> "executed more than once" and exit
+    # code 1. ros2_control_node deactivates and shuts down all controllers
+    # itself when it receives SIGINT.
 
     # If ros2_control_node dies (crash, kill) the drives lose the EtherCAT
     # loop and torque, while the launch would keep running: plc_manager only
@@ -418,7 +351,6 @@ def generate_launch_description():
     ld.add_action(rsp)
     ld.add_action(homing_launcher)
     ld.add_action(controllers_launcher)
-    ld.add_action(controller_unspawner)
     ld.add_action(shutdown_on_control_node_exit)
     ld.add_action(controllers_launcher_no_homing)
     ld.add_action(fct_manager_launcher)
