@@ -9,10 +9,9 @@ from launch_ros.substitutions import FindPackageShare
 from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch.event_handlers import OnProcessExit
-from launch.actions import RegisterEventHandler, LogInfo, OpaqueFunction, DeclareLaunchArgument, GroupAction, IncludeLaunchDescription, EmitEvent
+from launch.actions import RegisterEventHandler, LogInfo, DeclareLaunchArgument, GroupAction, IncludeLaunchDescription, EmitEvent
 from launch.events import Shutdown
 from launch.launch_description_sources import AnyLaunchDescriptionSource
-import threading
 
 import os
 import sys
@@ -39,29 +38,6 @@ def _housekeeping_prefix():
 
 HOUSEKEEPING_PREFIX = _housekeeping_prefix()
 
-# Funzione per lanciare il nodo che pubblica il flag
-def launch_status_node(context, *args, **kwargs):
-    import rclpy
-    from tecnobody_workbench_utils.launch_status_publisher import LaunchStatusPublisher
-
-    def run():
-        rclpy.init()
-        node = LaunchStatusPublisher()
-        context._launch_status_node = node
-        rclpy.spin(node)
-        node.destroy_node()
-        rclpy.shutdown()
-
-    thread = threading.Thread(target=run, daemon=True)
-    thread.start()
-    
-# Funzione per cambiare lo stato a True
-def set_node_names(context, *args, **kwargs):
-    node = getattr(context, "_launch_status_node", None)
-    if node:
-        node.get_logger().info(f"Setting launch status {args}")
-        node.set_ready(args)
-    return []
 
 def generate_launch_description():
     ros2_controllers = 'safemod_controllers.yaml'
@@ -79,7 +55,6 @@ def generate_launch_description():
     )
 
     
-    nodes_names = []
 
     robot_description_content = Command(
         [
@@ -107,15 +82,6 @@ def generate_launch_description():
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'ros2_control_node_%p_%t.log'}
     )
 
-    jsb = Node(
-        package='controller_manager',
-        executable='spawner',
-        prefix=HOUSEKEEPING_PREFIX,
-        arguments=['joint_state_broadcaster'],
-        output='screen',
-        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'joint_state_broadcaster_%p_%t.log'}
-    )
-    
     rsp = Node(
         package='robot_state_publisher',
         executable='robot_state_publisher',
@@ -135,13 +101,21 @@ def generate_launch_description():
 
     )
 
-    fsb = Node(
+    # Controllers are spawned by a few spawners with several controllers each
+    # (loaded and activated in the given order, the spawner stops at the first
+    # failure) instead of one spawner process per controller:
+    #   state_controller (alone: the homing waits for it)
+    #   -> broadcasters_spawner              (active)
+    #   -> active_controllers_spawner        (active; after the homing if any)
+    #      -> inactive_controllers_spawner   (--inactive)
+    # plc_manager needs all of them anyway (platform readiness monitor).
+    broadcasters_spawner = Node(
         package='controller_manager',
         executable='spawner',
         prefix=HOUSEKEEPING_PREFIX,
-        arguments=['ft_sensor_command_broadcaster'],
+        arguments=['joint_state_broadcaster', 'ft_sensor_command_broadcaster'],
         output='screen',
-        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'ft_sensor_command_broadcaster_%p_%t.log'}
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'broadcasters_spawner_%p_%t.log'}
     )
 
     homing = Node(
@@ -178,74 +152,42 @@ def generate_launch_description():
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'ft_offset_updater_%p_%t.log'}
     )
 
-    go_to_start_controller_node = Node(
+    # remapping_controller first: joint_trajectory_controller commands through
+    # its reference interfaces (remapping_controller/joint_*), which exist only
+    # once it is active. forward_position_controller drives joint_yaw only.
+    active_controllers_spawner = Node(
         package='controller_manager',
         executable='spawner',
         prefix=HOUSEKEEPING_PREFIX,
         arguments=[
+            'remapping_controller',
+            'forward_position_controller',
+            'joint_trajectory_controller',
+        ],
+        output='screen',
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'active_controllers_spawner_%p_%t.log'}
+    )
+
+    # Started after active_controllers_spawner: go_to_start_controller also
+    # commands through remapping_controller.
+    inactive_controllers_spawner = Node(
+        package='controller_manager',
+        executable='spawner',
+        prefix=HOUSEKEEPING_PREFIX,
+        arguments=[
+            'forward_velocity_controller',
+            'admittance_controller',
             'go_to_start_controller',
-            '--inactive'
+            '--inactive',
         ],
         output='screen',
-        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'go_to_start_controller_%p_%t.log'}
-    )
-
-    joint_controller_node = Node(
-        package='controller_manager',
-        executable='spawner',
-        prefix=HOUSEKEEPING_PREFIX,
-        arguments=[
-            'joint_trajectory_controller'
-            #'scaled_trajectory_controller'
-        ],
-        output='screen',
-        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'joint_trajectory_controller_%p_%t.log'}   
-    )
-
-    remapping_controller_node = Node(
-        package='controller_manager',
-        executable='spawner',
-        prefix=HOUSEKEEPING_PREFIX,
-        arguments=[
-            'remapping_controller'
-        ],
-        output='screen',
-        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'remapping_controller_%p_%t.log'}
-    )
-
-    forward_controller_node = Node(
-        package='controller_manager',
-        executable='spawner',
-        prefix=HOUSEKEEPING_PREFIX,
-        arguments=['forward_velocity_controller', '--inactive'],
-        output='screen',
-        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'forward_velocity_controller_%p_%t.log'}
-    )
-
-    forward_pos_controller_node = Node(
-        package='controller_manager',
-        executable='spawner',
-        prefix=HOUSEKEEPING_PREFIX,
-        arguments=['forward_position_controller'],
-        output='screen',
-        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'forward_position_controller_%p_%t.log'}
-
-    )
-
-    admittance_controller_node = Node(
-        package='controller_manager',
-        executable='spawner',
-        prefix=HOUSEKEEPING_PREFIX,
-        arguments=['admittance_controller', '--inactive'],
-        output='screen',
-        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'admittance_controller_%p_%t.log'}
-
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'inactive_controllers_spawner_%p_%t.log'}
     )
 
     homing_launcher = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=ssb,
-            on_exit=[homing, jsb, fsb],
+            on_exit=[homing, broadcasters_spawner],
         )
     )
 
@@ -287,22 +229,16 @@ def generate_launch_description():
 
     group1 = GroupAction(
                 actions=[
-                    remapping_controller_node,
-                    forward_controller_node,
-                    forward_pos_controller_node,
-                    admittance_controller_node,
+                    active_controllers_spawner,
                     homing_done_publisher,
                     eth_checker
                 ],
                 condition=IfCondition(LaunchConfiguration('perform_homing'))
             )
-    
+
     group2 = GroupAction(
                 actions=[
-                    remapping_controller_node,
-                    forward_controller_node,
-                    forward_pos_controller_node,
-                    admittance_controller_node,
+                    active_controllers_spawner,
                     homing_done_publisher,
                     eth_checker
                 ],
@@ -323,23 +259,25 @@ def generate_launch_description():
         )
     )
 
+    # joint_trajectory_controller is active: the inactive controllers, and the
+    # nodes that use the trajectory controller (as before, after its spawner).
     joint_controller_launcher = RegisterEventHandler(
         event_handler=OnProcessExit(
-            target_action=remapping_controller_node,
-            on_exit=[joint_controller_node, go_to_start_controller_node],
+            target_action=active_controllers_spawner,
+            on_exit=[inactive_controllers_spawner],
         )
     )
 
     fct_manager_launcher = RegisterEventHandler(
         event_handler=OnProcessExit(
-            target_action=joint_controller_node,
+            target_action=active_controllers_spawner,
             on_exit=[fct_manager_node, filter_commands_node, bag_recorder_node],
         )
     )
 
     ft_offset_updater_launcher = RegisterEventHandler(
         event_handler=OnProcessExit(
-            target_action=fsb,
+            target_action=broadcasters_spawner,
             on_exit=[ft_offset_updater],
         )
     )
@@ -351,14 +289,6 @@ def generate_launch_description():
     #    AnyLaunchDescriptionSource(xml_launch)
     #)
 
-    node_names_launcher = RegisterEventHandler(
-        OnProcessExit(
-            target_action=joint_controller_node,
-            on_exit=[
-                OpaqueFunction(function=set_node_names, args=nodes_names),
-            ],
-        )
-    )
     
     # No unspawners on shutdown: launch never starts a process requested while
     # it is shutting down (ExecuteLocal returns early on context.is_shutdown),

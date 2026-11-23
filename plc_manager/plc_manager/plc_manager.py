@@ -111,7 +111,6 @@ class PLCControllerInterface(Node):
         self.state_values : list[int] = []
         self._plc_input_values_cached: tuple[tuple[str, int], ...] | None = None
         self.command_values : list[int] = []
-        self.launch_status : list[bool] = []
         self.sw_estop_cached : EStopState = EStopState.OK   # Cached E-stop value for transition detection
         self.estop_cached : EStopState = EStopState.EMERGENCY   # Cached E-stop value for transition detection
         self.last_estop_monotonic: float | None = None

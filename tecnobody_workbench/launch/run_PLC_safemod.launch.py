@@ -6,8 +6,7 @@ from launch.substitutions import Command, FindExecutable, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch.event_handlers import OnProcessExit
-from launch.actions import RegisterEventHandler, OpaqueFunction, SetEnvironmentVariable
-import threading
+from launch.actions import RegisterEventHandler, SetEnvironmentVariable
 
 import os
 import sys
@@ -36,35 +35,10 @@ def _housekeeping_prefix():
 HOUSEKEEPING_PREFIX = _housekeeping_prefix()
 
 
-# Funzione per lanciare il nodo che pubblica il flag
-def launch_status_node(context, *args, **kwargs):
-    import rclpy
-    from tecnobody_workbench_utils.launch_status_publisher import LaunchStatusPublisher
-
-    def run():
-        rclpy.init()
-        node = LaunchStatusPublisher()
-        context._launch_status_node = node
-        rclpy.spin(node)
-        node.destroy_node()
-        rclpy.shutdown()
-
-    thread = threading.Thread(target=run, daemon=True)
-    thread.start()
-    
-# Funzione per cambiare lo stato a True
-def set_node_names(context, *args, **kwargs):
-    node = getattr(context, "_launch_status_node", None)
-    if node:
-        node.get_logger().info(f"Setting launch status {args}")
-        node.set_ready(args)
-    return []
-
 def generate_launch_description():
     ros2_controllers = 'safemod_controllers.yaml'
     description_package = 'tecnobody_workbench'
     
-    nodes_names = []
 
     robot_description_content = Command(
         [
@@ -232,14 +206,6 @@ def generate_launch_description():
         )
     )
 
-    node_names_launcher = RegisterEventHandler(
-        OnProcessExit(
-            target_action=joint_controller_node,
-            on_exit=[
-                OpaqueFunction(function=set_node_names, args=nodes_names),
-            ],
-        )
-    )
     
     # No unspawners on shutdown: launch never starts a process requested while
     # it is shutting down (ExecuteLocal returns early on context.is_shutdown),

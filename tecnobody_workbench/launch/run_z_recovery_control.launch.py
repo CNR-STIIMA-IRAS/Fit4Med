@@ -95,24 +95,6 @@ def generate_launch_description():
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'state_controller_%p_%t.log'}
     )
 
-    jsb = Node(
-        package='controller_manager',
-        executable='spawner',
-        prefix=HOUSEKEEPING_PREFIX,
-        arguments=['joint_state_broadcaster'],
-        output='screen',
-        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'joint_state_broadcaster_%p_%t.log'}
-    )
-
-    fsb = Node(
-        package='controller_manager',
-        executable='spawner',
-        prefix=HOUSEKEEPING_PREFIX,
-        arguments=['ft_sensor_command_broadcaster'],
-        output='screen',
-        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'ft_sensor_command_broadcaster_%p_%t.log'}
-    )
-
     ft_offset_updater = Node(
         package='tecnobody_workbench_utils',
         executable='ft_offset_updater',
@@ -121,14 +103,21 @@ def generate_launch_description():
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'ft_offset_updater_%p_%t.log'}
     )
 
-    # Spawned ACTIVE (no --inactive): immediately available for Z+ jogging via filter_commands_node
-    forward_vel_controller_node = Node(
+    # One spawner for the controllers loaded after state_controller, all ACTIVE
+    # (loaded and activated in this order; it stops at the first failure,
+    # plc_manager needs all of them anyway). forward_velocity_controller first:
+    # it is what the Z+ jog of the recovery uses (via filter_commands_node).
+    recovery_controllers_spawner = Node(
         package='controller_manager',
         executable='spawner',
         prefix=HOUSEKEEPING_PREFIX,
-        arguments=['forward_velocity_controller'],
+        arguments=[
+            'forward_velocity_controller',
+            'joint_state_broadcaster',
+            'ft_sensor_command_broadcaster',
+        ],
         output='screen',
-        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'forward_velocity_controller_%p_%t.log'}
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'recovery_controllers_spawner_%p_%t.log'}
     )
 
     eth_checker = Node(
@@ -166,26 +155,20 @@ def generate_launch_description():
         condition=IfCondition(auto_recover),
     )
 
-    # After state_controller is spawned: bring up joint/ft broadcasters, vel controller, checker
+    # After state_controller is spawned: the other controllers and the checker
     after_ssb = RegisterEventHandler(
         event_handler=OnProcessExit(
             target_action=ssb,
-            on_exit=[jsb, fsb, forward_vel_controller_node, eth_checker],
+            on_exit=[recovery_controllers_spawner, eth_checker],
         )
     )
 
-    # After forward_velocity_controller is spawned: start filter_commands_node + auto recovery
-    after_forward_vel = RegisterEventHandler(
+    # After the controllers are spawned: filter_commands_node (GUI jog),
+    # auto recovery and the F/T offset updater (needs the F/T broadcaster)
+    after_controllers = RegisterEventHandler(
         event_handler=OnProcessExit(
-            target_action=forward_vel_controller_node,
-            on_exit=[filter_commands_node, auto_z_recovery_node],
-        )
-    )
-
-    after_fsb = RegisterEventHandler(
-        event_handler=OnProcessExit(
-            target_action=fsb,
-            on_exit=[ft_offset_updater],
+            target_action=recovery_controllers_spawner,
+            on_exit=[filter_commands_node, auto_z_recovery_node, ft_offset_updater],
         )
     )
 
@@ -223,8 +206,7 @@ def generate_launch_description():
     ld.add_action(ssb)
     ld.add_action(rsp)
     ld.add_action(after_ssb)
-    ld.add_action(after_forward_vel)
-    ld.add_action(after_fsb)
+    ld.add_action(after_controllers)
     ld.add_action(shutdown_on_control_node_exit)
     #ld.add_action(rosbridge_launch)
     return ld
