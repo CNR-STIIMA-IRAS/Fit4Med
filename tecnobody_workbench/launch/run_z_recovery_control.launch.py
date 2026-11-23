@@ -12,7 +12,7 @@ from launch import LaunchDescription
 from launch.substitutions import Command, FindExecutable, PathJoinSubstitution, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
-from launch.event_handlers import OnProcessExit, OnShutdown
+from launch.event_handlers import OnProcessExit
 from launch.actions import RegisterEventHandler, LogInfo, IncludeLaunchDescription, DeclareLaunchArgument, EmitEvent
 from launch.events import Shutdown
 from launch.conditions import IfCondition
@@ -157,26 +157,12 @@ def generate_launch_description():
         )
     )
 
-    # Clean shutdown: unspawn all spawned controllers
-    controller_unspawner = RegisterEventHandler(
-        event_handler=OnShutdown(
-            on_shutdown=[
-                LogInfo(msg=['Z-recovery launch shutting down — unspawning controllers...']),
-                Node(package='controller_manager', executable='unspawner',
-                     arguments=['joint_state_broadcaster'],
-                     output='screen'),
-                Node(package='controller_manager', executable='unspawner',
-                     arguments=['state_controller'],
-                     output='screen'),
-                Node(package='controller_manager', executable='unspawner',
-                     arguments=['ft_sensor_command_broadcaster'],
-                     output='screen'),
-                Node(package='controller_manager', executable='unspawner',
-                     arguments=['forward_velocity_controller'],
-                     output='screen'),
-            ]
-        )
-    )
+    # No unspawners on shutdown: launch never starts a process requested while
+    # it is shutting down (ExecuteLocal returns early on context.is_shutdown),
+    # so they never ran; and the second Shutdown (from the handler below)
+    # re-executed the same Node actions -> "executed more than once" and exit
+    # code 1. ros2_control_node deactivates and shuts down all controllers
+    # itself when it receives SIGINT.
 
     rosbridge_pkg = FindPackageShare('tecnobody_workbench').find('tecnobody_workbench')
     # xml_launch = os.path.join(rosbridge_pkg, 'launch', 'rosbridge_websocket_launch.xml')
@@ -207,7 +193,6 @@ def generate_launch_description():
     ld.add_action(after_ssb)
     ld.add_action(after_forward_vel)
     ld.add_action(after_fsb)
-    ld.add_action(controller_unspawner)
     ld.add_action(shutdown_on_control_node_exit)
     #ld.add_action(rosbridge_launch)
     return ld

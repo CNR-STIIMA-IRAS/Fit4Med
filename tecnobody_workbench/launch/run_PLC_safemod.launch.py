@@ -5,8 +5,8 @@ from launch import LaunchDescription
 from launch.substitutions import Command, FindExecutable, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
-from launch.event_handlers import OnProcessExit, OnShutdown
-from launch.actions import RegisterEventHandler, LogInfo, OpaqueFunction, SetEnvironmentVariable
+from launch.event_handlers import OnProcessExit
+from launch.actions import RegisterEventHandler, OpaqueFunction, SetEnvironmentVariable
 import threading
 
 import os
@@ -36,71 +36,6 @@ def set_node_names(context, *args, **kwargs):
         node.get_logger().info(f"Setting launch status {args}")
         node.set_ready(args)
     return []
-
-def clean_shutdown():
-    joint_state_broadcaster_unspawner = Node(
-        package='controller_manager',
-        executable='unspawner',
-        arguments=['joint_state_broadcaster'],
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
-    )
-    state_controller_unspawner = Node(
-        package='controller_manager',
-        executable='unspawner',
-        arguments=['state_controller'],
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
-    )
-    force_torque_sensor_broadcaster_unspawner = Node(
-        package='controller_manager',
-        executable='unspawner',
-        arguments=[
-            "ft_sensor_command_broadcaster"
-        ],
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
-    )
-    joint_controller_unspawner = Node(
-        package='controller_manager',
-        executable='unspawner',
-        arguments=[
-            #"joint_trajectory_controller"
-            'scaled_joint_trajectory_controller'
-        ],
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
-    )
-    forward_pos_controller_unspawner = Node(
-        package='controller_manager',
-        executable='unspawner',
-        arguments=[
-            "forward_position_controller"
-        ],
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}        
-    )
-    forward_vel_controller_unspawner = Node(
-        package='controller_manager',
-        executable='unspawner',
-        arguments=[
-            "forward_velocity_controller"
-        ],
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
-    )
-    admittance_controller_unspawner = Node(
-        package='controller_manager',
-        executable='unspawner',
-        arguments=[
-            "admittance_controller"
-        ],
-        additional_env={'RCUTILS_CONSOLE_OUTPUT_FORMAT': '[{severity}] [{time}] [{name}]: {message}'}
-    )
-    return LaunchDescription([
-        joint_state_broadcaster_unspawner,
-        state_controller_unspawner,
-        force_torque_sensor_broadcaster_unspawner,
-        joint_controller_unspawner,
-        forward_pos_controller_unspawner,
-        forward_vel_controller_unspawner,
-        admittance_controller_unspawner
-    ])
-
 
 def generate_launch_description():
     ros2_controllers = 'safemod_controllers.yaml'
@@ -270,12 +205,10 @@ def generate_launch_description():
         )
     )
     
-    controller_unspawner = RegisterEventHandler(
-        event_handler=OnShutdown(
-            on_shutdown=[LogInfo(msg=['Launch was asked to shutdown. Unspawning controllers...']),
-                clean_shutdown()] # type: ignore
-        )
-    )
+    # No unspawners on shutdown: launch never starts a process requested while
+    # it is shutting down (ExecuteLocal returns early on context.is_shutdown),
+    # so they never ran. ros2_control_node deactivates and shuts down all
+    # controllers itself when it receives SIGINT.
 
     ld = LaunchDescription()
     ld.add_action(
@@ -289,5 +222,4 @@ def generate_launch_description():
     ld.add_action(rsp)
     ld.add_action(homing_launcher)
     ld.add_action(controllers_launcher)
-    ld.add_action(controller_unspawner)
     return ld
