@@ -81,15 +81,16 @@ def test_brake_command_is_sent_a_few_times_not_flooded(checker):
     assert checker.plc_command_publisher.messages == [BRAKE_OPEN] * ec.BRAKE_COMMAND_REPEATS
 
 
-@pytest.mark.parametrize('states', [
-    drive_states(drives_on=False),
-    drive_states(drives_on=True, fault_present=True),
-], ids=['drives_off', 'fault'])
-def test_drives_losing_torque_close_the_released_brake(checker, states):
-    """Fault on any axis disables every drive: the brake must close."""
+@pytest.mark.parametrize('states, command', [
+    (drive_states(drives_on=False), BRAKE_CLOSED),
+    (drive_states(drives_on=True, fault_present=True), BRAKE_CLOSED_SW_ESTOP),
+    (drive_states(drives_on=False, fault_present=True), BRAKE_CLOSED_SW_ESTOP),
+], ids=['drives_off', 'fault', 'fault_drives_off'])
+def test_drives_losing_torque_close_the_released_brake(checker, states, command):
+    """Drives off: brake. Drive fault (e.g. AL030 crash protection): brake + SW ESTOP."""
     checker._release_brake()
     checker.drive_states_callback(states)
-    assert checker.plc_command_publisher.messages[-1] == BRAKE_CLOSED
+    assert checker.plc_command_publisher.messages[-1] == command
     assert not checker._brake_released
 
     count = len(checker.plc_command_publisher.messages)

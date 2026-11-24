@@ -18,9 +18,10 @@ The node performs the following operations:
 6. Brake supervision: the Z axis falls by gravity without torque, and the
    brake is a PLC output, not driven by the drives. After start_motors has
    released the brake, the node closes it as soon as the drives lose torque
-   without stop_motors (drive fault: the state controller then disables every
-   drive; drives no longer all enabled), when the drive states stop arriving
-   (ros2_control_node crashed or stalled), and when the node exits.
+   without stop_motors (drives no longer all enabled), when the drive states
+   stop arriving (ros2_control_node crashed or stalled), and when the node
+   exits. On a drive fault and on missing drive states it also raises the SW
+   ESTOP (latched by the PLC until the key).
 
 Typical usage:
     ros2 run tecnobody_workbench_utils ethercat_checker_nodes
@@ -293,7 +294,16 @@ class EthercatCheckerNode(Node):
                 except ValueError:
                     self.get_logger().error(f'DoF {dof} not found in received message')
 
-        if self._brake_released and (msg.fault_present or not msg.drives_on):
+        if self._brake_released and msg.fault_present:
+            # A drive fault in operation (crash protection AL030 on a person
+            # being dragged, overload, following error, lost EtherCAT data):
+            # brake and SW ESTOP in one PLC message, latched until the key,
+            # so the platform stops and restarts only under supervision.
+            self._close_brake_and_raise_sw_estop(
+                'drive fault without stop_motors '
+                f'(states={list(msg.drive_states)})'
+            )
+        elif self._brake_released and not msg.drives_on:
             self._close_brake(
                 'drives lost torque without stop_motors '
                 f'(fault_present={msg.fault_present}, states={list(msg.drive_states)})',
