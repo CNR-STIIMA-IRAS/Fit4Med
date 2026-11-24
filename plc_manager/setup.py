@@ -32,6 +32,7 @@ setup(
                 'ethercat_slaves_status_check_node = '
                 'plc_manager.ethercat_slaves_status_check_node:main'
             ),
+            'shutdown_guard = plc_manager.shutdown_guard:main',
         ],
     },
 )

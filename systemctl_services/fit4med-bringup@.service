@@ -5,7 +5,14 @@ Description=Fit4Med ROS bringup for GUI %I
 Type=simple
 WorkingDirectory=/home/fit4med/fit4med_ws
 ExecStart=/home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/fit4med_bringup_service.sh %I
-KillMode=control-group
+# mixed: `systemctl stop` sends SIGINT only to the main process (ros2 launch,
+# exec'd by the script), which stops its nodes in order: plc_manager raises
+# the SW ESTOP and stops the platform/rosbridge launches it started, then the
+# PLC ros2_control_node stops (shutdown_guard, run_sickPLC.launch.py).
+# control-group signalled every process at once: the PLC EtherCAT master
+# stopped before plc_manager could send the ESTOP (run 0092). Processes still
+# left when the timeout expires get SIGKILL.
+KillMode=mixed
 KillSignal=SIGINT
 # Room for the nodes to stop and for run_sickPLC.launch.py to archive the
 # logs of the run (journal + zip, see bash_scripts/fit4med_session_log.sh).

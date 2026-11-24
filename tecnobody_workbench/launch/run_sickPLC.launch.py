@@ -9,7 +9,7 @@ import subprocess
 from launch import LaunchDescription
 from launch.substitutions import PathJoinSubstitution, Command, FindExecutable, LaunchConfiguration
 from launch_ros.actions import Node
-from launch_ros.substitutions import FindPackageShare
+from launch_ros.substitutions import FindPackagePrefix, FindPackageShare
 from launch.actions import RegisterEventHandler, DeclareLaunchArgument, IncludeLaunchDescription, ExecuteProcess, EmitEvent, RegisterEventHandler, LogInfo, OpaqueFunction, SetEnvironmentVariable
 from launch.conditions import IfCondition, UnlessCondition
 from launch.event_handlers import OnProcessExit, OnShutdown
@@ -162,8 +162,20 @@ def generate_launch_description():
         remappings=[('robot_description', 'plc_robot_description')],
         arguments=[],
         parameters=[initial_joint_controllers],
-        # Line-buffered stdout for the EtherCAT driver printf (see run_platform_control).
-        prefix=['stdbuf -oL -eL'],
+        # shutdown_guard: on shutdown this node must outlive plc_manager, which
+        # raises the SW ESTOP through it and waits for the PLC to confirm. Got
+        # together with plc_manager (launch shutdown, Ctrl-C, systemd stop), the
+        # SIGINT stopped the EtherCAT master first and plc_manager's shutdown
+        # watchdog expired (run 0092). The guard forwards SIGINT only once
+        # plc_manager_node has exited (max 15 s); sigterm_timeout leaves it that
+        # time before launch escalates to SIGTERM.
+        # stdbuf: line-buffered stdout for the EtherCAT driver printf (see
+        # run_platform_control).
+        prefix=[
+            PathJoinSubstitution([FindPackagePrefix('plc_manager'), 'lib', 'plc_manager', 'shutdown_guard']),
+            ' --after plc_manager_node --max-wait 15 -- stdbuf -oL -eL',
+        ],
+        sigterm_timeout='20',
         output='screen',
     )
 
