@@ -327,6 +327,20 @@ def check_controller_manager_status(
         _destroy_client_if_possible(node, client)
 
 
+def _remove_pending_request_if_possible(client: Any, future: Any) -> None:
+    """Forget a request whose response will not be waited for any longer."""
+    if future is None:
+        return
+    try:
+        client.remove_pending_request(future)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        future.cancel()
+    except Exception:  # noqa: BLE001
+        pass
+
+
 class ControllerManagerStatusMonitor:
     def __init__(
         self,
@@ -336,6 +350,7 @@ class ControllerManagerStatusMonitor:
         inactive_controllers: Sequence[str] | None = None,
         request_period_sec: float = 0.2,
         stale_after_sec: float = 3.0,
+        request_timeout_sec: float = 1.0,
         callback_group: Any | None = None,
         logger: Logger | None = None,
     ) -> None:
@@ -349,6 +364,11 @@ class ControllerManagerStatusMonitor:
         self._inactive_controllers = _controller_name_list(inactive_controllers)
         self._request_period_sec = request_period_sec
         self._stale_after_sec = stale_after_sec
+        # A request whose response is lost (the service server can drop it,
+        # e.g. "failed to send response ... (timeout)" from a controller
+        # manager that has just started) would otherwise stay pending for
+        # ever: no new request, START waiting until its timeout (run 0097).
+        self._request_timeout_sec = request_timeout_sec
         self._logger = logger
         self._lock = threading.RLock()
         self._last_logged_message: str | None = None
@@ -387,10 +407,16 @@ class ControllerManagerStatusMonitor:
         with self._lock:
             self._collect_finished_request_locked()
 
-            if self._pending_future is not None:
-                return
-
             now = time.monotonic()
+            if self._pending_future is not None:
+                if (
+                    self._last_request_monotonic is not None
+                    and now - self._last_request_monotonic < self._request_timeout_sec
+                ):
+                    return
+                self._abandon_pending_request_locked()
+                force = True
+
             if (
                 not force
                 and self._last_request_monotonic is not None
@@ -428,6 +454,16 @@ class ControllerManagerStatusMonitor:
             self._last_response_monotonic = None
             self._last_logged_message = None
             self._last_result = self._error_result("controller status not checked yet")
+
+    def _abandon_pending_request_locked(self) -> None:
+        future = self._pending_future
+        self._pending_future = None
+        _remove_pending_request_if_possible(self._client, future)
+        if self._logger:
+            self._logger.warn(  # type: ignore
+                f"{self._controller_manager_name}/list_controllers: no response "
+                f"in {self._request_timeout_sec:.1f}s, sending the request again"
+            )
 
     def destroy(self) -> None:
         with self._lock:
@@ -508,6 +544,7 @@ class ModeOfOperationMonitor:
         switch_mode_service: str = "/state_controller/switch_mode_of_operation",
         switch_request_period_sec: float = 1.0,
         stale_after_sec: float = 3.0,
+        switch_response_timeout_sec: float = 1.0,
         callback_group: Any | None = None,
         logger: Logger | None = None,
     ) -> None:
@@ -522,6 +559,9 @@ class ModeOfOperationMonitor:
         self._switch_mode_service = switch_mode_service
         self._switch_request_period_sec = switch_request_period_sec
         self._stale_after_sec = stale_after_sec
+        # Same as ControllerManagerStatusMonitor: a lost response must not
+        # block the switch requests of that DOF for ever.
+        self._switch_response_timeout_sec = switch_response_timeout_sec
         self._logger = logger
         self._lock = threading.RLock()
         self._last_logged_message: str | None = None
@@ -629,10 +669,25 @@ class ModeOfOperationMonitor:
 
         now = time.monotonic()
         for dof_name in dofs_to_switch:
-            if dof_name in self._pending_switch_futures:
-                continue
-
             last_request = self._last_switch_request_monotonic.get(dof_name)
+            if dof_name in self._pending_switch_futures:
+                if (
+                    last_request is not None
+                    and now - last_request < self._switch_response_timeout_sec
+                ):
+                    continue
+                future = self._pending_switch_futures.pop(dof_name)
+                _remove_pending_request_if_possible(self._switch_client, future)
+                self._last_switch_errors[dof_name] = (
+                    f"no response in {self._switch_response_timeout_sec:.1f}s"
+                )
+                if self._logger:
+                    self._logger.warn(  # type: ignore
+                        f"Mode switch request for {dof_name}: no response in "
+                        f"{self._switch_response_timeout_sec:.1f}s, sending it again"
+                    )
+                last_request = None
+
             if (
                 last_request is not None
                 and now - last_request < self._switch_request_period_sec
