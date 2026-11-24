@@ -15,6 +15,17 @@ sdo:  # sdo data to be transferred at drive startup
   # controller (controlled deceleration) and the drive (AL009, torque off)
   # is only the backstop. 0.16 m * 41996193.96 count/m.
   - {index: 0x6065, sub_index: 0, type: uint32, value: 6719391}
+  # Motor crash protection (Delta P1-57 / P1-58, CoE 0x2139 / 0x213A, INTEGER16):
+  # torque above P1-57 % of the rated torque for longer than P1-58 ms -> AL030,
+  # the drive faults and ethercat_checker closes the brake and raises the SW
+  # ESTOP. Against dragging the person (the platform keeps pushing). Tune with
+  # the physiotherapist: see GUIDA_SOGLIA_COPPIA.md. 0 disables it: do not.
+  - {index: 0x2139, sub_index: 0, type: int16, value: 100}  # P1-57 threshold [% rated torque]
+  - {index: 0x213a, sub_index: 0, type: int16, value: 100}  # P1-58 time over threshold [ms]
+  # Max torque 0x6072 [per mille of rated]: caps the push during the P1-58
+  # time. Must stay ABOVE P1-57 (x10), or the torque never reaches the
+  # threshold and AL030 never trips (the axis would push at the cap).
+  - {index: 0x6072, sub_index: 0, type: uint16, value: 2000}
 rpdo:  # RxPDO = receive PDO Mapping
   - index: 0x1601
     channels:

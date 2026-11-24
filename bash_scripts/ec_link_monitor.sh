@@ -188,7 +188,8 @@ drives_lines() {
   done
 }
 
-# Drive settings that matter for tracking and braking, once at start.
+# Drive settings that matter for tracking and braking, once at start
+# (crash_P1-57/58: torque threshold and time of AL030; 0x6072: torque cap).
 drives_settings() {
   local idx p
   for idx in "${!DRIVES[@]}"; do
@@ -196,7 +197,10 @@ drives_settings() {
     echo "$(ts) settings slave $p (${DRIVE_NAMES[$idx]}):" \
       "following_error_window(0x6065)=$(sdo "$p" 0x6065 uint32)" \
       "regen_resistor_P1-52=$(sdo "$p" 0x2134 uint16)Ohm" \
-      "regen_resistor_P1-53=$(sdo "$p" 0x2135 uint16)W"
+      "regen_resistor_P1-53=$(sdo "$p" 0x2135 uint16)W" \
+      "crash_P1-57=$(sdo "$p" 0x2139 int16)%" \
+      "crash_P1-58=$(sdo "$p" 0x213a int16)ms" \
+      "max_torque(0x6072)=$(sdo "$p" 0x6072 uint16)permille"
   done
 }
 
