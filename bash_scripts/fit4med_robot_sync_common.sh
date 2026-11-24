@@ -175,6 +175,8 @@ fit4med_robot_sync_set_base_rsync_options() {
     -e "ssh $(printf "'%s' " "${FIT4MED_SSH_OPTS[@]}")"
     --exclude='.git/'
     --exclude='.github/'
+    # Local test/tool caches: never wanted on the robot (nor back).
+    --exclude='.pytest_cache/'
   )
 
   if [[ -n "$SELECTED_FOLDER" ]]; then
@@ -375,7 +377,7 @@ fit4med_robot_sync_maybe_backup() {
 
 # fit4med_robot_sync_confirm_changes <dest> <src>...
 fit4med_robot_sync_confirm_changes() {
-  local dest="$1" preview changes=() deletions=()
+  local dest="$1" preview changes=() deletions=() attr_only=0
   shift
   if ! preview="$(rsync "${RSYNC_OPTS[@]}" --dry-run --itemize-changes "$@" "$dest" 2>&1)"; then
     printf '%s\n' "$preview"
@@ -384,7 +386,10 @@ fit4med_robot_sync_confirm_changes() {
   fi
   mapfile -t deletions < <(printf '%s\n' "$preview" | sed -n 's/^\*deleting  *//p')
   mapfile -t changes < <(printf '%s\n' "$preview" | sed -n -E '/^[.<>ch*][fdLDS][^ ]{9} /p' \
-                         | sed '/^\.[fd]\.\.t\./d')
+                         | sed '/^\./d')
+  # Lines starting with '.' change only attributes (mtime, permissions), not
+  # contents: not worth listing one by one.
+  attr_only="$(printf '%s\n' "$preview" | grep -c -E '^\.[fdL][^ ]{9} ' || true)"
   if [[ ${#deletions[@]} -gt 0 ]]; then
     echo "[WARN] ${#deletions[@]} file(s)/folder(s) exist only on the robot and will be DELETED:"
     printf '         %s\n' "${deletions[@]:0:50}"
@@ -396,6 +401,9 @@ fit4med_robot_sync_confirm_changes() {
       exit 1
     fi
     return
+  fi
+  if [[ "$attr_only" -gt 0 ]]; then
+    echo "[INFO] ${attr_only} file(s)/folder(s) differ only in time/permissions (contents equal)"
   fi
   if [[ ${#changes[@]} -eq 0 || "$ASSUME_YES" == true ]]; then
     return

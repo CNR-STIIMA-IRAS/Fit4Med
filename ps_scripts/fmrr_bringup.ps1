@@ -52,7 +52,10 @@ function Wait-Fit4MedReady {
             $unitState = ssh -T "${remoteUser}@${remoteHost}" "systemctl --user is-active $Unit" 2>$null
             if ($unitState -eq "failed") {
                 Write-Error "Bringup FAILED: systemd unit '$Unit' is in 'failed' state. Recent log:"
-                ssh -T "${remoteUser}@${remoteHost}" "journalctl --user -u $Unit -n 20 --no-pager"
+                # Out-Host: otherwise the log lines become part of the return
+                # value -> (-not $result) is false, the caller skips its
+                # "press Enter" pause and the window closes without the log.
+                ssh -T "${remoteUser}@${remoteHost}" "journalctl --user -u $Unit -n 20 --no-pager" | Out-Host
                 return $false
             }
 
