@@ -9,6 +9,10 @@
             <plugin>ethercat_driver/EthercatDriver</plugin>
             <param name="master_id">1</param>
             <param name="control_frequency">250</param>
+            <!-- Cycles (4 ms each at 250 Hz) without a complete EtherCAT
+                 exchange before the drives are reported in FAULT and the
+                 brake closes. See GUIDA_CICLI_WC.md. 0 = never (unsafe). -->
+            <param name="max_incomplete_wc_cycles">5</param>
         </hardware>
 
          <joint name="joint_x">
