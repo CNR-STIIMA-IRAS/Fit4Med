@@ -1,7 +1,7 @@
 # Copyright 2026 CNR-STIIMA
 # SPDX-License-Identifier: Apache-2.0
 
-# Configuration file for Maxon EPOS3 drive
+# Configuration file for Delta ASDA-A2-E drive
 vendor_id: 0x000001dd
 product_id: 0x10305070
 assign_activate: 0x0300  # DC Synch register
@@ -9,6 +9,12 @@ auto_fault_reset: false  # true = automatic fault reset, false = fault reset on 
 
 sdo:  # sdo data to be transferred at drive startup
   - {index: 0x6098, sub_index: 0, type: int8, value: 35} # Set interpolation time for cyclic modes to 10 ms
+  # Following error window (0x6065, = Delta P2-35, position counts): 0.16 m,
+  # 1 cm above the joint_trajectory_controller trajectory tolerance (0.15 m,
+  # safemod_controllers.yaml), so that a lagging axis is stopped first by the
+  # controller (controlled deceleration) and the drive (AL009, torque off)
+  # is only the backstop. 0.16 m * 41996193.96 count/m.
+  - {index: 0x6065, sub_index: 0, type: uint32, value: 6719391}
 #  - {index: 0x60C2, sub_index: 2, type: int8, value: -3} # Set base 10-3s
 rpdo:  # RxPDO = receive PDO Mapping
   - index: 0x1601
