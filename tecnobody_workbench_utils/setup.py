@@ -37,6 +37,7 @@ setup(
             'sonar_teach_node = tecnobody_workbench_utils.sonar_teach:main',
             'bag_recorder_node = tecnobody_workbench_utils.bag_recorder_node:main',
             'auto_z_recovery_node = tecnobody_workbench_utils.auto_z_recovery_node:main',
+            'fault_snapshot_node = tecnobody_workbench_utils.fault_snapshot_node:main',
         ],
     },
 )

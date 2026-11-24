@@ -120,6 +120,16 @@ def generate_launch_description():
         additional_env={'RCUTILS_LOGGING_FILE_NAME': 'recovery_controllers_spawner_%p_%t.log'}
     )
 
+    # Ring buffer of /joint_states (incl. effort = drive torque): saved as
+    # fault_snapshot_*.csv in the folder of this start when a drive faults.
+    fault_snapshot_node = Node(
+        package='tecnobody_workbench_utils',
+        executable='fault_snapshot_node',
+        prefix=HOUSEKEEPING_PREFIX,
+        output='screen',
+        additional_env={'RCUTILS_LOGGING_FILE_NAME': 'fault_snapshot_%p_%t.log'}
+    )
+
     eth_checker = Node(
         package='tecnobody_workbench_utils',
         executable='ethercat_checker_node',
@@ -205,6 +215,7 @@ def generate_launch_description():
     ld.add_action(ros2_control_node)
     ld.add_action(ssb)
     ld.add_action(rsp)
+    ld.add_action(fault_snapshot_node)
     ld.add_action(after_ssb)
     ld.add_action(after_controllers)
     ld.add_action(shutdown_on_control_node_exit)
