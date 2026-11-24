@@ -53,6 +53,36 @@ giusta.
 
 ---
 
+## I dati per decidere: `torque_stats.txt`
+
+Nella cartella di ogni partenza (`starts\NNN_platform_…`) c'è il file
+`torque_stats.txt`: per **ogni movimento** (ogni ripetizione di un esercizio e
+ogni ritorno al punto di partenza), poi per **ogni esercizio** e per **tutta la
+partenza**, la forza usata da ciascun asse, **in % della forza nominale**: la
+stessa unità della soglia P1-57, quindi i numeri si confrontano direttamente.
+
+```
+repetition 2: 11:26:01-11:26:13 (12.0 s), SUCCEEDED
+  joint_y: max  48.0% (-48.0% at +7.2 s)  mean  12.1%  p99  35.0%  over 100%: 0 ms (longest 0 ms)
+== EXERCISE 1 (repetitions 1-3): 11:25:48-11:26:27 (39.0 s)
+```
+
+- **max**: la forza più alta (con segno, e dopo quanti secondi dall'inizio del
+  movimento);
+- **mean**: la forza media;
+- **p99**: la forza superata solo nell'1% del tempo (meno sensibile a un picco
+  isolato);
+- **over 100%**: per quanto tempo la forza è stata sopra la soglia attuale
+  (P1-57), in totale e nel tratto più lungo; se il tratto più lungo supera il
+  tempo P1-58, la protezione è scattata.
+
+Per scegliere la soglia con il fisioterapista: guarda il **max** degli esercizi
+normali, con persone diverse. La soglia deve stare **chiaramente sopra** quei
+valori (per esempio almeno 1,5–2 volte), e **sotto** la forza vista quando la
+persona è stata davvero trascinata.
+
+---
+
 ## Quando cambiarla
 
 Va decisa **con il fisioterapista**:

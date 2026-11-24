@@ -15,6 +15,14 @@ The CSV starts with '#' lines: fault time, drives in fault, the drive state
 changes in the window, and the peak |effort| per joint in the last 2 s before
 the fault. Then one row per /joint_states sample, t_rel_s relative to the
 fault.
+
+It also writes torque_stats.txt in the same folder: the torque of each axis
+per movement, in % of the rated torque (the unit of the crash protection
+threshold P1-57 in delta*.yaml), to tune that threshold. A movement is one
+goal of the trajectory controllers (from their action status topics): a
+repetition of an exercise or a return to start; consecutive repetitions are
+also summed up as one EXERCISE, and all the movements of the start as START
+TOTAL (at exit). See torque_stats.py.
 """
 
 import collections
@@ -24,18 +32,37 @@ import os
 import threading
 import time
 
+from action_msgs.msg import GoalStatus, GoalStatusArray
 from ethercat_controller_msgs.msg import Cia402DriveStates
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import JointState
 
 from tecnobody_workbench_utils.cpu_affinity import pin_to_housekeeping_cpus
+from tecnobody_workbench_utils.torque_stats import (
+    crash_threshold_pct, FILE_HEADER, MovementStats)
 
 FALLBACK_DIR = os.path.expanduser('~/.ros/fit4med_diagnostics')
 PEAK_WINDOW_S = 2.0
 # A fault that flaps must not fill the disk.
 MAX_SNAPSHOTS_PER_RUN = 20
+
+
+# Trajectory controllers whose goals are the movements of torque_stats.txt.
+MOVEMENT_CONTROLLERS = {
+    'joint_trajectory_controller': 'repetition',
+    'go_to_start_controller': 'return to start',
+}
+EXERCISE_CONTROLLER = 'joint_trajectory_controller'
+OPEN_STATUSES = (GoalStatus.STATUS_ACCEPTED, GoalStatus.STATUS_EXECUTING,
+                 GoalStatus.STATUS_CANCELING)
+STATUS_TEXT = {
+    GoalStatus.STATUS_SUCCEEDED: 'SUCCEEDED',
+    GoalStatus.STATUS_CANCELED: 'CANCELED',
+    GoalStatus.STATUS_ABORTED: 'ABORTED',
+}
 
 
 def _stamp_s(stamp) -> float:
@@ -68,6 +95,40 @@ class FaultSnapshotNode(Node):
         self._pending: dict | None = None
         self._written = 0
 
+        # Torque statistics per movement (torque_stats.txt).
+        # "over N%" uses the crash protection threshold P1-57 of the drives,
+        # read from the installed delta400x.yaml, so it follows any tuning;
+        # the parameter only if that cannot be read.
+        self.stats_threshold_pct = float(
+            self.declare_parameter('stats_threshold_pct', 100.0).value)
+        try:
+            from ament_index_python.packages import get_package_share_directory
+            drive_config = os.path.join(
+                get_package_share_directory('tecnobody_workbench'), 'config', 'delta400x.yaml')
+            threshold = crash_threshold_pct(drive_config)
+            if threshold:
+                self.stats_threshold_pct = threshold
+        except Exception:  # noqa: BLE001
+            pass
+        self.exercise_gap_s = float(self.declare_parameter('exercise_gap_s', 10.0).value)
+        self._open_movements: dict[bytes, tuple[str, MovementStats]] = {}
+        self._seen_goals: set[bytes] = set()
+        self._exercise: MovementStats | None = None
+        self._exercise_count = 0
+        self._exercise_first = 0
+        self._repetitions = 0
+        self._last_repetition_end: float | None = None
+        self._total: MovementStats | None = None
+        self._stats_path = os.path.join(self.out_dir, 'torque_stats.txt')
+        status_qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE,
+                                durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        for controller in MOVEMENT_CONTROLLERS:
+            self.create_subscription(
+                GoalStatusArray,
+                f'/{controller}/follow_joint_trajectory/_action/status',
+                lambda msg, c=controller: self._on_goal_status(c, msg),
+                status_qos)
+
         self.create_subscription(JointState, '/joint_states', self._on_joint_states, 10)
         self.create_subscription(
             Cia402DriveStates, '/ethercat_checker/drive_states', self._on_drive_states, 10)
@@ -87,11 +148,92 @@ class FaultSnapshotNode(Node):
 
         sample = (t, list(msg.name), padded(msg.position), padded(msg.velocity),
                   padded(msg.effort))
+        for _controller, movement in self._open_movements.values():
+            movement.add_sample(t, sample[1], sample[4], self.stats_threshold_pct)
         keep_s = self.pre_fault_s + self.post_fault_s + 1.0
         with self._lock:
             self._samples.append(sample)
             while self._samples and self._samples[0][0] < t - keep_s:
                 self._samples.popleft()
+
+    def _on_goal_status(self, controller: str, msg: GoalStatusArray) -> None:
+        now = time.time()
+        for status in msg.status_list:
+            goal_id = bytes(status.goal_info.goal_id.uuid)
+            if status.status in OPEN_STATUSES:
+                if goal_id not in self._seen_goals:
+                    self._seen_goals.add(goal_id)
+                    self._start_movement(controller, goal_id, now)
+            elif goal_id in self._open_movements:
+                self._end_movement(
+                    goal_id, now, STATUS_TEXT.get(status.status, f'status {status.status}'))
+            else:
+                # Finished before this node saw it running (e.g. started late).
+                self._seen_goals.add(goal_id)
+
+    def _start_movement(self, controller: str, goal_id: bytes, now: float) -> None:
+        if controller == EXERCISE_CONTROLLER:
+            if (self._exercise is not None and self._last_repetition_end is not None
+                    and now - self._last_repetition_end > self.exercise_gap_s):
+                self._close_exercise()
+            self._repetitions += 1
+            label = f'repetition {self._repetitions}'
+        else:
+            self._close_exercise()
+            label = MOVEMENT_CONTROLLERS[controller]
+        self._open_movements[goal_id] = (controller, MovementStats(label, now))
+
+    def _end_movement(self, goal_id: bytes, now: float, result: str) -> None:
+        controller, movement = self._open_movements.pop(goal_id)
+        movement.end_t = max(movement.end_t, now)
+        movement.result = result
+        self._write_stats(movement)
+        if self._total is None:
+            self._total = MovementStats('START TOTAL', movement.start_t)
+        self._total.merge(movement)
+        if controller == EXERCISE_CONTROLLER:
+            if self._exercise is None:
+                self._exercise_count += 1
+                self._exercise = MovementStats(
+                    f'== EXERCISE {self._exercise_count}', movement.start_t)
+                self._exercise_first = self._repetitions
+            self._exercise.merge(movement)
+            self._last_repetition_end = movement.end_t
+
+    def _close_exercise(self) -> None:
+        if self._exercise is None:
+            self._repetitions = 0
+            return
+        first, last = self._exercise_first, self._repetitions
+        self._exercise.label += (
+            f' (repetition {first})' if first == last else f' (repetitions {first}-{last})')
+        self._write_stats(self._exercise)
+        self._exercise = None
+        self._repetitions = 0
+        self._last_repetition_end = None
+
+    def _write_stats(self, movement: MovementStats) -> None:
+        text = movement.report(self.stats_threshold_pct)
+        self.get_logger().info('Torque ' + text.replace('\n', ' |'))
+        try:
+            os.makedirs(self.out_dir, exist_ok=True)
+            new = not os.path.exists(self._stats_path)
+            with open(self._stats_path, 'a', encoding='utf-8') as out:
+                if new:
+                    out.write(FILE_HEADER)
+                out.write(text + '\n')
+        except OSError as exc:
+            self.get_logger().error(f'Torque stats not saved: {exc}')
+
+    def flush_stats(self) -> None:
+        """At exit: close the open movements, the exercise and the total."""
+        now = time.time()
+        for goal_id in list(self._open_movements):
+            self._end_movement(goal_id, now, 'still running at exit')
+        self._close_exercise()
+        if self._total is not None:
+            self._write_stats(self._total)
+            self._total = None
 
     def _on_drive_states(self, msg: Cia402DriveStates) -> None:
         t = _stamp_s(msg.header.stamp) or time.time()
@@ -207,6 +349,10 @@ def main(args=None):
             node.flush()
         except Exception as exc:  # noqa: BLE001
             print(f'[fault_snapshot_node] snapshot not saved at exit: {exc}', flush=True)
+        try:
+            node.flush_stats()
+        except Exception as exc:  # noqa: BLE001
+            print(f'[fault_snapshot_node] torque stats not saved at exit: {exc}', flush=True)
         node.destroy_node()
         rclpy.try_shutdown()
 
