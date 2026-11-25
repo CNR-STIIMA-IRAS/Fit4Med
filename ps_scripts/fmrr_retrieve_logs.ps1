@@ -7,7 +7,8 @@
 
 .DESCRIPTION
     Crea uno ZIP fit4med_logs_YYYYMMDD-HHMMSS-fff.zip per ogni recupero, in
-    Desktop\fit4med_logs sotto il profilo dell'utente Windows.
+    Desktop\fit4med_logs sotto il profilo dell'utente Windows. Copia lo stesso
+    ZIP in ~/.ros/fit4med_log sul PC del robot.
     Dentro lo ZIP, robot contiene gli archivi originali del robot e gui
     contiene i log correnti e i backup ruotati della GUI. Il file clocks.txt
     alla radice riporta l'ora di entrambi i sistemi al momento del recupero.
@@ -71,6 +72,7 @@ $remoteUser = "fit4med"
 $remoteHost = "192.168.1.1"
 $robot = "${remoteUser}@${remoteHost}"
 $robotScript = "/home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/fit4med_session_log.sh"
+$robotLogDir = ".ros/fit4med_log"
 $localDestination = Join-Path $env:USERPROFILE "Desktop\fit4med_logs"
 
 # Entrambi i comandi remoti, snapshot e list, restituiscono una riga per ZIP
@@ -225,6 +227,29 @@ try {
     $zipPath = Join-Path $localDestination ("fit4med_logs_{0}.zip" -f (Get-Date -Format "yyyyMMdd-HHmmss-fff"))
     [System.IO.File]::Move($temporaryZip, $zipPath)
     Write-Output "Log archive: $zipPath"
+
+    # Pubblica la copia sul robot solo dopo che SCP ha terminato il trasferimento.
+    $robotZip = "$robotLogDir/$(Split-Path -Leaf $zipPath)"
+    $robotTemporaryZip = "$robotLogDir/$(Split-Path -Leaf $workDirectory).tmp"
+    ssh -T $robot "mkdir -p -- '$robotLogDir'"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Could not create the robot log directory ~/$robotLogDir (SSH exit code $LASTEXITCODE)."
+    }
+    else {
+        try {
+            scp -q "$zipPath" "${robot}:$robotTemporaryZip"
+            if ($LASTEXITCODE -ne 0) { throw "SCP exit code $LASTEXITCODE" }
+
+            ssh -T $robot "mv -nT -- '$robotTemporaryZip' '$robotZip' && test ! -e '$robotTemporaryZip'"
+            if ($LASTEXITCODE -ne 0) { throw "Could not publish ~/$robotZip (SSH exit code $LASTEXITCODE)" }
+
+            Write-Output "Log archive on the robot: ~/$robotZip"
+        }
+        catch {
+            Write-Warning "Could not copy the log archive to the robot: $_"
+            ssh -T $robot "rm -f -- '$robotTemporaryZip'"
+        }
+    }
 }
 finally {
     # Il percorso deve essere uno ZIP direttamente sotto una cartella

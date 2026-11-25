@@ -269,9 +269,10 @@ To copy the archives to the GUI PC:
 ```
 
 Each retrieval creates one timestamped `fit4med_logs_YYYYMMDD-HHMMSS-fff.zip`
-in `Desktop\fit4med_logs`. Open it to find the original run archives under
-`robot/`, the current and rotated GUI logs under `gui/`, and `clocks.txt`
-with the robot and PC clock readings. The script reuses completed run archives
+in `Desktop\fit4med_logs` and copies it to `~/.ros/fit4med_log` on the robot PC.
+It contains the original run archives under `robot/`, the current and rotated
+GUI logs under `gui/`, and `clocks.txt` with the robot and PC clock readings.
+The script reuses completed run archives
 available on the PC and lists the included runs with their start times and end
 reasons. An active bring-up appears as `run_NNNN_..._partial.zip` with the logs
 available at retrieval time. After a restart, the run immediately before the
