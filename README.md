@@ -268,14 +268,14 @@ To copy the archives to the GUI PC:
 .\ps_scripts\fmrr_retrieve_logs.ps1 -All        # all of them
 ```
 
-The archives land in `Desktop\fit4med_logs\`; those already there are not
-copied again. The script lists what it copied, with start time and how each
-bring-up ended. The last archive is often not the one with the problem: after a
-failure the platform is usually restarted, so look at the one before. A
-bring-up still running is copied as `run_NNNN_..._partial.zip` (its logs and
-journals up to now), replaced by the full archive at a later retrieve. Also
-copied: the robot and PC clocks (`clocks.txt`) and the GUI logs (`gui\`). The
-EtherCAT part of the journals needs the one-time step in
+Each retrieval creates one timestamped `fit4med_logs_YYYYMMDD-HHMMSS-fff.zip`
+in `Desktop\fit4med_logs`. Open it to find the original run archives under
+`robot/`, the current and rotated GUI logs under `gui/`, and `clocks.txt`
+with the robot and PC clock readings. The script reuses completed run archives
+available on the PC and lists the included runs with their start times and end
+reasons. An active bring-up appears as `run_NNNN_..._partial.zip` with the logs
+available at retrieval time. After a restart, the run immediately before the
+latest one may contain the incident. The EtherCAT journals require the setup in
 [One-time setup on the robot PC](#one-time-setup-on-the-robot-pc-linux-19216811).
 
 Nothing deletes the archives on the robot. To empty the log folders, see

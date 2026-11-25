@@ -67,6 +67,10 @@ source /home/fit4med/fit4med_ws/install/setup.bash
 
 set -Eeuo pipefail
 
+# Another bring-up running (e.g. a launch from a terminal): fail here, before
+# log.sh archives and deletes its logs. The launch takes the lock itself too.
+python3 -m plc_manager.bringup_lock
+
 /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/log.sh || true
 
 exec ros2 launch tecnobody_workbench run_sickPLC.launch.py gui_ip:="${GUI_IP}" eeg_delay_ms:="${EEG_DELAY_MS}"

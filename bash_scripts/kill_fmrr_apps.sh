@@ -135,12 +135,44 @@ reap_zombie_parents_with_match()
   done <<< "$zombie_ppids"
 }
 
+# This script and the shells above it, up to init: started as
+# /home/fit4med/fit4med_ws/.../kill_fmrr_apps.sh, often from
+# bash -lc '... fit4med_ws ...', so the "fit4med_ws" match found them too. The
+# script sent SIGINT to itself and stopped there: no SIGTERM/SIGKILL for that
+# match, no "ros"/"jazzy" match, no lock removal, no `ros2 daemon stop`.
+own_process_chain()
+{
+  local pid=$$
+  while [ -n "$pid" ] && [ "$pid" -gt 1 ]; do
+    echo "$pid"
+    pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+  done
+}
+OWN_PIDS=" $(own_process_chain | tr '\n' ' ') "
+
+# Sets PIDS to the processes whose command line matches $1, except this
+# script, the shells above it and the subshell that ran pgrep (gone by now).
+# Called directly, not as $(...) or in a pipe: that subshell has this
+# script's command line and would still be alive here.
+pids_with_match()
+{
+  local pid matches
+  matches=$(pgrep -f -i "$1")
+  PIDS=""
+  for pid in $matches; do
+    case "$OWN_PIDS" in *" $pid "*) continue ;; esac
+    ps -p "$pid" > /dev/null 2>&1 || continue
+    PIDS="$PIDS $pid"
+  done
+  PIDS="${PIDS# }"
+}
+
 kill_process_with_match() {
-  
+
   HDR="[${GREEN}$1${NC}]"
   # Get the PIDs of processes that match the first name
   echo -e "${YELLOW}>> Processing the termination of processes matching the string ${GREEN}$1${NC}"
-  PIDS=$(pgrep -f -i "$1" | sort -u | tr '\n' ' ')
+  pids_with_match "$1"
   timeout="$2"
 
   # Convert the PIDs string to an array
@@ -228,5 +260,23 @@ kill_process_with_match run_sickPLC.launch.py 10
 kill_process_with_match fit4med_ws 5
 kill_process_with_match ros 5
 kill_process_with_match jazzy 5
+
+# Bring-up lock of run_sickPLC.launch.py (plc_manager/bringup_lock.py). The
+# kernel releases it when the launch dies, so a leftover file blocks nothing;
+# it is removed here only if no process holds it any more. Removing it while a
+# launch still holds it would let a second bring-up start next to that one.
+remove_bringup_lock()
+{
+  local lock_file="${FIT4MED_BRINGUP_LOCK:-$HOME/.ros/fit4med_bringup.lock}"
+  echo -e "${YELLOW}>> Bring-up lock $lock_file${NC}"
+  if [ ! -e "$lock_file" ]; then
+    echo -e "${GREEN}<< not present${NC}"
+  elif flock -n "$lock_file" rm -f "$lock_file"; then
+    echo -e "${GREEN}<< removed${NC}"
+  else
+    echo -e "${RED}<< still held by pid $(cat "$lock_file" 2>/dev/null || echo '?'): a bring-up survived the cleanup, not removed${NC}"
+  fi
+}
+remove_bringup_lock
 
 #sudo rm -fr /tmp/*

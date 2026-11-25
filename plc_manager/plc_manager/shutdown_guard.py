@@ -35,19 +35,29 @@ def _log(msg: str) -> None:
     print(f'[shutdown_guard] {msg}', file=sys.stderr, flush=True)
 
 
+def _parent_pid(pid: str) -> int:
+    with open(f'/proc/{pid}/stat') as f:
+        # ppid is the second field after "(comm)"; comm may contain spaces.
+        return int(f.read().rsplit(')', 1)[1].split()[1])
+
+
 def _pids_named(names: set[str]) -> list[int]:
-    """Return the pids of this user's processes running a program in names."""
-    own_pid, own_uid = os.getpid(), os.getuid()
+    """Return the pids of the sibling processes running a program in names.
+
+    Siblings: started by the same launch as this guard. A plc_manager_node of
+    another bring-up is not waited for (run 0112 waited for the one of 0111).
+    """
+    own_pid, own_ppid = os.getpid(), os.getppid()
     pids = []
     for entry in os.listdir('/proc'):
         if not entry.isdigit() or int(entry) == own_pid:
             continue
         try:
-            if os.stat(f'/proc/{entry}').st_uid != own_uid:
+            if _parent_pid(entry) != own_ppid:
                 continue
             with open(f'/proc/{entry}/cmdline', 'rb') as f:
                 argv = f.read().split(b'\0')
-        except OSError:
+        except (OSError, ValueError, IndexError):
             continue
         # argv[0] for an executable, argv[1] for "python3 <script>".
         if any(os.path.basename(a.decode(errors='replace')) in names for a in argv[:2]):

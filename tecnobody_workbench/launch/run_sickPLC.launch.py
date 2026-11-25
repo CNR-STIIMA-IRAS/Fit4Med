@@ -103,24 +103,34 @@ def finalize_session_log(session_dir):
 
 
 def clean_shutdown(event, context):
-    import os
     _shutdown_reason[0] = event.reason
     # ros2_control_node is excluded: it handles SIGINT correctly on its own.
-    # Using -f matches the full command line to avoid hitting other ros2_control_node instances.
+    # -P: only the nodes started by this launch (its direct children; taskset
+    # execs the node, so the pid is the node's). Without it a second bring-up
+    # that failed to start killed the plc_manager of the running one, which
+    # opened the safety chain (runs 0111/0112), and a Ctrl-C here also hit the
+    # robot_state_publisher of the platform launch, which plc_manager stops.
+    sig = '-SIGINT' if event.reason == 'ctrl-c (SIGINT)' else '-SIGTERM'
     nodes_names = ['robot_state_publisher', 'plc_manager_node', 'sonar_teach_node']
     for nm in nodes_names:
-        _nm = nm[0:15] if len(nm)>15  else nm
-        if event.reason == "ctrl-c (SIGINT)":
-            os.system(f'pkill -SIGINT {_nm}')
-        elif event.reason == "ctrl-z (SIGTERM)":
-            os.system(f'pkill -SIGTERM {_nm}')
-        else:
-            os.system(f'pkill -SIGTERM {_nm}')
+        # pkill matches the process name, at most 15 characters.
+        subprocess.run(['pkill', sig, '-P', str(os.getpid()), nm[:15]], check=False)
     return [
         LogInfo(msg=f'Shutdown Callback "{event.reason}" forwarded to {nodes_names}'),
     ]
     
 def generate_launch_description():
+    # Before any process and before the session log (which archives the logs
+    # of the bring-up it finds): a second bring-up cannot get EtherCAT master 0
+    # nor UDP port 5006 and, failing, stopped the running one (runs 0111/0112).
+    # Held until this launch exits; see plc_manager/bringup_lock.py.
+    from plc_manager.bringup_lock import acquire, BringupRunning
+    try:
+        acquire()
+    except BringupRunning as exc:
+        print(f'[run_sickPLC] NOT STARTED: {exc}', file=sys.stderr, flush=True)
+        raise
+
     controllers_file = 'plc_controller.yaml'
     description_package = 'tecnobody_workbench'
     

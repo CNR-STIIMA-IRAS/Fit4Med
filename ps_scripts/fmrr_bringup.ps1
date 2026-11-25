@@ -90,7 +90,9 @@ if ($Mode -eq "service") {
     }
 }
 else {
-    $remoteScript = "source /home/fit4med/fit4med_ws/install/setup.bash; /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./log.sh; ros2 launch tecnobody_workbench run_sickPLC.launch.py gui_ip:=$GuiIp"
+    # bringup_lock: refuse to start (and to archive the logs of) a second
+    # bring-up while one is running; the launch checks it again itself.
+    $remoteScript = "source /home/fit4med/fit4med_ws/install/setup.bash; python3 -m plc_manager.bringup_lock && { /home/fit4med/fit4med_ws/src/Fit4Med/bash_scripts/./log.sh; ros2 launch tecnobody_workbench run_sickPLC.launch.py gui_ip:=$GuiIp; }"
     ssh -t "${remoteUser}@${remoteHost}" "bash -l -i -c '$remoteScript'"
 }
 

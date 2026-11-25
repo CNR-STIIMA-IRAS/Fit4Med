@@ -2,6 +2,26 @@
 
 Notable changes to the Fit4Med platform software. Newest first.
 
+## 2026-11-25 — One bring-up at a time; a failed one no longer stops the running one
+
+Runs 0111/0112: a `run_sickPLC` launch from a terminal (10:17:14) and the `fit4med-bringup@` unit started by `fmrr_bringup.ps1` (10:17:25) ran together. The unit's launch could not get EtherCAT master 0 nor UDP port 5006, its `plc_manager` died, and its shutdown ran `pkill -SIGTERM plc_manager_nod` on the whole PC: the `plc_manager` of the terminal launch got it, opened the safety chain and stopped the platform. The unit had also archived and deleted the terminal launch's `.ros/log` (`log.sh`).
+
+### Before deploying
+
+- Sync `Fit4Med` to the robot and `colcon build --packages-select plc_manager tecnobody_workbench` (new module, changed launch file).
+
+### Added
+
+- `plc_manager/bringup_lock.py`: `run_sickPLC.launch.py` takes `~/.ros/fit4med_bringup.lock` (`flock`, `FIT4MED_BRINGUP_LOCK` to change it) before starting anything and keeps it until it exits; the kernel releases it on SIGKILL too. It also refuses to start while a `run_sickPLC` launch or a `plc_manager_node` of this user is running (an older install without the lock, or nodes left behind by a killed launch). The launch then exits with `[run_sickPLC] NOT STARTED: ...` naming the pid.
+- `python3 -m plc_manager.bringup_lock`: the same check without taking the lock, exit 1 if a bring-up is running. `fit4med_bringup_service.sh` and `fmrr_bringup.ps1 -Mode legacy` run it before `log.sh`, so a refused start no longer archives the logs of the running bring-up. In service mode the unit fails and `fmrr_bringup.ps1` shows the error from the journal.
+- `kill_fmrr_apps.sh` (run by `fmrr_cleanup.ps1`, both modes) removes the lock file at the end if no process holds it any more. A leftover file does not block the next start anyway (the lock goes with the process, not the file). If a surviving bring-up still holds it, the file is kept and the pid is printed in red.
+
+### Fixed
+
+- `run_sickPLC.launch.py` `clean_shutdown`: `pkill -P <launch pid>` signals only the `robot_state_publisher`, `plc_manager_node` and `sonar_teach_node` started by this launch. Before, it also hit the platform's `robot_state_publisher` and the nodes of any other bring-up.
+- `shutdown_guard`: waits only for the `plc_manager_node` started by its own launch (run 0112 waited for the one of 0111).
+- `kill_fmrr_apps.sh` (`fmrr_cleanup.ps1`) killed itself: `pgrep -f fit4med_ws` also matched the script (`/home/fit4med/fit4med_ws/.../kill_fmrr_apps.sh`) and the `bash -lc '...'` started by ssh. One SIGINT stopped the cleanup there: no SIGTERM/SIGKILL for the `fit4med_ws` processes, no `ros`/`jazzy` match, no `ros2 daemon stop`. The script and the shells above it are now left out of every match, and so are already-exited processes.
+
 ## 2026-11-18 — EtherCAT error counters printed and cleared at each platform start
 
 The first monitor run showed on the joint_y → joint_z segment 43 link losses counted by both drives and RX errors saturated at 255 on both ends (ESC counters reset only at power-up): the link itself drops. Saturated counters cannot show new errors, and cumulative ones do not tell when they happened.
